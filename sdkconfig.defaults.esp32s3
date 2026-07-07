@@ -1,0 +1,5 @@
+# Chip-family defaults: ESP32-S3. PSRAM is NOT assumed here — the Cardputer (S3 FN8) has NO PSRAM,
+# while the JC3248W535 / M5StickS3 do. Boards with PSRAM enable SPIRAM + XIP-from-PSRAM in their own
+# boards/<board>/sdkconfig.defaults so each variant is tuned to its silicon.
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y

@@ -1,0 +1,47 @@
+menu "LxveOS"
+
+    comment "Feature modules — set per board by boards/<board>/sdkconfig.defaults (generated from cyd_boards.json)."
+
+    config LXVEOS_HAS_WIFI
+        bool "Wi-Fi recon (scan/monitor/pcap; deauth = DETECTION only)"
+        default y
+
+    config LXVEOS_HAS_BLE
+        bool "BLE recon (NimBLE scan/analyze)"
+        default n
+
+    config LXVEOS_HAS_BT_CLASSIC
+        bool "Bluetooth Classic (classic ESP32 only)"
+        default n
+
+    config LXVEOS_HAS_DISPLAY
+        bool "On-device display + LVGL UI (esp_lcd / esp_lvgl_port)"
+        default n
+
+    config LXVEOS_HAS_STORAGE
+        bool "SD / FAT / LittleFS storage (pcap, WiGLE CSV, configs)"
+        default n
+
+    config LXVEOS_HAS_GPS
+        bool "GPS (wardrive coords + time)"
+        default n
+
+    config LXVEOS_HAS_IR
+        bool "IR capture/replay (on gear you own)"
+        default n
+
+    config LXVEOS_HAS_SUBGHZ
+        bool "Sub-GHz via CC1101 add-on (receive/analyze; TX only on owned gear)"
+        default n
+
+    config LXVEOS_HAS_NRF24
+        bool "2.4GHz proprietary via nRF24 add-on (recon only — NO jammer)"
+        default n
+
+    config LXVEOS_HAS_NFC
+        bool "NFC/RFID via PN532 add-on (where lawful)"
+        default n
+
+    comment "No jammer feature exists in any configuration. Deauth ships as detection. See RESPONSIBLE-USE.md."
+
+endmenu

@@ -1,0 +1,5 @@
+# Chip-family defaults: classic ESP32 (WROOM/WROVER/PICO). PSRAM is NOT assumed here — most classic
+# boards (CYDs, StickC) are WROOM with no PSRAM; boards that DO have it (StickC Plus2, Fire) enable it
+# in their own boards/<board>/sdkconfig.defaults.
+CONFIG_IDF_TARGET="esp32"
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y

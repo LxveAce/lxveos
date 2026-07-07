@@ -1,0 +1,93 @@
+{
+  "_schema": "LxveOS board+display+input capability manifest. THE SSOT: scripts/gen_board_configs.py turns each row into boards/<id>/sdkconfig.defaults + board_info.h + CMakePresets entries, and Cyber Controller reads it for detect->variant->flash. Honesty rule: unknown pins/IDs/offsets stay null, NEVER invented. provenance = verified-on-hw | datasheet-community. This repo copy holds the M0 Tier-1 boards; the full 40+ board fleet lives in command-center/projects/lxveos/ and is reconciled to this schema incrementally.",
+  "_version": "0.1.0-m0",
+  "boards": {
+    "bare_esp32_headless": {
+      "chip": "esp32", "psram": false, "flash_size": "4MB",
+      "display": { "present": false },
+      "input": [],
+      "ui_profile": "headless",
+      "features": { "wifi": true, "ble": true, "bt_classic": true, "gps": "addon", "subghz": "addon", "nrf24": "addon", "nfc": "addon", "ir": "addon", "storage": "addon" },
+      "build": { "idf_target": "esp32", "partition_csv": "partitions/partitions_4mb_single.csv", "optimize": "size" },
+      "firmware_variant_map": { "lxveos": "bare_esp32_headless" },
+      "provenance": "verified-on-hw",
+      "_note": "Baseline serial/CLI + Cyber-Controller-bridge node. No display -> headless build."
+    },
+    "cyd_2432S028_classic": {
+      "chip": "esp32", "psram": false, "flash_size": "4MB",
+      "display": {
+        "present": true, "driver": "ILI9341|ST7789", "runtime_probe": true,
+        "native_w": 240, "native_h": 320, "bus": "spi", "hal_backend": "esp_lcd",
+        "color_format": "rgb565", "default_rotation": null, "color_invert": null,
+        "rgb_order": null, "col_offset": 0, "row_offset": 0,
+        "backlight": { "pin": null, "pwm": true, "active_level": 1 }, "pins": null
+      },
+      "input": [
+        { "class": "touch", "controller": "XPT2046", "bus": "spi", "addr_or_cs": 33, "maps_to_lvgl": "pointer", "_note": "resistive; CS GPIO33 datasheet-community" }
+      ],
+      "ui_profile": "touch_gui",
+      "features": { "wifi": true, "ble": true, "bt_classic": true, "display": true, "gps": "addon" },
+      "build": { "idf_target": "esp32", "partition_csv": "partitions/partitions_4mb_single.csv", "optimize": "size" },
+      "firmware_variant_map": { "lxveos": "cyd_2432S028_classic", "marauder": "cyd_2432S028" },
+      "provenance": "datasheet-community",
+      "_note": "FLAGSHIP: 1-USB=ILI9341 vs 2-USB=ST7789 are electrically identical -> BOTH panel drivers compiled in; boot probe (0xD3->0x9341/0x7796, ST7789 heuristic) resolves it and caches to NVS."
+    },
+    "m5stickc_plus2": {
+      "chip": "esp32", "psram": true, "psram_size": "2MB", "flash_size": "8MB",
+      "display": {
+        "present": true, "driver": "ST7789V2", "native_w": 135, "native_h": 240,
+        "bus": "spi", "hal_backend": "esp_lcd", "color_format": "rgb565",
+        "default_rotation": null, "color_invert": null, "rgb_order": null,
+        "col_offset": null, "row_offset": null, "backlight": { "pin": null, "pwm": true, "active_level": 1 }, "pins": null
+      },
+      "input": [
+        { "class": "buttons", "controller": null, "bus": "gpio", "pins": null, "maps_to_lvgl": "keypad", "_note": "BtnA/BtnB/PWR; GPIOs unverified" },
+        { "class": "imu", "controller": "MPU6886", "bus": "i2c", "addr_or_cs": null, "maps_to_lvgl": "none", "_note": "accel/gyro -> app events; addr unverified" }
+      ],
+      "ui_profile": "button_gui",
+      "features": { "wifi": true, "ble": true, "bt_classic": true, "display": true, "ir": true },
+      "build": { "idf_target": "esp32", "psram": true, "partition_csv": "partitions/partitions_8mb_ota.csv", "optimize": "size" },
+      "quirks": [ "gpio_power_hold: firmware MUST hold the power-latch GPIO high or the unit powers off (no AXP192 PMIC)" ],
+      "firmware_variant_map": { "lxveos": "m5stickc_plus2", "marauder": "m5stickc_plus2" },
+      "provenance": "datasheet-community",
+      "_note": "Most-supported classic-ESP32 stick. 8MB flash + 2MB PSRAM."
+    },
+    "m5cardputer_v1": {
+      "chip": "esp32s3", "psram": false, "flash_size": "8MB",
+      "display": {
+        "present": true, "driver": "ST7789V2", "native_w": 240, "native_h": 135,
+        "bus": "spi", "hal_backend": "esp_lcd", "color_format": "rgb565",
+        "default_rotation": null, "color_invert": null, "rgb_order": null,
+        "col_offset": null, "row_offset": null, "backlight": { "pin": null, "pwm": true, "active_level": 1 }, "pins": null
+      },
+      "input": [
+        { "class": "keymatrix", "controller": "74HC138", "bus": "gpio", "pins": null, "maps_to_lvgl": "keypad", "_note": "3-to-8 decoder GPIO scan (verified). ADV variant uses TCA8418 I2C -> separate board id." }
+      ],
+      "ui_profile": "keypad_gui",
+      "features": { "wifi": true, "ble": true, "display": true, "ir": true, "storage": true },
+      "build": { "idf_target": "esp32s3", "psram": false, "partition_csv": "partitions/partitions_8mb_ota.csv", "optimize": "size" },
+      "quirks": [ "no_psram: S3 FN8 has NO PSRAM despite some spec tables -> tight heap, lite UI, careful capture buffers" ],
+      "firmware_variant_map": { "lxveos": "m5cardputer_v1", "marauder": "m5cardputer", "bruce": "cardputer" },
+      "provenance": "datasheet-community",
+      "_note": "Keyboard deck on a NO-PSRAM S3 -> proves the tight-heap path."
+    },
+    "jc3248w535_s3_qspi": {
+      "chip": "esp32s3", "psram": true, "psram_size": "8MB", "flash_size": "8MB",
+      "display": {
+        "present": true, "driver": "AXS15231B", "native_w": 320, "native_h": 480,
+        "bus": "qspi", "hal_backend": "esp_lcd", "color_format": "rgb565",
+        "default_rotation": null, "color_invert": null, "rgb_order": null,
+        "col_offset": null, "row_offset": null, "backlight": { "pin": null, "pwm": true, "active_level": 1 }, "pins": null
+      },
+      "input": [
+        { "class": "touch", "controller": "AXS15231B", "bus": "i2c", "addr_or_cs": null, "maps_to_lvgl": "pointer", "_note": "in-cell touch shares the AXS15231B (single chip, verified); addr/init datasheet-community" }
+      ],
+      "ui_profile": "touch_gui",
+      "features": { "wifi": true, "ble": true, "display": true },
+      "build": { "idf_target": "esp32s3", "psram": true, "psram_mode": "oct", "partition_csv": "partitions/partitions_8mb_ota.csv", "optimize": "perf" },
+      "firmware_variant_map": { "lxveos": "jc3248w535_s3_qspi" },
+      "provenance": "datasheet-community",
+      "_note": "S3 QSPI (AXS15231B) -> proves the QSPI + in-cell-touch path. Resolution inferred; validate init/pins on bench."
+    }
+  }
+}

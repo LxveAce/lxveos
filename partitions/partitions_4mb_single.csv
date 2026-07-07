@@ -1,0 +1,7 @@
+# 4 MB, factory-only (most CYDs / classic sticks). A feature-rich LVGL build barely fits two OTA slots
+# at 4 MB, so default to a single factory app + a data partition. Sizes are PROVISIONAL — set from the
+# measured release binary. Name,   Type, SubType, Offset,   Size
+nvs,      data, nvs,     0x9000,   0x6000
+phy_init, data, phy,     0xf000,   0x1000
+factory,  app,  factory, 0x10000,  0x2D0000
+storage,  data, fat,     0x2E0000, 0x110000

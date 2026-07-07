@@ -1,0 +1,30 @@
+name: build-matrix
+# Builds every board from the manifest. NOTE: this CI is a scaffold and has NOT been run yet — it needs
+# validation once the components compile. It regenerates board inputs from cyd_boards.json, then builds
+# each board with ESP-IDF v6.0.2. TODO: add scripts/size_report.py flash/IRAM gate + Unity/pytest-embedded.
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { board: bare_esp32_headless,   target: esp32 }
+          - { board: cyd_2432S028_classic,  target: esp32 }
+          - { board: m5stickc_plus2,        target: esp32 }
+          - { board: m5cardputer_v1,        target: esp32s3 }
+          - { board: jc3248w535_s3_qspi,    target: esp32s3 }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate board configs from cyd_boards.json
+        run: python3 scripts/gen_board_configs.py
+      - name: Build ${{ matrix.board }}
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v6.0.2
+          target: ${{ matrix.target }}
+          command: idf.py --preset ${{ matrix.board }} build
