@@ -7,7 +7,6 @@
 # configure is simply absent there and this check would fire. The process environment IS inherited
 # by that sub-process, so an env var is the one value visible in both passes. Build with:
 #   LXVEOS_BOARD=<board> idf.py -B build/<board> -D SDKCONFIG_DEFAULTS="..." build
-# The generated CMakePresets set this env per preset, so `cmake --preset <board>` works too.
 if(NOT DEFINED ENV{LXVEOS_BOARD})
     message(FATAL_ERROR "LXVEOS_BOARD env var is not set — build with `LXVEOS_BOARD=<board> idf.py ...` (see README).")
 endif()

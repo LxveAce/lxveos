@@ -58,14 +58,6 @@ def test_display_boards_emit_driver_defines():
             assert "#define LXVEOS_HAS_DISPLAY       0" in h
 
 
-def test_cmakepresets_is_up_to_date():
-    """Drift-lock: the committed CMakePresets.json must equal what the generator would emit from the
-    current manifest (edit the manifest -> re-run gen_board_configs.py -> commit both)."""
-    want = g._presets_text(BOARDS)
-    have = (ROOT / "CMakePresets.json").read_text(encoding="utf-8")
-    assert have == want, "CMakePresets.json is stale — run scripts/gen_board_configs.py and commit."
-
-
 def test_validation_catches_broken_board():
     bad = {"Bad-ID": {"chip": "esp32", "flash_size": "3MB",
                       "build": {"idf_target": "esp32s3", "partition_csv": "partitions/nope.csv"},

@@ -37,22 +37,25 @@ The full design lives in `LxveAce/command-center` → `projects/lxveos/`:
 
 ## Build (once you have ESP-IDF v6.0.x)
 ```sh
-python scripts/gen_board_configs.py        # cyd_boards.json -> boards/*, CMakePresets, board_info.h
+python scripts/gen_board_configs.py        # cyd_boards.json -> boards/*/ (sdkconfig.defaults + board_info.h)
 
-# Build a board. idf.py doesn't expand CMakePresets ${sourceDir} macros, so pass the inputs
-# explicitly (the generated board sdkconfig sets CONFIG_IDF_TARGET; ESP-IDF auto-applies
-# sdkconfig.defaults.<target>). LXVEOS_BOARD is EXPORTED, not -D'd: ESP-IDF re-runs each
-# component's CMakeLists in a cacheless `cmake -P` process to resolve requirements, where a -D
-# cache var is invisible but the environment is inherited. CMakePresets.json (whose per-board
-# "environment" sets the same var) is kept for `cmake --preset` users.
+# Build a board with explicit idf.py flags — the supported ESP-IDF multi-config form. Each board gets a
+# private -B build dir and its own SDKCONFIG; the chained SDKCONFIG_DEFAULTS ends with the generated board
+# file (which sets CONFIG_IDF_TARGET, so ESP-IDF auto-applies sdkconfig.defaults.<target>). LXVEOS_BOARD is
+# EXPORTED, not -D'd: ESP-IDF re-runs each component's CMakeLists in a cacheless `cmake -P` process to resolve
+# requirements, where a -D cache var is invisible but the environment is inherited.
+# No CMakePresets.json: idf.py auto-applies the FIRST preset in one (building every board against the first
+# board's config) and never expands ${sourceDir} in a named preset's binaryDir — presets and idf.py can't
+# coexist for a multi-board tree.
 export B=bare_esp32_headless   # any board id in cyd_boards.json
 export LXVEOS_BOARD=$B
-idf.py -B build/$B -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;boards/$B/sdkconfig.defaults" build
+idf.py -B build/$B -D SDKCONFIG=build/$B/sdkconfig \
+  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;boards/$B/sdkconfig.defaults" build
 idf.py -B build/$B flash monitor
 ```
 You can validate the manifest + generated configs **without ESP-IDF** (pure Python):
 ```sh
-python scripts/gen_board_configs.py --check   # manifest valid + CMakePresets.json in sync
+python scripts/gen_board_configs.py --check   # manifest valid (CI gate; writes nothing)
 python -m pytest tests/                        # board-config pipeline unit tests
 ```
 CI (`.github/workflows/build-matrix.yml`) runs that fast host-side `validate` gate first, then builds every

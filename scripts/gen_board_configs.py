@@ -4,15 +4,19 @@
 Emits, for every board in the manifest:
   boards/<id>/sdkconfig.defaults   IDF_TARGET, flash/PSRAM/partition/optimize, LXVEOS_HAS_* feature gates
   boards/<id>/board_info.h         runtime constants the BSP needs (driver, w/h, runtime_probe, ui_profile)
-and (re)writes CMakePresets.json (one configure preset per board, chained sdkconfig.defaults).
 
 Adding a board = one JSON edit + re-run. The manifest stays the single source shared with Cyber Controller.
 No ESP-IDF required to run this (pure Python). See command-center/projects/lxveos/build-architecture.md.
 
+Boards are built with explicit idf.py flags (a private -B build dir + that board's SDKCONFIG + the chained
+SDKCONFIG_DEFAULTS + an exported LXVEOS_BOARD) — NOT CMakePresets. idf.py auto-applies the FIRST preset in
+any CMakePresets.json it finds (building every board against the first board's config) and never expands
+${sourceDir} in a named preset's binaryDir, so presets and idf.py are mutually incompatible for a multi-board
+tree. The explicit-flags form is the supported ESP-IDF multi-config path; see README / build-matrix.yml.
+
 Usage:
-  gen_board_configs.py           validate the manifest, then (re)generate boards/* + CMakePresets.json
-  gen_board_configs.py --check   validate + verify the committed CMakePresets.json is up to date with the
-                                 manifest; write nothing; exit 1 on any validation error or drift (CI gate).
+  gen_board_configs.py           validate the manifest, then (re)generate boards/*
+  gen_board_configs.py --check   validate the manifest only (write nothing); exit 1 on any error (CI gate).
 """
 import json
 import os
@@ -146,51 +150,6 @@ def board_info_h(bid, b):
     return "\n".join(lines) + "\n"
 
 
-def preset(bid, b):
-    build = b.get("build", {})
-    target = build.get("idf_target", b.get("chip", "esp32"))
-    bd = f"${{sourceDir}}/build/{bid}"
-    chain = f"sdkconfig.defaults;sdkconfig.defaults.{target};boards/{bid}/sdkconfig.defaults"
-    return {
-        "name": bid,
-        "displayName": bid,
-        "binaryDir": bd,
-        # LXVEOS_BOARD must reach lxveos_config as an ENV var, not a cache var: ESP-IDF's component
-        # requirements pass re-runs each component's CMakeLists in a `cmake -P` process with no cache,
-        # where a -D var is invisible but the environment is inherited. A preset "environment" entry
-        # sets it for `cmake --preset <board>`; the CI/README idf.py invocations export it explicitly.
-        "environment": {"LXVEOS_BOARD": bid},
-        "cacheVariables": {
-            "IDF_TARGET": target,
-            "SDKCONFIG": f"{bd}/sdkconfig",
-            "SDKCONFIG_DEFAULTS": chain,
-        },
-    }
-
-
-def build_presets_doc(boards):
-    """The CMakePresets.json document (one configure preset per board). Pure — used by both generation
-    and --check so the drift comparison is byte-for-byte what generation would write."""
-    return {
-        "version": 4,
-        "cmakeMinimumRequired": {"major": 3, "minor": 24, "patch": 0},
-        # CMake validates the presets root schema strictly and errors on any unknown key (a bare
-        # "_comment" -> "Invalid extra field"). Tool metadata belongs under the reserved, free-form
-        # "vendor" map, which CMake only checks is an object and otherwise ignores.
-        "vendor": {
-            "lxveos": {
-                "generator": "scripts/gen_board_configs.py from cyd_boards.json — do not edit by hand",
-                "note": "ESP-IDF v6.0 has no preset 'inherits'; per-board sdkconfig chains are flattened.",
-            }
-        },
-        "configurePresets": [preset(bid, b) for bid, b in boards.items()],
-    }
-
-
-def _presets_text(boards):
-    return json.dumps(build_presets_doc(boards), indent=2) + "\n"
-
-
 def load_boards():
     with open(MANIFEST, encoding="utf-8") as f:
         return json.load(f)["boards"]
@@ -204,9 +163,7 @@ def generate(boards):
             f.write(sdkconfig_lines(bid, b))
         with open(os.path.join(bdir, "board_info.h"), "w", encoding="utf-8", newline="\n") as f:
             f.write(board_info_h(bid, b))
-    with open(os.path.join(ROOT, "CMakePresets.json"), "w", encoding="utf-8", newline="\n") as f:
-        f.write(_presets_text(boards))
-    print(f"generated {len(boards)} boards -> boards/*/ + CMakePresets.json")
+    print(f"generated {len(boards)} boards -> boards/*/")
 
 
 def main(argv=None):
@@ -220,17 +177,7 @@ def main(argv=None):
             print(f"  - {e}", file=sys.stderr)
         return 1
     if check:
-        want = _presets_text(boards)
-        try:
-            with open(os.path.join(ROOT, "CMakePresets.json"), encoding="utf-8") as f:
-                have = f.read()
-        except FileNotFoundError:
-            have = None
-        if have != want:
-            print("CMakePresets.json is STALE — run scripts/gen_board_configs.py and commit the result.",
-                  file=sys.stderr)
-            return 1
-        print(f"OK — manifest valid ({len(boards)} boards) and CMakePresets.json up to date.")
+        print(f"OK — manifest valid ({len(boards)} boards).")
         return 0
     generate(boards)
     return 0

@@ -1,9 +1,9 @@
 name: build-matrix
 # Regenerates board inputs from cyd_boards.json and builds every board with ESP-IDF v6.0.2. A fast
-# host-side `validate` job (no ESP-IDF) gates the matrix: it checks the manifest + that CMakePresets.json
-# is in sync and runs the board-config unit tests, so a manifest typo fails in seconds instead of after
-# five parallel toolchain builds. NOTE: the ESP-IDF build stage is still a scaffold — it has not yet
-# compiled against the toolchain. TODO: scripts/size_report.py flash/IRAM gate + Unity/pytest-embedded.
+# host-side `validate` job (no ESP-IDF) gates the matrix: it validates the manifest and runs the
+# board-config unit tests, so a manifest typo fails in seconds instead of after five parallel toolchain
+# builds. NOTE: the ESP-IDF build stage is still a scaffold — it has not yet compiled clean against the
+# toolchain. TODO: scripts/size_report.py flash/IRAM gate + Unity/pytest-embedded.
 on:
   push:
   pull_request:
@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Validate cyd_boards.json + CMakePresets sync
+      - name: Validate cyd_boards.json manifest
         run: python3 scripts/gen_board_configs.py --check
       - name: Host tests (board-config pipeline)
         run: |
@@ -44,14 +44,16 @@ jobs:
         with:
           esp_idf_version: v6.0.2
           target: ${{ matrix.target }}
-          # idf.py drives its own CMake configure and does NOT expand CMakePresets ${sourceDir} macros,
-          # so pass the per-board inputs explicitly: a private build dir and the chained sdkconfig.defaults
-          # (common -> chip-family -> generated board file, which also sets CONFIG_IDF_TARGET). LXVEOS_BOARD
-          # is EXPORTED, not -D'd: ESP-IDF's requirements pass re-runs component CMakeLists in a cacheless
-          # `cmake -P` process where a -D var is invisible but the environment is inherited. CMakePresets.json
-          # stays for local `cmake --preset` (its "environment" sets the same var).
+          # Build with explicit idf.py flags (the supported ESP-IDF multi-config form): a private -B build
+          # dir, that board's own SDKCONFIG, and the chained SDKCONFIG_DEFAULTS (common -> chip-family ->
+          # generated board file, which sets CONFIG_IDF_TARGET). LXVEOS_BOARD is EXPORTED, not -D'd: ESP-IDF's
+          # requirements pass re-runs component CMakeLists in a cacheless `cmake -P` process where a -D var is
+          # invisible but the environment is inherited. No CMakePresets.json in the tree: idf.py auto-applies
+          # its FIRST preset (building every board against the first board's config) and never expands
+          # ${sourceDir} in a named preset's binaryDir — presets and idf.py can't coexist for a multi-board tree.
           command: >-
             export LXVEOS_BOARD=${{ matrix.board }} &&
             idf.py -B build/${{ matrix.board }}
+            -D SDKCONFIG=build/${{ matrix.board }}/sdkconfig
             -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.${{ matrix.target }};boards/${{ matrix.board }}/sdkconfig.defaults"
             build
