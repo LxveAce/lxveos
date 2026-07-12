@@ -9,6 +9,7 @@
 static const char *TAG = "lxveos_board";
 
 const char *lxveos_board_id(void) { return LXVEOS_BOARD_ID; }
+const char *lxveos_board_chip(void) { return LXVEOS_CHIP; }
 const char *lxveos_ui_profile(void) { return LXVEOS_UI_PROFILE; }
 
 esp_err_t bsp_display_start(void)

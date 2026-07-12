@@ -2,5 +2,6 @@ idf_component_register(
     SRCS "src/lxveos_cli.c"
     INCLUDE_DIRS "include"
     REQUIRES lxveos_config lxveos_board
+    PRIV_REQUIRES lxveos_caps console
 )
-# M1: add PRIV_REQUIRES console (esp_console REPL) + the Cyber Controller bridge protocol.
+# M1: the Cyber Controller bridge protocol (versioned single-line UART) lands here alongside the REPL.
