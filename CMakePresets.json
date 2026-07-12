@@ -16,9 +16,11 @@
       "name": "bare_esp32_headless",
       "displayName": "bare_esp32_headless",
       "binaryDir": "${sourceDir}/build/bare_esp32_headless",
+      "environment": {
+        "LXVEOS_BOARD": "bare_esp32_headless"
+      },
       "cacheVariables": {
         "IDF_TARGET": "esp32",
-        "LXVEOS_BOARD": "bare_esp32_headless",
         "SDKCONFIG": "${sourceDir}/build/bare_esp32_headless/sdkconfig",
         "SDKCONFIG_DEFAULTS": "sdkconfig.defaults;sdkconfig.defaults.esp32;boards/bare_esp32_headless/sdkconfig.defaults"
       }
@@ -27,9 +29,11 @@
       "name": "cyd_2432S028_classic",
       "displayName": "cyd_2432S028_classic",
       "binaryDir": "${sourceDir}/build/cyd_2432S028_classic",
+      "environment": {
+        "LXVEOS_BOARD": "cyd_2432S028_classic"
+      },
       "cacheVariables": {
         "IDF_TARGET": "esp32",
-        "LXVEOS_BOARD": "cyd_2432S028_classic",
         "SDKCONFIG": "${sourceDir}/build/cyd_2432S028_classic/sdkconfig",
         "SDKCONFIG_DEFAULTS": "sdkconfig.defaults;sdkconfig.defaults.esp32;boards/cyd_2432S028_classic/sdkconfig.defaults"
       }
@@ -38,9 +42,11 @@
       "name": "m5stickc_plus2",
       "displayName": "m5stickc_plus2",
       "binaryDir": "${sourceDir}/build/m5stickc_plus2",
+      "environment": {
+        "LXVEOS_BOARD": "m5stickc_plus2"
+      },
       "cacheVariables": {
         "IDF_TARGET": "esp32",
-        "LXVEOS_BOARD": "m5stickc_plus2",
         "SDKCONFIG": "${sourceDir}/build/m5stickc_plus2/sdkconfig",
         "SDKCONFIG_DEFAULTS": "sdkconfig.defaults;sdkconfig.defaults.esp32;boards/m5stickc_plus2/sdkconfig.defaults"
       }
@@ -49,9 +55,11 @@
       "name": "m5cardputer_v1",
       "displayName": "m5cardputer_v1",
       "binaryDir": "${sourceDir}/build/m5cardputer_v1",
+      "environment": {
+        "LXVEOS_BOARD": "m5cardputer_v1"
+      },
       "cacheVariables": {
         "IDF_TARGET": "esp32s3",
-        "LXVEOS_BOARD": "m5cardputer_v1",
         "SDKCONFIG": "${sourceDir}/build/m5cardputer_v1/sdkconfig",
         "SDKCONFIG_DEFAULTS": "sdkconfig.defaults;sdkconfig.defaults.esp32s3;boards/m5cardputer_v1/sdkconfig.defaults"
       }
@@ -60,9 +68,11 @@
       "name": "jc3248w535_s3_qspi",
       "displayName": "jc3248w535_s3_qspi",
       "binaryDir": "${sourceDir}/build/jc3248w535_s3_qspi",
+      "environment": {
+        "LXVEOS_BOARD": "jc3248w535_s3_qspi"
+      },
       "cacheVariables": {
         "IDF_TARGET": "esp32s3",
-        "LXVEOS_BOARD": "jc3248w535_s3_qspi",
         "SDKCONFIG": "${sourceDir}/build/jc3248w535_s3_qspi/sdkconfig",
         "SDKCONFIG_DEFAULTS": "sdkconfig.defaults;sdkconfig.defaults.esp32s3;boards/jc3248w535_s3_qspi/sdkconfig.defaults"
       }

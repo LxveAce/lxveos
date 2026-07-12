@@ -41,9 +41,13 @@ python scripts/gen_board_configs.py        # cyd_boards.json -> boards/*, CMakeP
 
 # Build a board. idf.py doesn't expand CMakePresets ${sourceDir} macros, so pass the inputs
 # explicitly (the generated board sdkconfig sets CONFIG_IDF_TARGET; ESP-IDF auto-applies
-# sdkconfig.defaults.<target>). CMakePresets.json is kept for `cmake --preset` users.
-B=bare_esp32_headless   # any board id in cyd_boards.json
-idf.py -B build/$B -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;boards/$B/sdkconfig.defaults" -D LXVEOS_BOARD=$B build
+# sdkconfig.defaults.<target>). LXVEOS_BOARD is EXPORTED, not -D'd: ESP-IDF re-runs each
+# component's CMakeLists in a cacheless `cmake -P` process to resolve requirements, where a -D
+# cache var is invisible but the environment is inherited. CMakePresets.json (whose per-board
+# "environment" sets the same var) is kept for `cmake --preset` users.
+export B=bare_esp32_headless   # any board id in cyd_boards.json
+export LXVEOS_BOARD=$B
+idf.py -B build/$B -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;boards/$B/sdkconfig.defaults" build
 idf.py -B build/$B flash monitor
 ```
 You can validate the manifest + generated configs **without ESP-IDF** (pure Python):

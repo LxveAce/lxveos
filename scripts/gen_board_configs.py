@@ -155,9 +155,13 @@ def preset(bid, b):
         "name": bid,
         "displayName": bid,
         "binaryDir": bd,
+        # LXVEOS_BOARD must reach lxveos_config as an ENV var, not a cache var: ESP-IDF's component
+        # requirements pass re-runs each component's CMakeLists in a `cmake -P` process with no cache,
+        # where a -D var is invisible but the environment is inherited. A preset "environment" entry
+        # sets it for `cmake --preset <board>`; the CI/README idf.py invocations export it explicitly.
+        "environment": {"LXVEOS_BOARD": bid},
         "cacheVariables": {
             "IDF_TARGET": target,
-            "LXVEOS_BOARD": bid,
             "SDKCONFIG": f"{bd}/sdkconfig",
             "SDKCONFIG_DEFAULTS": chain,
         },
