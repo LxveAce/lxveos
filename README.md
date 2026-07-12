@@ -38,8 +38,13 @@ The full design lives in `LxveAce/command-center` → `projects/lxveos/`:
 ## Build (once you have ESP-IDF v6.0.x)
 ```sh
 python scripts/gen_board_configs.py        # cyd_boards.json -> boards/*, CMakePresets, board_info.h
-idf.py --preset bare_esp32_headless build   # or any board preset
-idf.py --preset bare_esp32_headless flash monitor
+
+# Build a board. idf.py doesn't expand CMakePresets ${sourceDir} macros, so pass the inputs
+# explicitly (the generated board sdkconfig sets CONFIG_IDF_TARGET; ESP-IDF auto-applies
+# sdkconfig.defaults.<target>). CMakePresets.json is kept for `cmake --preset` users.
+B=bare_esp32_headless   # any board id in cyd_boards.json
+idf.py -B build/$B -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;boards/$B/sdkconfig.defaults" -D LXVEOS_BOARD=$B build
+idf.py -B build/$B flash monitor
 ```
 You can validate the manifest + generated configs **without ESP-IDF** (pure Python):
 ```sh

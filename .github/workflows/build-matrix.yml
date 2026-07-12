@@ -44,4 +44,12 @@ jobs:
         with:
           esp_idf_version: v6.0.2
           target: ${{ matrix.target }}
-          command: idf.py --preset ${{ matrix.board }} build
+          # idf.py drives its own CMake configure and does NOT expand CMakePresets ${sourceDir} macros,
+          # so pass the per-board inputs explicitly: a private build dir, the chained sdkconfig.defaults
+          # (common -> chip-family -> generated board file, which also sets CONFIG_IDF_TARGET), and the
+          # board id the config component requires. CMakePresets.json stays for local `cmake --preset`.
+          command: >-
+            idf.py -B build/${{ matrix.board }}
+            -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.${{ matrix.target }};boards/${{ matrix.board }}/sdkconfig.defaults"
+            -D LXVEOS_BOARD=${{ matrix.board }}
+            build
