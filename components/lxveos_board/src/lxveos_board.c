@@ -110,7 +110,17 @@ esp_err_t bsp_display_backlight_set(uint8_t pct)
 
 esp_err_t bsp_input_start(void)
 {
-    // TODO(M0): register manifest input[] as LVGL indevs (touch/keymatrix/buttons/encoder); IMU -> app events.
+    // Walk the board's input devices from board_info.h (generated from the manifest's input[]). M0 logs
+    // each; TODO(M0): register each as an LVGL indev of the mapped type (pointer/keypad), and route
+    // lvgl=none devices (e.g. an IMU) to app-level events instead of an indev.
+#if LXVEOS_INPUT_COUNT > 0
+#define X(cls, ctrl, bus, lvgl) \
+    ESP_LOGI(TAG, "input: %-9s ctrl=%-10s bus=%-4s lvgl=%s", cls, (ctrl)[0] ? (ctrl) : "-", bus, lvgl);
+    LXVEOS_INPUT_LIST(X)
+#undef X
+#else
+    ESP_LOGI(TAG, "input: none (headless)");
+#endif
     return ESP_OK;
 }
 

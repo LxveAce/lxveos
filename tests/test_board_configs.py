@@ -58,6 +58,17 @@ def test_display_boards_emit_driver_defines():
             assert "#define LXVEOS_HAS_DISPLAY       0" in h
 
 
+def test_input_summary_emitted():
+    """board_info.h carries LXVEOS_INPUT_COUNT matching the manifest and an LXVEOS_INPUT_LIST X-macro
+    with one X(...) row per input device (none on headless boards)."""
+    for bid, b in BOARDS.items():
+        h = g.board_info_h(bid, b)
+        n = len(b.get("input") or [])
+        assert f"#define LXVEOS_INPUT_COUNT       {n}" in h, f"{bid}: input count {n} not emitted"
+        assert "#define LXVEOS_INPUT_LIST(X)" in h, f"{bid}: input list macro missing"
+        assert h.count("    X(") == n, f"{bid}: expected {n} X() rows, got {h.count('    X(')}"
+
+
 def test_validation_catches_broken_board():
     bad = {"Bad-ID": {"chip": "esp32", "flash_size": "3MB",
                       "build": {"idf_target": "esp32s3", "partition_csv": "partitions/nope.csv"},

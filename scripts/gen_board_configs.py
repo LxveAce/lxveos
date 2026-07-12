@@ -147,6 +147,18 @@ def board_info_h(bid, b):
             f'#define LXVEOS_DISP_BUS          {s(d.get("bus"))}',
             f'#define LXVEOS_DISP_BACKEND      {s(d.get("hal_backend"))}',
         ]
+    # Input devices as an X-macro list so the board layer can iterate them at compile time:
+    #   #define X(class, controller, bus, lvgl_indev) ...   then   LXVEOS_INPUT_LIST(X)
+    # Empty (LXVEOS_INPUT_COUNT 0, empty list) on headless boards.
+    inputs = b.get("input") or []
+    lines.append(f'#define LXVEOS_INPUT_COUNT       {len(inputs)}')
+    if inputs:
+        rows = [f'    X("{it.get("class","")}", "{it.get("controller") or ""}", '
+                f'"{it.get("bus","")}", "{it.get("maps_to_lvgl","none") or "none"}")'
+                for it in inputs]
+        lines.append("#define LXVEOS_INPUT_LIST(X) \\\n" + " \\\n".join(rows))
+    else:
+        lines.append("#define LXVEOS_INPUT_LIST(X)")
     return "\n".join(lines) + "\n"
 
 
