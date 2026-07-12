@@ -13,7 +13,9 @@
 #include <stdio.h>
 
 #include "esp_console.h"
+#include "esp_idf_version.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "nvs.h"
 #include "sdkconfig.h"
 
@@ -77,7 +79,7 @@ static int cmd_agree(int argc, char **argv)
     return 0;
 }
 
-// `info` — identity of this unit: board id, the chip it was built for, and the UI profile.
+// `info` — identity of this unit: firmware version, board id, the chip it was built for, and UI profile.
 static int cmd_info(int argc, char **argv)
 {
     (void)argc;
@@ -85,9 +87,43 @@ static int cmd_info(int argc, char **argv)
     if (locked()) {
         return 0;
     }
+    printf("fw    : LxveOS %s\n", LXVEOS_VERSION);
     printf("board : %s\n", lxveos_board_id());
     printf("chip  : %s\n", lxveos_board_chip());
     printf("ui    : %s\n", lxveos_ui_profile());
+    return 0;
+}
+
+static const char *reset_reason_str(esp_reset_reason_t r)
+{
+    switch (r) {
+    case ESP_RST_POWERON:   return "power-on";
+    case ESP_RST_EXT:       return "external";
+    case ESP_RST_SW:        return "software";
+    case ESP_RST_PANIC:     return "panic";
+    case ESP_RST_INT_WDT:   return "int-wdt";
+    case ESP_RST_TASK_WDT:  return "task-wdt";
+    case ESP_RST_WDT:       return "other-wdt";
+    case ESP_RST_DEEPSLEEP: return "deep-sleep";
+    case ESP_RST_BROWNOUT:  return "brownout";
+    case ESP_RST_SDIO:      return "sdio";
+    default:                return "unknown";
+    }
+}
+
+// `sysinfo` — runtime state: ESP-IDF version, why we last reset, and heap headroom (current + worst-case
+// since boot). The counterpart to `info` (static identity).
+static int cmd_sysinfo(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    if (locked()) {
+        return 0;
+    }
+    printf("idf     : %s\n", esp_get_idf_version());
+    printf("reset   : %s\n", reset_reason_str(esp_reset_reason()));
+    printf("heap    : %u free / %u min-free (bytes)\n",
+           (unsigned)esp_get_free_heap_size(), (unsigned)esp_get_minimum_free_heap_size());
     return 0;
 }
 
@@ -110,8 +146,9 @@ static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
         {.command = "agree", .help = "Accept the authorized-use terms to unlock commands", .func = &cmd_agree},
-        {.command = "info", .help = "Show board id, chip and UI profile", .func = &cmd_info},
+        {.command = "info", .help = "Show firmware version, board id, chip and UI profile", .func = &cmd_info},
         {.command = "caps", .help = "List capabilities and whether each is active", .func = &cmd_caps},
+        {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
     };
     for (size_t i = 0; i < sizeof(cmds) / sizeof(cmds[0]); i++) {
         ESP_ERROR_CHECK(esp_console_cmd_register(&cmds[i]));

@@ -7,9 +7,7 @@
 
 #include "lxveos_board.h"
 #include "lxveos_caps.h"
-#include "lxveos_cli.h"
-
-#define LXVEOS_VERSION "0.1.0-m0"
+#include "lxveos_cli.h"  // provides LXVEOS_VERSION
 
 static const char *TAG = "lxveos";
 

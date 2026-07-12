@@ -7,6 +7,10 @@
 extern "C" {
 #endif
 
+// LxveOS firmware version string — the single definition used by the boot banner, the `info`/`sysinfo`
+// commands, and (later) the Cyber Controller bridge handshake.
+#define LXVEOS_VERSION "0.1.0-m0"
+
 // Print the banner + authorized-use notice and start the serial control surface.
 esp_err_t lxveos_cli_start(void);
 
