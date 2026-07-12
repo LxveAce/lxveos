@@ -24,6 +24,11 @@ esp_err_t bsp_display_start(void);
 esp_err_t bsp_display_get_caps(lxve_display_caps_t *out);
 esp_err_t bsp_display_backlight_set(uint8_t pct);
 
+// The concrete panel driver resolved for this boot ("ILI9341" / "ST7789" / ...). On the CYD this is the
+// runtime-probed, NVS-cached identity; on fixed-panel boards it's the build-time driver; "" on headless
+// boards. Valid after bsp_display_start().
+const char *bsp_display_panel(void);
+
 #ifdef __cplusplus
 }
 #endif
