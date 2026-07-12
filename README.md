@@ -41,7 +41,14 @@ python scripts/gen_board_configs.py        # cyd_boards.json -> boards/*, CMakeP
 idf.py --preset bare_esp32_headless build   # or any board preset
 idf.py --preset bare_esp32_headless flash monitor
 ```
-CI (`.github/workflows/build-matrix.yml`) builds every board with `idf-build-apps` + a flash/IRAM size gate.
+You can validate the manifest + generated configs **without ESP-IDF** (pure Python):
+```sh
+python scripts/gen_board_configs.py --check   # manifest valid + CMakePresets.json in sync
+python -m pytest tests/                        # board-config pipeline unit tests
+```
+CI (`.github/workflows/build-matrix.yml`) runs that fast host-side `validate` gate first, then builds every
+board with ESP-IDF v6.0.2. (The ESP-IDF build stage is still a scaffold — not yet toolchain-verified; a
+flash/IRAM size gate is a TODO.)
 
 ## License
 MIT © 2026 LxveAce / LxveLabs. Third-party components retain their own licenses — see `THIRD-PARTY-LICENSES.md`.

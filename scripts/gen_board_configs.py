@@ -8,9 +8,15 @@ and (re)writes CMakePresets.json (one configure preset per board, chained sdkcon
 
 Adding a board = one JSON edit + re-run. The manifest stays the single source shared with Cyber Controller.
 No ESP-IDF required to run this (pure Python). See command-center/projects/lxveos/build-architecture.md.
+
+Usage:
+  gen_board_configs.py           validate the manifest, then (re)generate boards/* + CMakePresets.json
+  gen_board_configs.py --check   validate + verify the committed CMakePresets.json is up to date with the
+                                 manifest; write nothing; exit 1 on any validation error or drift (CI gate).
 """
 import json
 import os
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST = os.path.join(ROOT, "cyd_boards.json")
@@ -21,6 +27,74 @@ FLASH = {"4MB": "CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y",
 # feature keys whose value is boolean True -> compile the module in (HAS_*). "addon" strings are
 # left out (not compiled by default; unlocked at runtime by the capability probe).
 HAS_KEYS = ("wifi", "ble", "bt_classic", "display", "ir", "gps", "subghz", "nrf24", "nfc", "storage")
+# ESP32 families LxveOS targets. An idf_target outside this set can't be built by ESP-IDF v6.
+KNOWN_TARGETS = ("esp32", "esp32s2", "esp32s3", "esp32c2", "esp32c3", "esp32c5", "esp32c6", "esp32h2", "esp32p4")
+# Feature-map values allowed by the manifest's honesty rule: compiled-in (True), absent (False),
+# or runtime-unlockable hardware add-on ("addon").
+FEATURE_VALUES = (True, False, "addon")
+
+
+def validate_manifest(boards, root=ROOT):
+    """Return a list of human-readable problems with the manifest (empty == valid). Catches the classes
+    that would otherwise silently emit a broken/wrong board image or only fail deep in the ESP-IDF build:
+    unknown flash size (silently dropped), unknown/mismatched target, a partition CSV that doesn't exist,
+    an incomplete display block, a stray feature value, and top-level vs build.psram drift."""
+    errs = []
+    if not isinstance(boards, dict) or not boards:
+        return ["manifest 'boards' is missing or empty"]
+    for bid, b in boards.items():
+        p = f"[{bid}]"
+        if not isinstance(bid, str) or not bid or not bid.replace("_", "").isalnum():
+            errs.append(f"{p} board id must be [A-Za-z0-9_] (no spaces/dashes/dots — used in paths/CMake names)")
+        if not isinstance(b, dict):
+            errs.append(f"{p} board entry must be an object")
+            continue
+        build = b.get("build", {})
+        if not isinstance(build, dict):
+            errs.append(f"{p} 'build' must be an object")
+            build = {}
+        # chip / target
+        chip = b.get("chip")
+        target = build.get("idf_target", chip)
+        if not chip:
+            errs.append(f"{p} missing 'chip'")
+        if target not in KNOWN_TARGETS:
+            errs.append(f"{p} idf_target '{target}' not in {KNOWN_TARGETS}")
+        if chip and target and chip != target:
+            errs.append(f"{p} chip '{chip}' != build.idf_target '{target}' (must match)")
+        # flash size — must map to a CONFIG or the generator silently omits it (image built at the wrong size)
+        fs = b.get("flash_size")
+        if fs not in FLASH:
+            errs.append(f"{p} flash_size '{fs}' not in {tuple(FLASH)} (would be silently dropped)")
+        # partition CSV must exist on disk
+        csv = build.get("partition_csv")
+        if csv and not os.path.isfile(os.path.join(root, csv)):
+            errs.append(f"{p} partition_csv '{csv}' does not exist")
+        # PSRAM must not disagree between the top-level flag and build.psram
+        if "psram" in b and "psram" in build and bool(b["psram"]) != bool(build["psram"]):
+            errs.append(f"{p} psram mismatch: top-level {b['psram']} != build.psram {build['psram']}")
+        # ui_profile
+        if not b.get("ui_profile"):
+            errs.append(f"{p} missing 'ui_profile'")
+        # features shape
+        feats = b.get("features", {})
+        if not isinstance(feats, dict):
+            errs.append(f"{p} 'features' must be an object")
+        else:
+            for k, v in feats.items():
+                if v not in FEATURE_VALUES:
+                    errs.append(f"{p} feature '{k}'={v!r} must be one of true/false/\"addon\"")
+        # display block completeness (only when a panel is present)
+        d = b.get("display", {})
+        if isinstance(d, dict) and d.get("present"):
+            for key, ok in (("driver", bool(d.get("driver"))),
+                            ("native_w", isinstance(d.get("native_w"), int) and d.get("native_w", 0) > 0),
+                            ("native_h", isinstance(d.get("native_h"), int) and d.get("native_h", 0) > 0),
+                            ("bus", bool(d.get("bus"))),
+                            ("hal_backend", bool(d.get("hal_backend")))):
+                if not ok:
+                    errs.append(f"{p} display.present but '{key}' missing/invalid")
+    return errs
 
 
 def sdkconfig_lines(bid, b):
@@ -90,10 +164,27 @@ def preset(bid, b):
     }
 
 
-def main():
+def build_presets_doc(boards):
+    """The CMakePresets.json document (one configure preset per board). Pure — used by both generation
+    and --check so the drift comparison is byte-for-byte what generation would write."""
+    return {
+        "version": 4,
+        "cmakeMinimumRequired": {"major": 3, "minor": 24, "patch": 0},
+        "_comment": "GENERATED by scripts/gen_board_configs.py from cyd_boards.json. ESP-IDF v6.0 has no preset 'inherits' -> chains flattened.",
+        "configurePresets": [preset(bid, b) for bid, b in boards.items()],
+    }
+
+
+def _presets_text(boards):
+    return json.dumps(build_presets_doc(boards), indent=2) + "\n"
+
+
+def load_boards():
     with open(MANIFEST, encoding="utf-8") as f:
-        boards = json.load(f)["boards"]
-    presets = []
+        return json.load(f)["boards"]
+
+
+def generate(boards):
     for bid, b in boards.items():
         bdir = os.path.join(ROOT, "boards", bid)
         os.makedirs(bdir, exist_ok=True)
@@ -101,18 +192,37 @@ def main():
             f.write(sdkconfig_lines(bid, b))
         with open(os.path.join(bdir, "board_info.h"), "w", encoding="utf-8", newline="\n") as f:
             f.write(board_info_h(bid, b))
-        presets.append(preset(bid, b))
-    doc = {
-        "version": 4,
-        "cmakeMinimumRequired": {"major": 3, "minor": 24, "patch": 0},
-        "_comment": "GENERATED by scripts/gen_board_configs.py from cyd_boards.json. ESP-IDF v6.0 has no preset 'inherits' -> chains flattened.",
-        "configurePresets": presets,
-    }
     with open(os.path.join(ROOT, "CMakePresets.json"), "w", encoding="utf-8", newline="\n") as f:
-        json.dump(doc, f, indent=2)
-        f.write("\n")
-    print(f"generated {len(presets)} boards -> boards/*/ + CMakePresets.json")
+        f.write(_presets_text(boards))
+    print(f"generated {len(boards)} boards -> boards/*/ + CMakePresets.json")
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    check = "--check" in argv
+    boards = load_boards()
+    errs = validate_manifest(boards)
+    if errs:
+        print("cyd_boards.json validation FAILED:", file=sys.stderr)
+        for e in errs:
+            print(f"  - {e}", file=sys.stderr)
+        return 1
+    if check:
+        want = _presets_text(boards)
+        try:
+            with open(os.path.join(ROOT, "CMakePresets.json"), encoding="utf-8") as f:
+                have = f.read()
+        except FileNotFoundError:
+            have = None
+        if have != want:
+            print("CMakePresets.json is STALE — run scripts/gen_board_configs.py and commit the result.",
+                  file=sys.stderr)
+            return 1
+        print(f"OK — manifest valid ({len(boards)} boards) and CMakePresets.json up to date.")
+        return 0
+    generate(boards)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

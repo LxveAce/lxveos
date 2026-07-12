@@ -1,13 +1,30 @@
 name: build-matrix
-# Builds every board from the manifest. NOTE: this CI is a scaffold and has NOT been run yet — it needs
-# validation once the components compile. It regenerates board inputs from cyd_boards.json, then builds
-# each board with ESP-IDF v6.0.2. TODO: add scripts/size_report.py flash/IRAM gate + Unity/pytest-embedded.
+# Regenerates board inputs from cyd_boards.json and builds every board with ESP-IDF v6.0.2. A fast
+# host-side `validate` job (no ESP-IDF) gates the matrix: it checks the manifest + that CMakePresets.json
+# is in sync and runs the board-config unit tests, so a manifest typo fails in seconds instead of after
+# five parallel toolchain builds. NOTE: the ESP-IDF build stage is still a scaffold — it has not yet
+# compiled against the toolchain. TODO: scripts/size_report.py flash/IRAM gate + Unity/pytest-embedded.
 on:
   push:
   pull_request:
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate cyd_boards.json + CMakePresets sync
+        run: python3 scripts/gen_board_configs.py --check
+      - name: Host tests (board-config pipeline)
+        run: |
+          python3 -m pip install --quiet pytest
+          python3 -m pytest tests/ -q
+
   build:
+    needs: validate
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
