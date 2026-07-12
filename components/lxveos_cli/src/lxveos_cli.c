@@ -4,24 +4,87 @@
 // The console transport is chip-agnostic: UART where that's the default console, USB-Serial-JTAG or
 // USB-CDC otherwise — the CONFIG_ESP_CONSOLE_* guards below pick the one this image was built with, so
 // the same code compiles on classic ESP32 (UART) and S3 (often USB-Serial-JTAG).
+//
+// Everything except `agree`/`help` is locked until the operator accepts the authorized-use terms once.
+// The acceptance is persisted in NVS (ns "lxveos", key "use_ack"), so it is a genuine first-run gate,
+// not a per-boot nag — a deliberate ethics boundary for a security-research firmware.
 #include "lxveos_cli.h"
 
 #include <stdio.h>
 
 #include "esp_console.h"
 #include "esp_log.h"
+#include "nvs.h"
 #include "sdkconfig.h"
 
 #include "lxveos_board.h"
 #include "lxveos_caps.h"
 
+#define LXVEOS_NVS_NS      "lxveos"
+#define LXVEOS_NVS_USE_ACK "use_ack"
+
 static const char *TAG = "lxveos_cli";
+
+// True once the operator has accepted the authorized-use terms (mirrors the NVS-persisted flag).
+static bool s_use_ack;
+
+static bool read_use_ack(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(LXVEOS_NVS_NS, NVS_READONLY, &h) != ESP_OK) {
+        return false;  // namespace not created yet -> never acked
+    }
+    uint8_t v = 0;
+    esp_err_t r = nvs_get_u8(h, LXVEOS_NVS_USE_ACK, &v);
+    nvs_close(h);
+    return r == ESP_OK && v == 1;
+}
+
+static void persist_use_ack(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(LXVEOS_NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
+        ESP_LOGW(TAG, "could not persist authorized-use ack (NVS open failed)");
+        return;
+    }
+    if (nvs_set_u8(h, LXVEOS_NVS_USE_ACK, 1) == ESP_OK) {
+        nvs_commit(h);
+    }
+    nvs_close(h);
+}
+
+// Commands other than `agree` refuse to run until the terms are accepted. Returns 0 either way so the
+// REPL doesn't print a scary "non-zero error code" after the notice.
+static bool locked(void)
+{
+    if (s_use_ack) {
+        return false;
+    }
+    printf("locked — type 'agree' to accept the authorized-use terms (see RESPONSIBLE-USE.md) first.\n");
+    return true;
+}
+
+// `agree` — accept the authorized-use terms; persisted so later boots start unlocked.
+static int cmd_agree(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    if (!s_use_ack) {
+        s_use_ack = true;
+        persist_use_ack();
+    }
+    printf("Acknowledged. Authorized, lawful security research & education only. Commands unlocked.\n");
+    return 0;
+}
 
 // `info` — identity of this unit: board id, the chip it was built for, and the UI profile.
 static int cmd_info(int argc, char **argv)
 {
     (void)argc;
     (void)argv;
+    if (locked()) {
+        return 0;
+    }
     printf("board : %s\n", lxveos_board_id());
     printf("chip  : %s\n", lxveos_board_chip());
     printf("ui    : %s\n", lxveos_ui_profile());
@@ -33,6 +96,9 @@ static int cmd_caps(int argc, char **argv)
 {
     (void)argc;
     (void)argv;
+    if (locked()) {
+        return 0;
+    }
     for (int c = 0; c < LXVEOS_CAP_COUNT; c++) {
         printf("  %-11s %s\n", lxveos_cap_name((lxveos_cap_t)c),
                lxveos_cap_active((lxveos_cap_t)c) ? "active" : "-");
@@ -43,6 +109,7 @@ static int cmd_caps(int argc, char **argv)
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
+        {.command = "agree", .help = "Accept the authorized-use terms to unlock commands", .func = &cmd_agree},
         {.command = "info", .help = "Show board id, chip and UI profile", .func = &cmd_info},
         {.command = "caps", .help = "List capabilities and whether each is active", .func = &cmd_caps},
     };
@@ -53,8 +120,13 @@ static void register_commands(void)
 
 esp_err_t lxveos_cli_start(void)
 {
+    s_use_ack = read_use_ack();
+
     ESP_LOGI(TAG, "LxveOS ready on '%s' (ui: %s).", lxveos_board_id(), lxveos_ui_profile());
     ESP_LOGW(TAG, "Authorized, lawful security research & education only. No jammer. See RESPONSIBLE-USE.md.");
+    if (!s_use_ack) {
+        ESP_LOGW(TAG, "First run: commands are LOCKED until you type 'agree' to accept the authorized-use terms.");
+    }
 
     esp_console_repl_t *repl = NULL;
     esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
@@ -79,7 +151,6 @@ esp_err_t lxveos_cli_start(void)
 
     register_commands();
 
-    // TODO(M0): gate the REPL behind a first-run authorized-use ack persisted to NVS.
     // TODO(M1): versioned single-line UART protocol (PCAP + text) = the Cyber Controller bridge SSOT.
     ESP_ERROR_CHECK(esp_console_start_repl(repl));
     return ESP_OK;
