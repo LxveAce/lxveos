@@ -70,6 +70,22 @@ typedef void (*lxveos_wifi_line_cb)(const char *line);
 esp_err_t lxveos_wifi_eapol_capture(uint32_t seconds, lxveos_wifi_line_cb emit,
                                     lxveos_wifi_eapol_stats_t *out);
 
+// One discovered client station and the AP it is talking to (learned passively from data frames).
+typedef struct {
+    uint8_t ap[6];
+    uint8_t sta[6];    // the client MAC (never a broadcast/multicast address)
+    char essid[33];    // the AP's ESSID if a beacon was also seen this session, else ""
+    uint32_t frames;   // data frames observed between this client and AP
+    int8_t rssi;       // strongest RSSI seen for the pair (dBm)
+} lxveos_wifi_client_t;
+
+// PASSIVE client-station scan for ~`seconds`. Channel-hops in promiscuous mode and infers client<->AP
+// links from the addresses in data frames (ToDS/FromDS), learning AP ESSIDs from beacons along the way.
+// Listens only — transmits NOTHING. Copies up to `max` client records into `out`, sets *found; also
+// reports the beacon count via *beacons (may be NULL). Returns ESP_OK or an esp_err_t.
+esp_err_t lxveos_wifi_sta_scan(uint32_t seconds, lxveos_wifi_client_t *out, size_t max,
+                               size_t *found, uint32_t *beacons);
+
 // Short human label for a wifi_auth_mode_t value ("open", "wpa2", ...). Never NULL.
 const char *lxveos_wifi_authmode_str(uint8_t authmode);
 

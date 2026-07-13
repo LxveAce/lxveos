@@ -434,6 +434,164 @@ esp_err_t lxveos_wifi_eapol_capture(uint32_t seconds, lxveos_wifi_line_cb emit,
     return ESP_OK;
 }
 
+// ── Client-station scan ────────────────────────────────────────────────────────────────────────────
+// Passively infers client<->AP links from data-frame addresses. Reuses the beacon->ESSID map above (only
+// one capture runs at a time; each session memsets the shared tables first). Written by the rx callback,
+// read after promiscuous is disabled.
+#define LXVEOS_STA_MAX 48
+
+typedef struct {
+    uint8_t ap[6];
+    uint8_t sta[6];
+    uint32_t frames;
+    int8_t rssi;
+    bool used;
+} sta_ent_t;
+
+static sta_ent_t s_sta[LXVEOS_STA_MAX];
+static volatile uint32_t s_sta_beacons;
+
+static void sta_upsert(const uint8_t *ap, const uint8_t *sta, int8_t rssi)
+{
+    for (int i = 0; i < LXVEOS_STA_MAX; i++) {
+        if (s_sta[i].used && mac_eq(s_sta[i].ap, ap) && mac_eq(s_sta[i].sta, sta)) {
+            s_sta[i].frames++;
+            if (rssi > s_sta[i].rssi) {
+                s_sta[i].rssi = rssi;  // keep the strongest (closest to 0)
+            }
+            return;
+        }
+    }
+    for (int i = 0; i < LXVEOS_STA_MAX; i++) {
+        if (!s_sta[i].used) {
+            memcpy(s_sta[i].ap, ap, 6);
+            memcpy(s_sta[i].sta, sta, 6);
+            s_sta[i].frames = 1;
+            s_sta[i].rssi = rssi;
+            s_sta[i].used = true;
+            return;
+        }
+    }
+}
+
+static void sta_rx_cb(void *buf, wifi_promiscuous_pkt_type_t type)
+{
+    const wifi_promiscuous_pkt_t *pkt = (const wifi_promiscuous_pkt_t *)buf;
+    if (pkt == NULL) {
+        return;
+    }
+    const uint8_t *f = pkt->payload;
+    const int len = pkt->rx_ctrl.sig_len;
+    if (len < 24) {
+        return;
+    }
+    const uint8_t ftype = (f[0] >> 2) & 0x3;
+    const uint8_t fsub = (f[0] >> 4) & 0xF;
+    const bool tods = (f[1] & 0x01) != 0;
+    const bool fromds = (f[1] & 0x02) != 0;
+
+    if (type == WIFI_PKT_MGMT && ftype == 0 && (fsub == 8 || fsub == 5)) {
+        s_sta_beacons++;
+        const uint8_t *bssid = f + 16;
+        int p = 24 + 12;
+        while (p + 2 <= len) {
+            uint8_t tag = f[p];
+            uint8_t tlen = f[p + 1];
+            if (p + 2 + tlen > len) {
+                break;
+            }
+            if (tag == 0) {
+                essid_upsert(bssid, f + p + 2, tlen);
+                break;
+            }
+            p += 2 + tlen;
+        }
+        return;
+    }
+    if (ftype != 2) {  // only data frames link a client to an AP
+        return;
+    }
+    // Exactly one of ToDS/FromDS distinguishes the AP from the client; skip ad-hoc/WDS (neither/both).
+    const uint8_t *addr1 = f + 4;
+    const uint8_t *addr2 = f + 10;
+    const uint8_t *ap;
+    const uint8_t *sta;
+    if (tods && !fromds) {
+        ap = addr1;
+        sta = addr2;
+    } else if (fromds && !tods) {
+        ap = addr2;
+        sta = addr1;
+    } else {
+        return;
+    }
+    if (sta[0] & 0x01) {
+        return;  // client field is a broadcast/multicast address — not a real station
+    }
+    sta_upsert(ap, sta, pkt->rx_ctrl.rssi);
+}
+
+esp_err_t lxveos_wifi_sta_scan(uint32_t seconds, lxveos_wifi_client_t *out, size_t max,
+                               size_t *found, uint32_t *beacons)
+{
+    if (found != NULL) {
+        *found = 0;
+    }
+    if (beacons != NULL) {
+        *beacons = 0;
+    }
+    if (out == NULL || max == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (seconds == 0) {
+        seconds = 12;
+    }
+    ESP_RETURN_ON_ERROR(ensure_wifi_up(), TAG, "wifi bring-up");
+
+    memset(s_sta, 0, sizeof(s_sta));
+    memset(s_essid, 0, sizeof(s_essid));
+    s_sta_beacons = 0;
+
+    const wifi_promiscuous_filter_t filt = {
+        .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA};
+    ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous_filter(&filt), TAG, "promisc filter");
+    ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous_rx_cb(sta_rx_cb), TAG, "promisc cb");
+    ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous(true), TAG, "promisc on");
+
+    static const uint8_t chans[] = {1, 6, 11, 2, 3, 4, 5, 7, 8, 9, 10, 12, 13};
+    const int nch = (int)(sizeof(chans) / sizeof(chans[0]));
+    const int64_t end_us = esp_timer_get_time() + (int64_t)seconds * 1000000;
+    int i = 0;
+    while (esp_timer_get_time() < end_us) {
+        esp_wifi_set_channel(chans[i], WIFI_SECOND_CHAN_NONE);
+        vTaskDelay(pdMS_TO_TICKS(300));
+        i = (i + 1) % nch;
+    }
+    esp_wifi_set_promiscuous(false);
+
+    size_t k = 0;
+    for (int j = 0; j < LXVEOS_STA_MAX && k < max; j++) {
+        if (!s_sta[j].used) {
+            continue;
+        }
+        memcpy(out[k].ap, s_sta[j].ap, 6);
+        memcpy(out[k].sta, s_sta[j].sta, 6);
+        out[k].frames = s_sta[j].frames;
+        out[k].rssi = s_sta[j].rssi;
+        const char *essid = essid_lookup(s_sta[j].ap);
+        strncpy(out[k].essid, essid, sizeof(out[k].essid) - 1);
+        out[k].essid[sizeof(out[k].essid) - 1] = '\0';
+        k++;
+    }
+    if (found != NULL) {
+        *found = k;
+    }
+    if (beacons != NULL) {
+        *beacons = s_sta_beacons;
+    }
+    return ESP_OK;
+}
+
 const char *lxveos_wifi_authmode_str(uint8_t authmode)
 {
     switch ((wifi_auth_mode_t)authmode) {

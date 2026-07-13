@@ -453,6 +453,49 @@ static int cmd_capture(int argc, char **argv)
     return 0;
 }
 
+// `stations [seconds]` — passive client-station scan (the `wifi_sta_scan` catalog operation). Infers
+// client<->AP links from data-frame addresses and lists each client with its AP's ESSID, frame count and
+// signal. Listens only — transmits nothing.
+static int cmd_stations(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_WIFI)) {
+        printf("wifi capability is not active on this build — cannot scan for stations\n");
+        return 0;
+    }
+    uint32_t secs = 12;
+    if (argc >= 2) {
+        long v = strtol(argv[1], NULL, 10);
+        if (v >= 1 && v <= 120) {
+            secs = (uint32_t)v;
+        } else {
+            printf("usage: stations [seconds 1-120]  (default 12)\n");
+            return 0;
+        }
+    }
+    printf("passive Wi-Fi station scan for %us (inferring clients from data frames — no frames sent)...\n",
+           (unsigned)secs);
+    static lxveos_wifi_client_t cs[48];
+    size_t found = 0;
+    uint32_t beacons = 0;
+    esp_err_t e = lxveos_wifi_sta_scan(secs, cs, sizeof(cs) / sizeof(cs[0]), &found, &beacons);
+    if (e != ESP_OK) {
+        printf("station scan failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    printf("  %-17s %-17s %-18s %5s %s\n", "CLIENT", "AP", "ESSID", "FRMS", "RSSI");
+    for (size_t i = 0; i < found; i++) {
+        printf("  %02x:%02x:%02x:%02x:%02x:%02x %02x:%02x:%02x:%02x:%02x:%02x %-18s %5u %4ddB\n",
+               cs[i].sta[0], cs[i].sta[1], cs[i].sta[2], cs[i].sta[3], cs[i].sta[4], cs[i].sta[5],
+               cs[i].ap[0], cs[i].ap[1], cs[i].ap[2], cs[i].ap[3], cs[i].ap[4], cs[i].ap[5],
+               cs[i].essid[0] ? cs[i].essid : "<unknown>", (unsigned)cs[i].frames, cs[i].rssi);
+    }
+    printf("%u client(s) inferred (%u beacons seen)\n", (unsigned)found, (unsigned)beacons);
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -462,6 +505,7 @@ static void register_commands(void)
         {.command = "features", .help = "List planned/available security operations for this unit", .func = &cmd_features},
         {.command = "scan", .help = "Passive Wi-Fi AP scan (listen only, no frames sent)", .func = &cmd_scan},
         {.command = "sniff", .help = "Passive Wi-Fi packet monitor: sniff [seconds] (listen only)", .func = &cmd_sniff},
+        {.command = "stations", .help = "Passive client-station scan: stations [seconds] (listen only)", .func = &cmd_stations},
         {.command = "capture", .help = "Passive EAPOL/PMKID capture -> hashcat 22000: capture [seconds]", .func = &cmd_capture},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
