@@ -8,8 +8,12 @@ hardware supports them. It builds on the great open ESP32 security firmware — 
 Bruce and others — with proper credit and **without competing** with them: permissively-licensed code is reused
 directly, copyleft work is learned from clean-room (ideas, not code). See [`CREDITS.md`](CREDITS.md).
 
-> ⚠️ **Status: M0 scaffold (unbuilt).** This repo is the structural skeleton for milestone M0. It has not yet been
-> compiled against a toolchain or flashed to hardware. Nothing here claims to work on a device until bench-validated.
+> ⚠️ **Status: M0 — builds clean in CI, not yet hardware-validated.** All five M0 Tier-1 boards compile against ESP-IDF
+> v6.0.2 in CI (a fast host-side manifest gate, then the full 5-board build matrix). What runs today is the core: board
+> bring-up, a capability registry, the CYD runtime panel-identity resolver, and a serial control console (see below). The
+> firmware has **not** been flashed to or bench-validated on a physical device yet, and on-device display/input/storage
+> bring-up is still pending — that needs each board's verified GPIO pinout, which isn't captured in the manifest yet.
+> Nothing here claims to work on a device until bench-validated.
 > **Authorized, lawful security research & education only** — see [`RESPONSIBLE-USE.md`](RESPONSIBLE-USE.md).
 > **No jammer, ever** — deauth ships as detection; nRF24/CC1101 are receive/analyze only.
 
@@ -35,6 +39,32 @@ The full design lives in `LxveAce/command-center` → `projects/lxveos/`:
 `m5cardputer_v1` · `jc3248w535_s3_qspi`. Spans classic+S3 / none–2MB–8MB PSRAM / SPI+QSPI / resistive+capacitive
 + matrix-keyboard + buttons + headless.
 
+## Serial control surface (M0)
+Every board — headless or not — boots into a serial console (`esp_console` REPL) over its default UART / USB-Serial-JTAG.
+Because this is security tooling, the console is **locked on first boot** until the operator types `agree` to accept the
+authorized-use terms; the acceptance is stored in NVS, so it's a one-time gate per unit, not a per-boot prompt.
+
+| command | what it does |
+| --- | --- |
+| `help` | list commands |
+| `agree` | accept the authorized-use terms and unlock the console |
+| `info` | firmware version, board id, chip, UI profile |
+| `caps` | capability registry — which subsystems (wifi / ble / storage / …) are active |
+| `sysinfo` | ESP-IDF version, reset reason, boot count, uptime, heap free |
+| `status` | one machine-readable line for the Cyber Controller host (below) |
+| `loglevel <tag\|*> <level>` | change ESP-IDF log verbosity at runtime |
+| `reboot` | restart the unit |
+
+Three facts persist in NVS across boots: the resolved CYD panel identity, the authorized-use acceptance, and a lifetime
+boot counter.
+
+**Cyber Controller bridge (seed).** `status` prints one parseable line that the
+[Cyber Controller](https://github.com/LxveAce/cyber-controller) host can read to identify a unit — a stable versioned
+prefix plus space-separated `key=value` fields (safe slugs / hex capability mask / decimal, no embedded spaces):
+```
+LXVEOS/1 status board=<id> chip=<esp32|esp32s3> ui=<profile> fw=<version> panel=<driver|none> caps=0x<hex> heap=<bytes>
+```
+
 ## Build (once you have ESP-IDF v6.0.x)
 ```sh
 python scripts/gen_board_configs.py        # cyd_boards.json -> boards/*/ (sdkconfig.defaults + board_info.h)
@@ -58,9 +88,9 @@ You can validate the manifest + generated configs **without ESP-IDF** (pure Pyth
 python scripts/gen_board_configs.py --check   # manifest valid (CI gate; writes nothing)
 python -m pytest tests/                        # board-config pipeline unit tests
 ```
-CI (`.github/workflows/build-matrix.yml`) runs that fast host-side `validate` gate first, then builds every
-board with ESP-IDF v6.0.2. (The ESP-IDF build stage is still a scaffold — not yet toolchain-verified; a
-flash/IRAM size gate is a TODO.)
+CI (`.github/workflows/build-matrix.yml`) runs that fast host-side `validate` gate first, then builds all five
+M0 boards with ESP-IDF v6.0.2 — currently green. Still TODO on the build side: a flash/IRAM `size` gate and
+on-device (`pytest-embedded` / Unity) tests once hardware bring-up lands.
 
 ## License
 MIT © 2026 LxveAce / LxveLabs. Third-party components retain their own licenses — see `THIRD-PARTY-LICENSES.md`.
