@@ -73,6 +73,11 @@ const char *lxveos_ble_addr_type_str(uint8_t addr_type);
 // if the ID is not in the known set. Used to attribute advertisers + BLE-spam floods to a vendor.
 const char *lxveos_ble_company_name(uint16_t company_id);
 
+// Write a short human label for a GAP appearance value into `buf` (category = value >> 6): common consumer
+// categories (Phone/Watch/Computer/Audio/Heart-Rate/…) are named, HID (cat 15) resolves its keyboard/mouse
+// subcategory, and anything not in the known set falls through to "appr:0x<hex>" — never mis-labelled.
+void lxveos_ble_appearance_str(uint16_t appearance, char *buf, size_t buflen);
+
 #ifdef __cplusplus
 }
 #endif

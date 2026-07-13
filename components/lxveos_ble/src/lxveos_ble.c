@@ -10,6 +10,7 @@
 // roles are compiled out entirely (sdkconfig.defaults), so this code cannot transmit even if it tried.
 #include "lxveos_ble.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "esp_log.h"
@@ -84,6 +85,59 @@ const char *lxveos_ble_company_name(uint16_t company_id)
         }
     }
     return NULL;
+}
+
+// GAP appearance category -> short label. Categories are the high 10 bits (value >> 6); the low 6 bits are
+// a subcategory (only resolved for HID). Table follows the Bluetooth SIG assigned-numbers appearance list.
+void lxveos_ble_appearance_str(uint16_t appearance, char *buf, size_t buflen)
+{
+    if (buflen == 0) {
+        return;
+    }
+    uint16_t cat = (uint16_t)(appearance >> 6);
+    if (cat == 15) {  // Human Interface Device — name the subcategory where we know it
+        const char *hid;
+        switch (appearance & 0x3F) {
+        case 1:  hid = "Keyboard"; break;
+        case 2:  hid = "Mouse";    break;
+        case 3:  hid = "Joystick"; break;
+        case 4:  hid = "Gamepad";  break;
+        case 9:  hid = "Touchpad"; break;
+        default: hid = "HID";      break;
+        }
+        snprintf(buf, buflen, "%s", hid);
+        return;
+    }
+    const char *name = NULL;
+    switch (cat) {
+    case 1:  name = "Phone";      break;
+    case 2:  name = "Computer";   break;
+    case 3:  name = "Watch";      break;
+    case 4:  name = "Clock";      break;
+    case 5:  name = "Display";    break;
+    case 6:  name = "Remote";     break;
+    case 7:  name = "Glasses";    break;
+    case 8:  name = "Tag";        break;
+    case 10: name = "MediaPlyr";  break;
+    case 12: name = "Thermom";    break;
+    case 13: name = "HeartRate";  break;
+    case 14: name = "BloodPress"; break;
+    case 17: name = "Running";    break;
+    case 18: name = "Cycling";    break;
+    case 21: name = "Sensor";     break;
+    case 33: name = "AudioSink";  break;  // speaker/headphone (audio receiver)
+    case 34: name = "AudioSrc";   break;  // microphone/transmitter
+    case 37: name = "Earbuds";    break;  // Wearable Audio Device
+    case 41: name = "HearAid";    break;
+    case 42: name = "Gaming";     break;
+    case 50: name = "Scale";      break;
+    default: break;
+    }
+    if (name != NULL) {
+        snprintf(buf, buflen, "%s", name);
+    } else {
+        snprintf(buf, buflen, "appr:0x%04x", appearance);
+    }
 }
 
 // Read the 16-bit manufacturer company ID from a parsed advert (mfg_data[0..1], little-endian); returns

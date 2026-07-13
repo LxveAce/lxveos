@@ -671,10 +671,27 @@ static int cmd_blescan(int argc, char **argv)
             vendor[0] = '-';
             vendor[1] = '\0';
         }
+        // Identity cell = the local name and/or the GAP appearance (a device with no name but a known
+        // appearance still gets a useful "[Watch]" / "[Earbuds]" label).
+        char appr[12];
+        if (d->appearance_present) {
+            lxveos_ble_appearance_str(d->appearance, appr, sizeof(appr));
+        } else {
+            appr[0] = '\0';
+        }
+        char ident[48];
+        if (d->name_len && appr[0]) {
+            snprintf(ident, sizeof(ident), "%s [%s]", d->name, appr);
+        } else if (d->name_len) {
+            snprintf(ident, sizeof(ident), "%s", d->name);
+        } else if (appr[0]) {
+            snprintf(ident, sizeof(ident), "[%s]", appr);
+        } else {
+            ident[0] = '\0';
+        }
         printf("  %02x:%02x:%02x:%02x:%02x:%02x %-7s %4ddB %-5s %-9s %s\n",
                d->addr[5], d->addr[4], d->addr[3], d->addr[2], d->addr[1], d->addr[0],
-               lxveos_ble_addr_type_str(d->addr_type), d->rssi, flags, vendor,
-               d->name_len ? d->name : "");
+               lxveos_ble_addr_type_str(d->addr_type), d->rssi, flags, vendor, ident);
     }
     printf("%u BLE device(s) in range\n", (unsigned)found);
     return 0;
