@@ -84,6 +84,7 @@ esp_err_t lxveos_wifi_scan(lxveos_wifi_ap_t *out, size_t max, size_t *found)
             out[k].channel = recs[i].primary;
             memcpy(out[k].bssid, recs[i].bssid, sizeof(out[k].bssid));
             out[k].authmode = (uint8_t)recs[i].authmode;
+            out[k].wps = recs[i].wps;  // ESP-IDF parses the WPS IE from the beacon into this bit
             k++;
         }
         if (found != NULL) {

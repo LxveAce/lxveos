@@ -752,8 +752,9 @@ static int cmd_eviltwin(int argc, char **argv)
 
 // `apaudit` — passive Wi-Fi AP security-posture auditor (the `wifi_security_audit` catalog op, a CUSTOM
 // defense feature). Runs one passive AP scan and grades each network's encryption, flagging the weak ones —
-// OPEN (no encryption), WEP (broken cipher) and legacy WPA (deprecated TKIP) — plus a per-grade tally and a
-// hidden-SSID count. Purely analytic over the scan; sends nothing.
+// OPEN (no encryption), WEP (broken cipher) and legacy WPA (deprecated TKIP) — AND any AP advertising WPS
+// (Wi-Fi Protected Setup, whose PIN is brute-forceable to recover the PSK even on WPA2/WPA3), plus a
+// per-grade tally with WPS + hidden-SSID counts. Purely analytic over the scan; sends nothing.
 static int cmd_apaudit(int argc, char **argv)
 {
     (void)argc;
@@ -774,7 +775,7 @@ static int cmd_apaudit(int argc, char **argv)
         return 0;
     }
     int grade_n[6] = {0};
-    int hidden = 0, flagged = 0;
+    int hidden = 0, weak_n = 0, wps_n = 0, flagged = 0;
     for (size_t i = 0; i < found; i++) {
         const char *note = NULL;
         int g = lxveos_wifi_auth_grade(aps[i].authmode, &note);
@@ -784,9 +785,18 @@ static int cmd_apaudit(int argc, char **argv)
         if (aps[i].ssid[0] == '\0') {
             hidden++;
         }
-        if (g <= 2) {  // OPEN / WEP / legacy WPA — the weak grades
+        bool weak = (g <= 2);  // OPEN / WEP / legacy WPA — the weak encryption grades
+        if (weak) {
+            weak_n++;
+        }
+        if (aps[i].wps) {
+            wps_n++;
+        }
+        // Flag any AP that is weak-encryption OR advertises WPS. WPS is orthogonal to the cipher: a fully
+        // WPA2/WPA3 AP with WPS on is still exposed to a WPS-PIN brute force that recovers the PSK.
+        if (weak || aps[i].wps) {
             flagged++;
-            printf("  [!] ");
+            printf(weak ? "  [!] " : "  [W] ");  // [!] weak encryption · [W] WPS-only (encrypted, WPS on)
             // Sanitize the SSID against control bytes so a crafted name can't garble the console.
             if (aps[i].ssid[0] == '\0') {
                 printf("<hidden>");
@@ -796,18 +806,35 @@ static int cmd_apaudit(int argc, char **argv)
                     putchar((c < 0x20 || c == 0x7f) ? '.' : (int)c);
                 }
             }
-            printf("  %02x:%02x:%02x:%02x:%02x:%02x ch%-2u %ddB — %s\n",
+            printf("  %02x:%02x:%02x:%02x:%02x:%02x ch%-2u %ddB — ",
                    aps[i].bssid[0], aps[i].bssid[1], aps[i].bssid[2], aps[i].bssid[3], aps[i].bssid[4],
-                   aps[i].bssid[5], aps[i].channel, aps[i].rssi, note);
+                   aps[i].bssid[5], aps[i].channel, aps[i].rssi);
+            if (weak) {
+                printf("%s", note);
+                if (aps[i].wps) {
+                    printf(" + WPS");
+                }
+            } else {
+                printf("WPS enabled on %s — WPS-PIN attack surface", note);
+            }
+            printf("\n");
         }
     }
-    printf("%u AP(s) scanned — open %d, WEP %d, WPA %d, WPA2 %d, WPA3 %d, other %d (%d hidden SSID)\n",
-           (unsigned)found, grade_n[0], grade_n[1], grade_n[2], grade_n[3], grade_n[4], grade_n[5], hidden);
+    printf("%u AP(s) scanned — open %d, WEP %d, WPA %d, WPA2 %d, WPA3 %d, other %d (%d hidden SSID, %d WPS)\n",
+           (unsigned)found, grade_n[0], grade_n[1], grade_n[2], grade_n[3], grade_n[4], grade_n[5], hidden,
+           wps_n);
     if (flagged == 0) {
-        printf("verdict: clear — every AP in range uses WPA2 or better\n");
+        printf("verdict: clear — every AP in range uses WPA2 or better and none advertise WPS\n");
     } else {
-        printf("verdict: ⚠ %d weak AP(s) — open/WEP/legacy-WPA are eavesdroppable or crackable; "
-               "prefer WPA2/WPA3\n", flagged);
+        printf("verdict: ⚠ %d flagged AP(s) — ", flagged);
+        if (weak_n) {
+            printf("%d weak-encryption (open/WEP/legacy-WPA are eavesdroppable or crackable)%s",
+                   weak_n, wps_n ? "; " : "");
+        }
+        if (wps_n) {
+            printf("%d WPS-enabled (WPS-PIN brute-force recovers the PSK regardless of its strength)", wps_n);
+        }
+        printf(" — prefer WPA2/WPA3 with WPS disabled\n");
     }
     return 0;
 }
@@ -1110,7 +1137,7 @@ static void register_commands(void)
         {.command = "capture", .help = "Passive EAPOL/PMKID capture -> hashcat 22000: capture [seconds] [channel]", .func = &cmd_capture},
         {.command = "defend", .help = "Passive deauth/disassoc attack detector: defend [seconds] [channel]", .func = &cmd_defend},
         {.command = "eviltwin", .help = "Passive evil-twin/rogue-AP detector (duplicate-BSSID ESSIDs)", .func = &cmd_eviltwin},
-        {.command = "apaudit", .help = "Passive AP security audit — flag open/WEP/legacy-WPA networks (listen only)", .func = &cmd_apaudit},
+        {.command = "apaudit", .help = "Passive AP security audit — flag open/WEP/legacy-WPA + WPS-enabled networks (listen only)", .func = &cmd_apaudit},
         {.command = "wardrive", .help = "Passive Wi-Fi wardrive CSV export (bssid,ssid,ch,rssi,auth per line)", .func = &cmd_wardrive},
         {.command = "blescan", .help = "Passive BLE device scan (+vendor/appearance/service-UUIDs): blescan [seconds] (listen only)", .func = &cmd_blescan},
         {.command = "bleflood", .help = "Passive BLE advert-flood/spam detector: bleflood [seconds] (listen only)", .func = &cmd_bleflood},

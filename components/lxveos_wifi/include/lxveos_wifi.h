@@ -4,6 +4,7 @@
 // transmits nothing (no probe requests, and categorically no deauth/beacon/jammer frames — LxveOS never
 // authors those). It never associates to a network. This is the honest, lawful recon primitive the
 // `wifi_ap_scan` catalog row promises; higher-level features (station scan, EAPOL capture) build on it.
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -20,6 +21,7 @@ typedef struct {
     uint8_t channel;    // primary channel
     uint8_t bssid[6];   // AP MAC
     uint8_t authmode;   // wifi_auth_mode_t
+    bool wps;           // AP advertises WPS (Wi-Fi Protected Setup) — WPS-PIN brute-force attack surface
 } lxveos_wifi_ap_t;
 
 // Run one passive AP scan. Brings the Wi-Fi stack up (STA, no association) on first call and reuses it
