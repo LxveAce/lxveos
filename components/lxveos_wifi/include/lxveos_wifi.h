@@ -66,11 +66,13 @@ typedef void (*lxveos_wifi_line_cb)(const char *line);
 // PASSIVE EAPOL/PMKID capture for ~`seconds`. `channel` 0 hops the 2.4 GHz plan; 1-13 LOCKS to that channel
 // for the whole window (dwell on a known AP's channel for better handshake/PMKID odds). Parses beacons into
 // a BSSID->ESSID map, detects EAPOL-Key handshake messages (M1-M4), extracts any RSN PMKID from an M1, and
-// pairs an M1 (ANONCE) with its M2 (MIC + EAPOL frame) when their replay counters match. It emits a
-// ready-to-crack hashcat-22000 line per artifact via `emit` (may be NULL): `WPA*01*...` for a PMKID and
-// `WPA*02*<mic>*<ap>*<sta>*<essid>*<anonce>*<eapol>*00` for a captured 4-way handshake (EAPOL from M2, MIC
-// zeroed inside the EAPOL bytes, MESSAGEPAIR 00). LISTEN ONLY — transmits nothing and NEVER deauthenticates
-// to force a handshake; it captures only what is already in the air. Stats -> *out. Returns ESP_OK/esp_err_t.
+// pairs the M2 (MIC + EAPOL frame) with an ANONCE source by replay counter. It emits a ready-to-crack
+// hashcat-22000 line per artifact via `emit` (may be NULL): `WPA*01*...` for a PMKID and
+// `WPA*02*<mic>*<ap>*<sta>*<essid>*<anonce>*<eapol>*<mp>` for a captured handshake — EAPOL always from M2
+// (MIC zeroed inside the bytes), with the ANONCE + MESSAGEPAIR from whichever AP->STA message paired:
+// M1 (replay == M2's) -> mp 00 (M12E2), or M3 (replay == M2's + 1) -> mp 02 (M32E2, when M1 was missed).
+// LISTEN ONLY — transmits nothing and NEVER deauthenticates to force a handshake; it captures only what is
+// already in the air. Stats -> *out. Returns ESP_OK/esp_err_t.
 esp_err_t lxveos_wifi_eapol_capture(uint32_t seconds, uint8_t channel, lxveos_wifi_line_cb emit,
                                     lxveos_wifi_eapol_stats_t *out);
 
