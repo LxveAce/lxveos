@@ -27,6 +27,7 @@ static const lxveos_op_t OPS[] = {
     // ── Defense ───────────────────────────────────────────────────────────────────────────────────
     {"deauth_detect",  "Deauth/pwn detector",   LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_WIFI,    "Marauder", true},
     {"evil_twin_detect", "Evil-twin/rogue-AP detector", LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_WIFI, "custom", true},
+    {"wifi_security_audit", "AP security-posture audit", LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_WIFI, "custom", true},
     {"ble_flood_detect", "BLE advert-flood detector", LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_BLE, "custom", true},
     {"ble_tracker_detect", "BLE item-tracker/stalking detector", LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_BLE, "custom", true},
     // ── Logging ───────────────────────────────────────────────────────────────────────────────────

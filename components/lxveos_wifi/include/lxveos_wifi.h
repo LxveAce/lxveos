@@ -136,6 +136,12 @@ const char *lxveos_wifi_authmode_str(uint8_t authmode);
 // without pulling in esp_wifi's enum.
 bool lxveos_wifi_is_open(uint8_t authmode);
 
+// Security-audit grade for an AP auth mode, without the caller pulling in esp_wifi's enum:
+//   0 = OPEN (no encryption) · 1 = WEP (broken) · 2 = WPA (deprecated TKIP) · 3 = WPA2 · 4 = WPA3 · 5 = other
+// Grades 0-2 are WEAK. `*note` (may be NULL) is set to a short human weakness reason (grades 0-2) or the
+// mode name (3+). Returns the grade.
+int lxveos_wifi_auth_grade(uint8_t authmode, const char **note);
+
 #ifdef __cplusplus
 }
 #endif

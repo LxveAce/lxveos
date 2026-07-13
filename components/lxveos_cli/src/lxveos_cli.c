@@ -750,6 +750,68 @@ static int cmd_eviltwin(int argc, char **argv)
     return 0;
 }
 
+// `apaudit` — passive Wi-Fi AP security-posture auditor (the `wifi_security_audit` catalog op, a CUSTOM
+// defense feature). Runs one passive AP scan and grades each network's encryption, flagging the weak ones —
+// OPEN (no encryption), WEP (broken cipher) and legacy WPA (deprecated TKIP) — plus a per-grade tally and a
+// hidden-SSID count. Purely analytic over the scan; sends nothing.
+static int cmd_apaudit(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_WIFI)) {
+        printf("wifi capability is not active on this build — cannot audit\n");
+        return 0;
+    }
+    printf("passive Wi-Fi AP security audit (listen only — no frames sent)...\n");
+    static lxveos_wifi_ap_t aps[64];
+    size_t found = 0;
+    esp_err_t e = lxveos_wifi_scan(aps, sizeof(aps) / sizeof(aps[0]), &found);
+    if (e != ESP_OK) {
+        printf("scan failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    int grade_n[6] = {0};
+    int hidden = 0, flagged = 0;
+    for (size_t i = 0; i < found; i++) {
+        const char *note = NULL;
+        int g = lxveos_wifi_auth_grade(aps[i].authmode, &note);
+        if (g >= 0 && g <= 5) {
+            grade_n[g]++;
+        }
+        if (aps[i].ssid[0] == '\0') {
+            hidden++;
+        }
+        if (g <= 2) {  // OPEN / WEP / legacy WPA — the weak grades
+            flagged++;
+            printf("  [!] ");
+            // Sanitize the SSID against control bytes so a crafted name can't garble the console.
+            if (aps[i].ssid[0] == '\0') {
+                printf("<hidden>");
+            } else {
+                for (const char *s = aps[i].ssid; *s; s++) {
+                    unsigned char c = (unsigned char)*s;
+                    putchar((c < 0x20 || c == 0x7f) ? '.' : (int)c);
+                }
+            }
+            printf("  %02x:%02x:%02x:%02x:%02x:%02x ch%-2u %ddB — %s\n",
+                   aps[i].bssid[0], aps[i].bssid[1], aps[i].bssid[2], aps[i].bssid[3], aps[i].bssid[4],
+                   aps[i].bssid[5], aps[i].channel, aps[i].rssi, note);
+        }
+    }
+    printf("%u AP(s) scanned — open %d, WEP %d, WPA %d, WPA2 %d, WPA3 %d, other %d (%d hidden SSID)\n",
+           (unsigned)found, grade_n[0], grade_n[1], grade_n[2], grade_n[3], grade_n[4], grade_n[5], hidden);
+    if (flagged == 0) {
+        printf("verdict: clear — every AP in range uses WPA2 or better\n");
+    } else {
+        printf("verdict: ⚠ %d weak AP(s) — open/WEP/legacy-WPA are eavesdroppable or crackable; "
+               "prefer WPA2/WPA3\n", flagged);
+    }
+    return 0;
+}
+
 // `blescan [seconds]` — passive BLE device scan (the `ble_scan` catalog operation). Runs a NimBLE GAP
 // discovery in PASSIVE mode (the controller never sends a SCAN_REQ) and lists nearby advertisers with
 // address, address type, RSSI, GAP flags and local name. Listen only — LxveOS compiles the BLE broadcaster
@@ -1048,6 +1110,7 @@ static void register_commands(void)
         {.command = "capture", .help = "Passive EAPOL/PMKID capture -> hashcat 22000: capture [seconds] [channel]", .func = &cmd_capture},
         {.command = "defend", .help = "Passive deauth/disassoc attack detector: defend [seconds] [channel]", .func = &cmd_defend},
         {.command = "eviltwin", .help = "Passive evil-twin/rogue-AP detector (duplicate-BSSID ESSIDs)", .func = &cmd_eviltwin},
+        {.command = "apaudit", .help = "Passive AP security audit — flag open/WEP/legacy-WPA networks (listen only)", .func = &cmd_apaudit},
         {.command = "wardrive", .help = "Passive Wi-Fi wardrive CSV export (bssid,ssid,ch,rssi,auth per line)", .func = &cmd_wardrive},
         {.command = "blescan", .help = "Passive BLE device scan (+vendor/appearance/service-UUIDs): blescan [seconds] (listen only)", .func = &cmd_blescan},
         {.command = "bleflood", .help = "Passive BLE advert-flood/spam detector: bleflood [seconds] (listen only)", .func = &cmd_bleflood},
