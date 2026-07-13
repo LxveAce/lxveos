@@ -23,7 +23,11 @@
 #include "host/ble_hs_adv.h"
 #include "host/ble_gap.h"
 #include "host/util/util.h"
-#include "store/config/ble_store_config.h"
+
+// The NimBLE persistent-store bring-up. ESP-IDF's NimBLE port does not expose this in a public header
+// (it lives in the store/config source), so — exactly as every ESP-IDF NimBLE example does — we declare
+// its prototype here. It wires ble_hs_cfg's store callbacks to the RAM/NVS-backed default store.
+void ble_store_config_init(void);
 
 static const char *TAG = "lxveos_ble";
 
@@ -149,7 +153,10 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg)
         if (d->length_data > 0) {
             struct ble_hs_adv_fields fields;
             if (ble_hs_adv_parse_fields(&fields, d->data, d->length_data) == 0) {
-                if (fields.flags_is_present) {
+                // ble_hs_adv_fields has no presence bit for the flags octet (unlike tx-power/appearance);
+                // the parser leaves flags==0 when the AD had no Flags field. Treat a non-zero octet as
+                // "present" — good enough for a recon display, and 0 shows as "-".
+                if (fields.flags != 0) {
                     slot->adv_flags     = fields.flags;
                     slot->flags_present = true;
                 }
