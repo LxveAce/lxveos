@@ -753,6 +753,23 @@ static int cmd_blescan(int argc, char **argv)
         printf("  %02x:%02x:%02x:%02x:%02x:%02x %-7s %4ddB %-5s %-9s %s\n",
                d->addr[5], d->addr[4], d->addr[3], d->addr[2], d->addr[1], d->addr[0],
                lxveos_ble_addr_type_str(d->addr_type), d->rssi, flags, vendor, ident);
+        // Advertised 16-bit service-class UUIDs get their own wrapped line so the main table stays narrow.
+        // Each is named when known (Battery / HeartRate / FastPair / …), else shown as raw 0xNNNN.
+        if (d->svc_uuid_count > 0) {
+            printf("        svc:");
+            for (uint8_t u = 0; u < d->svc_uuid_count; u++) {
+                const char *sn = lxveos_ble_service_name(d->svc_uuids[u]);
+                if (sn != NULL) {
+                    printf(" %s", sn);
+                } else {
+                    printf(" 0x%04x", d->svc_uuids[u]);
+                }
+            }
+            if (d->svc_uuids_partial) {
+                printf(" (+more)");
+            }
+            printf("\n");
+        }
     }
     printf("%u BLE device(s) in range\n", (unsigned)found);
     return 0;
@@ -901,7 +918,7 @@ static void register_commands(void)
         {.command = "defend", .help = "Passive deauth/disassoc attack detector: defend [seconds] [channel]", .func = &cmd_defend},
         {.command = "eviltwin", .help = "Passive evil-twin/rogue-AP detector (duplicate-BSSID ESSIDs)", .func = &cmd_eviltwin},
         {.command = "wardrive", .help = "Passive Wi-Fi wardrive CSV export (bssid,ssid,ch,rssi,auth per line)", .func = &cmd_wardrive},
-        {.command = "blescan", .help = "Passive BLE device scan: blescan [seconds] (listen only)", .func = &cmd_blescan},
+        {.command = "blescan", .help = "Passive BLE device scan (+vendor/appearance/service-UUIDs): blescan [seconds] (listen only)", .func = &cmd_blescan},
         {.command = "bleflood", .help = "Passive BLE advert-flood/spam detector: bleflood [seconds] (listen only)", .func = &cmd_bleflood},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},

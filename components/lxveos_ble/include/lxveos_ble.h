@@ -30,6 +30,9 @@ typedef struct {
     bool     fastpair;    // Google Fast Pair service-data (UUID 0xFE2C) present
     uint16_t appearance;  // GAP appearance value; valid only if appearance_present
     bool     appearance_present;
+    uint16_t svc_uuids[8];   // advertised 16-bit service-class UUIDs (AD type 0x02/0x03)
+    uint8_t  svc_uuid_count; // entries used in svc_uuids[] (0 if none advertised)
+    bool     svc_uuids_partial; // the advert listed more 16-bit UUIDs than svc_uuids[] holds (truncated)
 } lxveos_ble_dev_t;
 
 // Run a PASSIVE BLE GAP discovery for `seconds` (clamped to a sane default if 0), collecting up to `max`
@@ -72,6 +75,11 @@ const char *lxveos_ble_addr_type_str(uint8_t addr_type);
 // Short vendor name for a BLE company identifier (Apple/Microsoft/Google/Samsung/Nordic/Garmin), or NULL
 // if the ID is not in the known set. Used to attribute advertisers + BLE-spam floods to a vendor.
 const char *lxveos_ble_company_name(uint16_t company_id);
+
+// Short name for a common 16-bit BLE service-class UUID (Battery / HeartRate / HID / FastPair / Eddystone /
+// …), or NULL if the UUID is not in the known set — the caller then shows the raw 0xNNNN (honesty gate,
+// same policy as the company table: named only when certain, never mislabelled).
+const char *lxveos_ble_service_name(uint16_t uuid16);
 
 // Write a short human label for a GAP appearance value into `buf` (category = value >> 6): common consumer
 // categories (Phone/Watch/Computer/Audio/Heart-Rate/…) are named, HID (cat 15) resolves its keyboard/mouse

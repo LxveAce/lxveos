@@ -87,6 +87,40 @@ const char *lxveos_ble_company_name(uint16_t company_id)
     return NULL;
 }
 
+// A small table of common 16-bit BLE service-class UUIDs — the standard GATT services a device is likely to
+// advertise (0x18xx, Bluetooth SIG assigned numbers) plus a few widely-deployed member service UUIDs
+// (Fast Pair, Exposure Notification, Eddystone, Xiaomi). Certain-only; anything else is shown as raw hex.
+static const struct {
+    uint16_t    uuid;
+    const char *name;
+} BLE_SERVICES[] = {
+    {0x1800, "GenAccess"},
+    {0x1801, "GenAttr"},
+    {0x180A, "DevInfo"},
+    {0x180F, "Battery"},
+    {0x180D, "HeartRate"},
+    {0x1809, "Thermom"},
+    {0x1810, "BloodPress"},
+    {0x1812, "HID"},
+    {0x1816, "CyclSpeed"},
+    {0x1818, "CyclPower"},
+    {0x1826, "FitMachine"},
+    {LXVEOS_BLE_SVC_FASTPAIR, "FastPair"},  // 0xFE2C Google Fast Pair
+    {0xFD6F,                  "ExpNotify"}, // Apple/Google Exposure Notification
+    {0xFEAA,                  "Eddystone"}, // Google Eddystone beacon
+    {0xFE95,                  "XiaomiMi"},  // Xiaomi Mijia
+};
+
+const char *lxveos_ble_service_name(uint16_t uuid16)
+{
+    for (size_t i = 0; i < sizeof(BLE_SERVICES) / sizeof(BLE_SERVICES[0]); i++) {
+        if (BLE_SERVICES[i].uuid == uuid16) {
+            return BLE_SERVICES[i].name;
+        }
+    }
+    return NULL;
+}
+
 // GAP appearance category -> short label. Categories are the high 10 bits (value >> 6); the low 6 bits are
 // a subcategory (only resolved for HID). Table follows the Bluetooth SIG assigned-numbers appearance list.
 void lxveos_ble_appearance_str(uint16_t appearance, char *buf, size_t buflen)
@@ -286,6 +320,22 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg)
                 if (fields.appearance_is_present) {
                     slot->appearance         = fields.appearance;
                     slot->appearance_present = true;
+                }
+                // 16-bit service-class UUIDs (AD type 0x02 incomplete / 0x03 complete). NimBLE gives them
+                // as an array of ble_uuid16_t; copy the .value of each into our fixed slot, flagging when
+                // the advert listed more than we can hold. Refresh (don't accumulate) so a repeat sighting
+                // reflects the latest advert.
+                if (fields.uuids16 != NULL && fields.num_uuids16 > 0) {
+                    const uint8_t cap = (uint8_t)(sizeof(slot->svc_uuids) / sizeof(slot->svc_uuids[0]));
+                    uint8_t n = fields.num_uuids16;
+                    slot->svc_uuids_partial = (n > cap);
+                    if (n > cap) {
+                        n = cap;
+                    }
+                    for (uint8_t u = 0; u < n; u++) {
+                        slot->svc_uuids[u] = fields.uuids16[u].value;
+                    }
+                    slot->svc_uuid_count = n;
                 }
             }
         }
