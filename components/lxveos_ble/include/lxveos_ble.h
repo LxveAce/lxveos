@@ -34,6 +34,25 @@ typedef struct {
 // Returns ESP_OK on a clean scan, or an esp_err_t on init/discovery failure.
 esp_err_t lxveos_ble_scan(uint32_t seconds, lxveos_ble_dev_t *out, size_t max, size_t *found);
 
+// Result of a passive BLE advertisement-flood / spam watch (see lxveos_ble_flood_watch). The detector
+// keys on advertiser churn: a BLE-spam / advert-flood attack (Flipper "BLE Spam", Apple/Android/Windows
+// popup floods) rotates through a torrent of distinct — usually random — addresses, while a normal room
+// shows a small, stable set of advertisers.
+typedef struct {
+    uint32_t seconds;         // window watched
+    uint32_t total_adv;       // every advertisement report seen (repeats included)
+    uint32_t unique_addrs;    // distinct advertiser addresses observed (capped; see unique_overflow)
+    bool     unique_overflow; // the distinct-address table filled — itself a strong flood signal
+    uint32_t random_addrs;    // how many of the unique advertisers used a random address type
+    uint8_t  top_addr[6];     // busiest single advertiser (most advertisements), little-endian
+    uint8_t  top_addr_type;   // its address type (BLE_ADDR_*)
+    uint32_t top_count;       // advertisements from that busiest advertiser
+} lxveos_ble_flood_stats_t;
+
+// Watch the air for `seconds` (default if 0) with a PASSIVE GAP discovery and measure advertiser churn
+// into *out. LISTEN ONLY — advertises nothing, sends no scan requests. Returns ESP_OK on a clean watch.
+esp_err_t lxveos_ble_flood_watch(uint32_t seconds, lxveos_ble_flood_stats_t *out);
+
 // Human-readable name for a BLE address type (public / random / pub-id / rnd-id / ?).
 const char *lxveos_ble_addr_type_str(uint8_t addr_type);
 

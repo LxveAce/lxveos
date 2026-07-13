@@ -665,6 +665,59 @@ static int cmd_blescan(int argc, char **argv)
     return 0;
 }
 
+// `bleflood [seconds]` — passive BLE advertisement-flood / spam DETECTOR (the `ble_flood_detect` catalog
+// op, a CUSTOM defense feature). Runs one passive GAP observe and measures advertiser churn: a BLE-spam /
+// advert-flood attack (Flipper "BLE Spam", Apple/Android/Windows popup floods) rotates through a torrent of
+// distinct — usually random — addresses, while a normal room shows a small, stable set. Listen only — sends
+// nothing, advertises nothing. BLE-capability gated.
+static int cmd_bleflood(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_BLE)) {
+        printf("ble capability is not active on this build — cannot watch\n");
+        return 0;
+    }
+    uint32_t secs = 8;
+    if (argc >= 2) {
+        long v = strtol(argv[1], NULL, 10);
+        if (v >= 1 && v <= 60) {
+            secs = (uint32_t)v;
+        } else {
+            printf("usage: bleflood [seconds 1-60]  (default 8)\n");
+            return 0;
+        }
+    }
+    printf("passive BLE advert-flood/spam detector for %us (GAP observe — advertises nothing)...\n",
+           (unsigned)secs);
+    lxveos_ble_flood_stats_t st;
+    esp_err_t e = lxveos_ble_flood_watch(secs, &st);
+    if (e != ESP_OK) {
+        printf("bleflood failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    uint32_t per_sec = st.seconds ? st.unique_addrs / st.seconds : st.unique_addrs;
+    printf("adverts %u — unique advertisers %u%s (%u random) — ~%u new/s over %us\n",
+           (unsigned)st.total_adv, (unsigned)st.unique_addrs,
+           st.unique_overflow ? "+ (table full)" : "", (unsigned)st.random_addrs,
+           (unsigned)per_sec, (unsigned)st.seconds);
+    if (st.top_count > 0) {
+        printf("busiest advertiser %02x:%02x:%02x:%02x:%02x:%02x (%s) — %u adverts\n",
+               st.top_addr[5], st.top_addr[4], st.top_addr[3], st.top_addr[2], st.top_addr[1],
+               st.top_addr[0], lxveos_ble_addr_type_str(st.top_addr_type), (unsigned)st.top_count);
+    }
+    // A normal room shows a small, stable advertiser set; a flood churns through many rotating addresses.
+    bool flood = st.unique_overflow || st.unique_addrs >= 80 || per_sec >= 12;
+    if (flood) {
+        printf("verdict: ⚠ possible BLE advertisement flood/spam — high advertiser churn "
+               "(many rotating addresses%s)\n", st.unique_overflow ? ", tracking table saturated" : "");
+    } else {
+        printf("verdict: clear — no BLE advertisement flood (advertiser churn normal)\n");
+    }
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -679,6 +732,7 @@ static void register_commands(void)
         {.command = "defend", .help = "Passive deauth/disassoc attack detector: defend [seconds]", .func = &cmd_defend},
         {.command = "eviltwin", .help = "Passive evil-twin/rogue-AP detector (duplicate-BSSID ESSIDs)", .func = &cmd_eviltwin},
         {.command = "blescan", .help = "Passive BLE device scan: blescan [seconds] (listen only)", .func = &cmd_blescan},
+        {.command = "bleflood", .help = "Passive BLE advert-flood/spam detector: bleflood [seconds] (listen only)", .func = &cmd_bleflood},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},

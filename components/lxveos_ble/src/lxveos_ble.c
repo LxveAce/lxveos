@@ -238,3 +238,140 @@ esp_err_t lxveos_ble_scan(uint32_t seconds, lxveos_ble_dev_t *out, size_t max, s
     }
     return ESP_OK;
 }
+
+// ── BLE advertisement-flood / spam detection ────────────────────────────────────────────────────
+//
+// Same passive plumbing as lxveos_ble_scan, but instead of a device table it measures advertiser CHURN:
+// how many DISTINCT addresses advertise in the window, how many are random-type, and which one is busiest.
+// A BLE-spam / advert-flood attack rotates through a huge number of (usually random) addresses, so a high
+// distinct-address count — or overflowing the tracking table — is the fingerprint.
+
+#define LXVEOS_BLE_FLOOD_CAP 256  // distinct advertisers tracked; overflowing this is itself a flood signal
+
+struct flood_entry {
+    uint8_t  addr[6];
+    uint8_t  type;
+    uint32_t count;
+};
+
+struct flood_ctx {
+    struct flood_entry *seen;    // -> a static table (kept off the small REPL task stack)
+    size_t              cap;
+    size_t              n;
+    bool                overflow;
+    uint32_t            total_adv;
+    uint32_t            random_uniques;
+    size_t              top_idx;
+    uint32_t            top_count;
+    SemaphoreHandle_t   done;
+};
+
+static int flood_event_cb(struct ble_gap_event *event, void *arg)
+{
+    struct flood_ctx *c = (struct flood_ctx *)arg;
+
+    switch (event->type) {
+    case BLE_GAP_EVENT_DISC: {
+        const struct ble_gap_disc_desc *d = &event->disc;
+        c->total_adv++;
+
+        for (size_t i = 0; i < c->n; i++) {
+            if (c->seen[i].type == d->addr.type && memcmp(c->seen[i].addr, d->addr.val, 6) == 0) {
+                c->seen[i].count++;
+                if (c->seen[i].count > c->top_count) {
+                    c->top_count = c->seen[i].count;
+                    c->top_idx   = i;
+                }
+                return 0;
+            }
+        }
+        if (c->n >= c->cap) {
+            c->overflow = true;  // ran out of table — the churn itself is the alarm
+            return 0;
+        }
+        struct flood_entry *e = &c->seen[c->n];
+        memcpy(e->addr, d->addr.val, 6);
+        e->type  = d->addr.type;
+        e->count = 1;
+        if (d->addr.type == BLE_ADDR_RANDOM || d->addr.type == BLE_ADDR_RANDOM_ID) {
+            c->random_uniques++;
+        }
+        if (c->top_count == 0) {
+            c->top_count = 1;
+            c->top_idx   = c->n;
+        }
+        c->n++;
+        return 0;
+    }
+    case BLE_GAP_EVENT_DISC_COMPLETE:
+        if (c->done != NULL) {
+            xSemaphoreGive(c->done);
+        }
+        return 0;
+    default:
+        return 0;
+    }
+}
+
+esp_err_t lxveos_ble_flood_watch(uint32_t seconds, lxveos_ble_flood_stats_t *out)
+{
+    if (out == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    memset(out, 0, sizeof(*out));
+    if (seconds == 0) {
+        seconds = 8;
+    }
+    out->seconds = seconds;
+
+    esp_err_t err = ensure_host_up();
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    uint8_t own_addr_type;
+    int rc = ble_hs_id_infer_auto(0, &own_addr_type);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "ble_hs_id_infer_auto rc=%d", rc);
+        return ESP_FAIL;
+    }
+
+    // The distinct-address table is static so it never lands on the small REPL task stack. Scans are
+    // serialized (one REPL command at a time), so a single shared table is safe; n=0 logically clears it.
+    static struct flood_entry seen[LXVEOS_BLE_FLOOD_CAP];
+    struct flood_ctx c = {.seen = seen, .cap = LXVEOS_BLE_FLOOD_CAP, .done = xSemaphoreCreateBinary()};
+    if (c.done == NULL) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    const struct ble_gap_disc_params disc = {
+        .itvl              = 0,
+        .window            = 0,
+        .filter_policy     = 0,
+        .limited           = 0,
+        .passive           = 1,  // PASSIVE: listen only
+        .filter_duplicates = 0,  // we WANT repeats — churn + per-address counts depend on them
+    };
+
+    rc = ble_gap_disc(own_addr_type, (int32_t)(seconds * 1000), &disc, flood_event_cb, &c);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "ble_gap_disc rc=%d", rc);
+        vSemaphoreDelete(c.done);
+        return ESP_FAIL;
+    }
+
+    xSemaphoreTake(c.done, pdMS_TO_TICKS(seconds * 1000 + 1500));
+    ble_gap_disc_cancel();
+    vSemaphoreDelete(c.done);
+
+    out->total_adv       = c.total_adv;
+    out->unique_addrs    = (uint32_t)c.n;
+    out->unique_overflow = c.overflow;
+    out->random_addrs    = c.random_uniques;
+    if (c.top_count > 0) {
+        memcpy(out->top_addr, c.seen[c.top_idx].addr, 6);
+        out->top_addr_type = c.seen[c.top_idx].type;
+        out->top_count     = c.top_count;
+    }
+    return ESP_OK;
+}
