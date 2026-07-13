@@ -50,6 +50,7 @@ authorized-use terms; the acceptance is stored in NVS, so it's a one-time gate p
 | `agree` | accept the authorized-use terms and unlock the console |
 | `info` | firmware version, board id, chip, UI profile |
 | `caps` | capability registry — which subsystems (wifi / ble / storage / …) are active |
+| `features` | operation catalog — the security ops (Wi-Fi scan/monitor/capture, BLE, sub-GHz, …) this unit can run or has planned, each gated by capability |
 | `sysinfo` | ESP-IDF version, reset reason, boot count, uptime, heap free |
 | `status` | one machine-readable line for the Cyber Controller host (below) |
 | `loglevel <tag\|*> <level>` | change ESP-IDF log verbosity at runtime |

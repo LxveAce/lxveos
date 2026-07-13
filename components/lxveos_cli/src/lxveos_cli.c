@@ -24,6 +24,7 @@
 #include "bsp/display.h"
 #include "lxveos_board.h"
 #include "lxveos_caps.h"
+#include "lxveos_ops.h"
 
 #define LXVEOS_NVS_NS      "lxveos"
 #define LXVEOS_NVS_USE_ACK "use_ack"
@@ -285,12 +286,44 @@ static int cmd_caps(int argc, char **argv)
     return 0;
 }
 
+// `features` — the operation catalog: every security operation LxveOS plans to offer (drawn from
+// Marauder and the wider firmware landscape), each with its live status on THIS unit. Status is derived
+// from the capability registry: "planned" = the required radio/peripheral is present and the driver
+// lands in M1+, "unavailable" = this board lacks the capability, "ready" = actually implemented. Attack
+// operations are shown + labelled (never hidden), but LxveOS authors no jammer/deauth transmit frames.
+static int cmd_features(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    if (locked()) {
+        return 0;
+    }
+    printf("LxveOS operation catalog (M0: drivers land in M1+; attack ops are lab-only)\n");
+    for (size_t i = 0; i < lxveos_ops_count(); i++) {
+        const lxveos_op_t *op = lxveos_ops_get(i);
+        if (op == NULL) {
+            continue;
+        }
+        printf("  [%-11s] %-8s %-14s %-22s (%s, ~%s)\n",
+               lxveos_op_status_name(lxveos_op_status(op)),
+               lxveos_opcat_name(op->category), op->slug, op->title,
+               lxveos_cap_name(op->required_cap), op->inspired_by);
+    }
+    size_t ready = 0, planned = 0, unavailable = 0;
+    lxveos_ops_tally(&ready, &planned, &unavailable);
+    printf("summary: %u ready / %u planned / %u unavailable  "
+           "(LxveOS authors no jammer/deauth frames)\n",
+           (unsigned)ready, (unsigned)planned, (unsigned)unavailable);
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
         {.command = "agree", .help = "Accept the authorized-use terms to unlock commands", .func = &cmd_agree},
         {.command = "info", .help = "Show firmware version, board id, chip and UI profile", .func = &cmd_info},
         {.command = "caps", .help = "List capabilities and whether each is active", .func = &cmd_caps},
+        {.command = "features", .help = "List planned/available security operations for this unit", .func = &cmd_features},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
