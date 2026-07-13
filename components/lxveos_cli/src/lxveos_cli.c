@@ -762,6 +762,53 @@ static int cmd_bleflood(int argc, char **argv)
     return 0;
 }
 
+// `wardrive` — passive Wi-Fi wardrive CSV export (the `wifi_wardrive` catalog op). Runs one passive AP scan
+// and prints a machine-importable CSV — one row per AP: bssid,ssid,channel,rssi,auth,hidden — for a host
+// mapping/inventory tool to ingest. The unit has no GPS, so coordinates are the host's to add (pair the
+// export with the host's location). Listen only — transmits nothing. WIFI-capability gated.
+static int cmd_wardrive(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_WIFI)) {
+        printf("wifi capability is not active on this build — cannot wardrive\n");
+        return 0;
+    }
+    printf("passive Wi-Fi wardrive scan (listen only — no frames sent)...\n");
+    static lxveos_wifi_ap_t aps[64];
+    size_t found = 0;
+    esp_err_t e = lxveos_wifi_scan(aps, sizeof(aps) / sizeof(aps[0]), &found);
+    if (e != ESP_OK) {
+        printf("wardrive scan failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    // CSV (RFC4180-ish): the SSID is quoted with embedded quotes doubled and control bytes sanitized, so a
+    // comma/quote in a network name can't break the row. GPS-less by design — the host supplies coordinates.
+    printf("bssid,ssid,channel,rssi,auth,hidden\n");
+    for (size_t i = 0; i < found; i++) {
+        printf("%02x:%02x:%02x:%02x:%02x:%02x,\"", aps[i].bssid[0], aps[i].bssid[1], aps[i].bssid[2],
+               aps[i].bssid[3], aps[i].bssid[4], aps[i].bssid[5]);
+        for (const char *s = aps[i].ssid; *s; s++) {
+            unsigned char c = (unsigned char)*s;
+            if (c < 0x20) {
+                putchar('.');  // sanitize control bytes so they can't break the CSV line
+                continue;
+            }
+            if (c == '"') {
+                putchar('"');  // RFC4180: double an embedded quote
+            }
+            putchar((int)c);
+        }
+        printf("\",%u,%d,%s,%d\n", aps[i].channel, aps[i].rssi,
+               lxveos_wifi_authmode_str(aps[i].authmode), aps[i].ssid[0] ? 0 : 1);
+    }
+    printf("# %u AP(s) exported (GPS-less — host adds coordinates)\n", (unsigned)found);
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -775,6 +822,7 @@ static void register_commands(void)
         {.command = "capture", .help = "Passive EAPOL/PMKID capture -> hashcat 22000: capture [seconds]", .func = &cmd_capture},
         {.command = "defend", .help = "Passive deauth/disassoc attack detector: defend [seconds]", .func = &cmd_defend},
         {.command = "eviltwin", .help = "Passive evil-twin/rogue-AP detector (duplicate-BSSID ESSIDs)", .func = &cmd_eviltwin},
+        {.command = "wardrive", .help = "Passive Wi-Fi wardrive CSV export (bssid,ssid,ch,rssi,auth per line)", .func = &cmd_wardrive},
         {.command = "blescan", .help = "Passive BLE device scan: blescan [seconds] (listen only)", .func = &cmd_blescan},
         {.command = "bleflood", .help = "Passive BLE advert-flood/spam detector: bleflood [seconds] (listen only)", .func = &cmd_bleflood},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
