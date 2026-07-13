@@ -11,6 +11,7 @@
 #include "lxveos_cli.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #include "esp_console.h"
 #include "esp_idf_version.h"
@@ -172,6 +173,41 @@ static int cmd_status(int argc, char **argv)
     return 0;
 }
 
+// `loglevel <tag|*> <level>` — set the runtime ESP-IDF log verbosity for one tag (or `*` = all), so an
+// operator can quiet a noisy subsystem or turn on debug without a reflash. Level names map to esp_log_level_t.
+static int cmd_loglevel(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (argc != 3) {
+        printf("usage: loglevel <tag|*> <none|error|warn|info|debug|verbose>\n");
+        return 0;
+    }
+    const char *tag = argv[1];
+    const char *lvl = argv[2];
+    esp_log_level_t level;
+    if (strcmp(lvl, "none") == 0) {
+        level = ESP_LOG_NONE;
+    } else if (strcmp(lvl, "error") == 0) {
+        level = ESP_LOG_ERROR;
+    } else if (strcmp(lvl, "warn") == 0) {
+        level = ESP_LOG_WARN;
+    } else if (strcmp(lvl, "info") == 0) {
+        level = ESP_LOG_INFO;
+    } else if (strcmp(lvl, "debug") == 0) {
+        level = ESP_LOG_DEBUG;
+    } else if (strcmp(lvl, "verbose") == 0) {
+        level = ESP_LOG_VERBOSE;
+    } else {
+        printf("unknown level '%s' (want none/error/warn/info/debug/verbose)\n", lvl);
+        return 0;
+    }
+    esp_log_level_set(tag, level);
+    printf("log level for '%s' set to %s\n", tag, lvl);
+    return 0;
+}
+
 // `caps` — the capability registry: every capability and whether the boot probe left it active.
 static int cmd_caps(int argc, char **argv)
 {
@@ -195,6 +231,7 @@ static void register_commands(void)
         {.command = "caps", .help = "List capabilities and whether each is active", .func = &cmd_caps},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
+        {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
     };
     for (size_t i = 0; i < sizeof(cmds) / sizeof(cmds[0]); i++) {
         ESP_ERROR_CHECK(esp_console_cmd_register(&cmds[i]));
