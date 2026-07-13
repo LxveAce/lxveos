@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include "nvs.h"
 #if LXVEOS_DISP_HAS_PINS
+#include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
 #include "esp_lcd_panel_io.h"
@@ -103,6 +104,29 @@ static esp_err_t bring_up_panel_io(void)
                         &iocfg, &s_panel_io), TAG, "display panel-IO");
     ESP_LOGI(TAG, "panel-IO up: SPI2 sclk=%d mosi=%d cs=%d dc=%d bl=%d", LXVEOS_DISP_PIN_SCLK,
              LXVEOS_DISP_PIN_MOSI, LXVEOS_DISP_PIN_CS, LXVEOS_DISP_PIN_DC, LXVEOS_DISP_PIN_BL);
+
+    // Probe the panel over the IO handle: read its ID registers (RDDID 0x04, and RDID4 0xD3 which
+    // returns 00 93 41 on an ILI9341). A real panel on these pins answers with a meaningful ID; an
+    // unconnected bus reads all-0x00 / all-0xFF. This is both the flagship ILI9341-vs-ST7789 probe
+    // seed and a positive "is this board physically the CYD?" hardware check over serial.
+    uint8_t id04[3] = {0}, idd3[3] = {0};
+    esp_err_t r04 = esp_lcd_panel_io_rx_param(s_panel_io, 0x04, id04, sizeof(id04));
+    esp_err_t rd3 = esp_lcd_panel_io_rx_param(s_panel_io, 0xD3, idd3, sizeof(idd3));
+    ESP_LOGI(TAG, "panel probe: RDDID(0x04)=%02x %02x %02x [%s]  RDID4(0xD3)=%02x %02x %02x [%s]",
+             id04[0], id04[1], id04[2], esp_err_to_name(r04),
+             idd3[0], idd3[1], idd3[2], esp_err_to_name(rd3));
+
+    // Backlight on (GPIO21, active-HIGH on the CYD). Simple push-pull drive for this probe; LEDC PWM
+    // dimming arrives with the panel driver. A lit backlight is the visible "this is the CYD" signal.
+#if LXVEOS_DISP_PIN_BL >= 0
+    const gpio_config_t blcfg = {
+        .pin_bit_mask = 1ULL << LXVEOS_DISP_PIN_BL,
+        .mode = GPIO_MODE_OUTPUT,
+    };
+    ESP_RETURN_ON_ERROR(gpio_config(&blcfg), TAG, "backlight gpio");
+    gpio_set_level(LXVEOS_DISP_PIN_BL, 1);
+    ESP_LOGI(TAG, "backlight GPIO%d -> HIGH", LXVEOS_DISP_PIN_BL);
+#endif
     return ESP_OK;
 }
 #endif  // LXVEOS_DISP_HAS_PINS

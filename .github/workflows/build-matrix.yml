@@ -60,7 +60,7 @@ jobs:
             build &&
             idf.py -B build/${{ matrix.board }}
             -D SDKCONFIG=build/${{ matrix.board }}/sdkconfig
-            merge-bin -o build/${{ matrix.board }}/${{ matrix.board }}-merged.bin
+            merge-bin -o ${{ matrix.board }}-merged.bin
       # Publish a single-file flashable image per board so a device can be flashed without an ESP-IDF
       # toolchain: `esptool --port <COM> write_flash 0x0 <board>-merged.bin`. flasher_args.json is kept
       # for the per-offset alternative. This is what makes on-hardware bring-up possible from any machine.
