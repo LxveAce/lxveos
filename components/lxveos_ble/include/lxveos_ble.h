@@ -38,11 +38,16 @@ typedef struct {
 
 // Item-tracker classifications for lxveos_ble_dev_t.tracker. Signatures verified against the TU-Darmstadt
 // AirGuard anti-stalking project: Apple Find My = mfg company 0x004C + payload type byte 0x12 (offline
-// finding); Tile = service UUID 0xFEED; Samsung SmartTag = service UUID 0xFD5A.
+// finding); Tile = service UUID 0xFEED; Samsung SmartTag = service UUID 0xFD5A; Chipolo = 0xFE33; PebbleBee
+// = 0xFA25; Google Find My Network = 0xFEAA service DATA with frame byte 0x40 (the frame byte is what tells
+// it apart from an Eddystone beacon, which also uses 0xFEAA — so an Eddystone is never mislabelled).
 #define LXVEOS_BLE_TRACKER_NONE        0
 #define LXVEOS_BLE_TRACKER_APPLE_FINDMY 1  // AirTag / Find My accessory in offline-finding state
 #define LXVEOS_BLE_TRACKER_TILE        2
 #define LXVEOS_BLE_TRACKER_SMARTTAG    3  // Samsung Galaxy SmartTag (SmartThings Find)
+#define LXVEOS_BLE_TRACKER_CHIPOLO     4
+#define LXVEOS_BLE_TRACKER_PEBBLEBEE   5
+#define LXVEOS_BLE_TRACKER_GOOGLE_FMN  6  // Google Find My Network (0xFEAA svc-data frame 0x40, not Eddystone)
 
 // Run a PASSIVE BLE GAP discovery for `seconds` (clamped to a sane default if 0), collecting up to `max`
 // unique advertisers into `out`. De-dups by address (RSSI/name refresh on repeat sightings). On return

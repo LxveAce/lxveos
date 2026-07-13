@@ -931,10 +931,11 @@ static int cmd_bleflood(int argc, char **argv)
 
 // `btracker [seconds]` — passive BLE item-tracker / stalking detector (the `ble_tracker_detect` catalog op,
 // a CUSTOM defense feature). Runs one passive GAP observe and flags advertisers whose payload matches a
-// known item-tracker signature — Apple Find My/AirTag (Apple mfg type 0x12), Tile (svc 0xFEED), Samsung
-// SmartTag (svc 0xFD5A) — signatures verified against the AirGuard anti-stalking project. A tracker that
-// travels with you but is NOT yours is the AirTag-stalking signal; re-run over time and watch for one that
-// persistently follows. Listen only — advertises nothing. BLE-capability gated.
+// known item-tracker signature — Apple Find My/AirTag (mfg type 0x12), Tile (0xFEED), Samsung SmartTag
+// (0xFD5A), Chipolo (0xFE33), PebbleBee (0xFA25), Google Find My Network (0xFEAA svc-data frame 0x40, not
+// Eddystone) — all verified against the AirGuard anti-stalking project. A tracker that travels with you but
+// is NOT yours is the AirTag-stalking signal; re-run over time and watch for one that persistently follows.
+// Listen only — advertises nothing. BLE-capability gated.
 static int cmd_btracker(int argc, char **argv)
 {
     if (locked()) {
@@ -1050,7 +1051,7 @@ static void register_commands(void)
         {.command = "wardrive", .help = "Passive Wi-Fi wardrive CSV export (bssid,ssid,ch,rssi,auth per line)", .func = &cmd_wardrive},
         {.command = "blescan", .help = "Passive BLE device scan (+vendor/appearance/service-UUIDs): blescan [seconds] (listen only)", .func = &cmd_blescan},
         {.command = "bleflood", .help = "Passive BLE advert-flood/spam detector: bleflood [seconds] (listen only)", .func = &cmd_bleflood},
-        {.command = "btracker", .help = "Passive BLE item-tracker/stalking detector (AirTag/Tile/SmartTag): btracker [seconds]", .func = &cmd_btracker},
+        {.command = "btracker", .help = "Passive BLE item-tracker/stalking detector (AirTag/Tile/SmartTag/Chipolo/PebbleBee/GoogleFMN): btracker [seconds]", .func = &cmd_btracker},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},

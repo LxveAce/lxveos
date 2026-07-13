@@ -68,6 +68,11 @@ const char *lxveos_ble_addr_type_str(uint8_t addr_type)
 #define LXVEOS_BLE_APPLE_TYPE_FINDMY 0x12u  // Apple mfg-data payload type byte = Offline Finding (Find My)
 #define LXVEOS_BLE_SVC_TILE          0xFEEDu // Tile trackers
 #define LXVEOS_BLE_SVC_SMARTTAG      0xFD5Au // Samsung Galaxy SmartTag (SmartThings Find)
+#define LXVEOS_BLE_SVC_CHIPOLO       0xFE33u // Chipolo trackers
+#define LXVEOS_BLE_SVC_PEBBLEBEE     0xFA25u // PebbleBee trackers
+#define LXVEOS_BLE_SVC_GOOGLE_FMN    0xFEAAu // Google Find My Network (service DATA; shares 0xFEAA w/ Eddystone)
+#define LXVEOS_BLE_GOOGLE_FMN_FRAME  0x40u   // FMN service-data frame type — distinguishes it from Eddystone
+                                             // beacons (frame types 0x00/0x10/0x20/0x30), avoiding false labels
 
 static const struct {
     uint16_t    id;
@@ -234,6 +239,22 @@ static uint8_t classify_tracker(const struct ble_hs_adv_fields *f)
     if (adv_has_service_uuid16(f, LXVEOS_BLE_SVC_SMARTTAG)) {
         return LXVEOS_BLE_TRACKER_SMARTTAG;
     }
+    if (adv_has_service_uuid16(f, LXVEOS_BLE_SVC_CHIPOLO)) {
+        return LXVEOS_BLE_TRACKER_CHIPOLO;
+    }
+    if (adv_has_service_uuid16(f, LXVEOS_BLE_SVC_PEBBLEBEE)) {
+        return LXVEOS_BLE_TRACKER_PEBBLEBEE;
+    }
+    // Google Find My Network: 0xFEAA service DATA whose first payload byte is the FMN frame type 0x40.
+    // 0xFEAA is shared with Eddystone (frame types 0x00/0x10/0x20/0x30), so the frame-type byte is what keeps
+    // a plain Eddystone beacon from being mislabelled as a tracker. Check the service DATA specifically (not
+    // the service-UUID list) — svc_data_uuid16 = [uuid_lo][uuid_hi][payload...].
+    if (f->svc_data_uuid16 != NULL && f->svc_data_uuid16_len >= 3) {
+        uint16_t u = (uint16_t)(f->svc_data_uuid16[0] | ((uint16_t)f->svc_data_uuid16[1] << 8));
+        if (u == LXVEOS_BLE_SVC_GOOGLE_FMN && f->svc_data_uuid16[2] == LXVEOS_BLE_GOOGLE_FMN_FRAME) {
+            return LXVEOS_BLE_TRACKER_GOOGLE_FMN;
+        }
+    }
     return LXVEOS_BLE_TRACKER_NONE;
 }
 
@@ -243,6 +264,9 @@ const char *lxveos_ble_tracker_str(uint8_t tracker)
     case LXVEOS_BLE_TRACKER_APPLE_FINDMY: return "AirTag/FindMy";
     case LXVEOS_BLE_TRACKER_TILE:         return "Tile";
     case LXVEOS_BLE_TRACKER_SMARTTAG:     return "SmartTag";
+    case LXVEOS_BLE_TRACKER_CHIPOLO:      return "Chipolo";
+    case LXVEOS_BLE_TRACKER_PEBBLEBEE:    return "PebbleBee";
+    case LXVEOS_BLE_TRACKER_GOOGLE_FMN:   return "GoogleFMN";
     default:                              return NULL;
     }
 }
