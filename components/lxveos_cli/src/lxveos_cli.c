@@ -500,21 +500,36 @@ static int cmd_stations(int argc, char **argv)
         return 0;
     }
     uint32_t secs = 12;
+    uint8_t channel = 0;  // 0 = hop all channels
     if (argc >= 2) {
         long v = strtol(argv[1], NULL, 10);
         if (v >= 1 && v <= 120) {
             secs = (uint32_t)v;
         } else {
-            printf("usage: stations [seconds 1-120]  (default 12)\n");
+            printf("usage: stations [seconds 1-120] [channel 1-13]  (default 12s, all channels)\n");
             return 0;
         }
     }
-    printf("passive Wi-Fi station scan for %us (inferring clients from data frames — no frames sent)...\n",
-           (unsigned)secs);
+    if (argc >= 3) {
+        long c = strtol(argv[2], NULL, 10);
+        if (c >= 1 && c <= 13) {
+            channel = (uint8_t)c;
+        } else {
+            printf("usage: stations [seconds 1-120] [channel 1-13]  (default 12s, all channels)\n");
+            return 0;
+        }
+    }
+    if (channel) {
+        printf("passive Wi-Fi station scan for %us on channel %u (inferring clients from data frames — no frames sent)...\n",
+               (unsigned)secs, channel);
+    } else {
+        printf("passive Wi-Fi station scan for %us, all channels (inferring clients from data frames — no frames sent)...\n",
+               (unsigned)secs);
+    }
     static lxveos_wifi_client_t cs[48];
     size_t found = 0;
     uint32_t beacons = 0;
-    esp_err_t e = lxveos_wifi_sta_scan(secs, cs, sizeof(cs) / sizeof(cs[0]), &found, &beacons);
+    esp_err_t e = lxveos_wifi_sta_scan(secs, channel, cs, sizeof(cs) / sizeof(cs[0]), &found, &beacons);
     if (e != ESP_OK) {
         printf("station scan failed: %s\n", esp_err_to_name(e));
         return 0;
@@ -543,18 +558,34 @@ static int cmd_defend(int argc, char **argv)
         return 0;
     }
     uint32_t secs = 15;
+    uint8_t channel = 0;  // 0 = hop all channels
     if (argc >= 2) {
         long v = strtol(argv[1], NULL, 10);
         if (v >= 1 && v <= 120) {
             secs = (uint32_t)v;
         } else {
-            printf("usage: defend [seconds 1-120]  (default 15)\n");
+            printf("usage: defend [seconds 1-120] [channel 1-13]  (default 15s, all channels)\n");
             return 0;
         }
     }
-    printf("passive deauth/disassoc watch for %us (listen only — sends nothing)...\n", (unsigned)secs);
+    if (argc >= 3) {
+        long c = strtol(argv[2], NULL, 10);
+        if (c >= 1 && c <= 13) {
+            channel = (uint8_t)c;
+        } else {
+            printf("usage: defend [seconds 1-120] [channel 1-13]  (default 15s, all channels)\n");
+            return 0;
+        }
+    }
+    if (channel) {
+        printf("passive deauth/disassoc watch for %us on channel %u (listen only — sends nothing)...\n",
+               (unsigned)secs, channel);
+    } else {
+        printf("passive deauth/disassoc watch for %us, all channels (listen only — sends nothing)...\n",
+               (unsigned)secs);
+    }
     lxveos_wifi_deauth_stats_t st;
-    esp_err_t e = lxveos_wifi_deauth_watch(secs, &st);
+    esp_err_t e = lxveos_wifi_deauth_watch(secs, channel, &st);
     if (e != ESP_OK) {
         printf("watch failed: %s\n", esp_err_to_name(e));
         return 0;
@@ -865,9 +896,9 @@ static void register_commands(void)
         {.command = "features", .help = "List planned/available security operations for this unit", .func = &cmd_features},
         {.command = "scan", .help = "Passive Wi-Fi AP scan (listen only, no frames sent)", .func = &cmd_scan},
         {.command = "sniff", .help = "Passive Wi-Fi packet monitor: sniff [seconds] [channel] (listen only)", .func = &cmd_sniff},
-        {.command = "stations", .help = "Passive client-station scan: stations [seconds] (listen only)", .func = &cmd_stations},
+        {.command = "stations", .help = "Passive client-station scan: stations [seconds] [channel] (listen only)", .func = &cmd_stations},
         {.command = "capture", .help = "Passive EAPOL/PMKID capture -> hashcat 22000: capture [seconds] [channel]", .func = &cmd_capture},
-        {.command = "defend", .help = "Passive deauth/disassoc attack detector: defend [seconds]", .func = &cmd_defend},
+        {.command = "defend", .help = "Passive deauth/disassoc attack detector: defend [seconds] [channel]", .func = &cmd_defend},
         {.command = "eviltwin", .help = "Passive evil-twin/rogue-AP detector (duplicate-BSSID ESSIDs)", .func = &cmd_eviltwin},
         {.command = "wardrive", .help = "Passive Wi-Fi wardrive CSV export (bssid,ssid,ch,rssi,auth per line)", .func = &cmd_wardrive},
         {.command = "blescan", .help = "Passive BLE device scan: blescan [seconds] (listen only)", .func = &cmd_blescan},

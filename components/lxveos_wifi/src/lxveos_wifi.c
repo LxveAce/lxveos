@@ -626,7 +626,7 @@ static void sta_rx_cb(void *buf, wifi_promiscuous_pkt_type_t type)
     sta_upsert(ap, sta, pkt->rx_ctrl.rssi);
 }
 
-esp_err_t lxveos_wifi_sta_scan(uint32_t seconds, lxveos_wifi_client_t *out, size_t max,
+esp_err_t lxveos_wifi_sta_scan(uint32_t seconds, uint8_t channel, lxveos_wifi_client_t *out, size_t max,
                                size_t *found, uint32_t *beacons)
 {
     if (found != NULL) {
@@ -653,15 +653,7 @@ esp_err_t lxveos_wifi_sta_scan(uint32_t seconds, lxveos_wifi_client_t *out, size
     ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous_rx_cb(sta_rx_cb), TAG, "promisc cb");
     ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous(true), TAG, "promisc on");
 
-    static const uint8_t chans[] = {1, 6, 11, 2, 3, 4, 5, 7, 8, 9, 10, 12, 13};
-    const int nch = (int)(sizeof(chans) / sizeof(chans[0]));
-    const int64_t end_us = esp_timer_get_time() + (int64_t)seconds * 1000000;
-    int i = 0;
-    while (esp_timer_get_time() < end_us) {
-        esp_wifi_set_channel(chans[i], WIFI_SECOND_CHAN_NONE);
-        vTaskDelay(pdMS_TO_TICKS(300));
-        i = (i + 1) % nch;
-    }
+    run_channel_loop(seconds, channel, 300);
     esp_wifi_set_promiscuous(false);
 
     size_t k = 0;
@@ -747,7 +739,7 @@ static void deauth_rx_cb(void *buf, wifi_promiscuous_pkt_type_t type)
     }
 }
 
-esp_err_t lxveos_wifi_deauth_watch(uint32_t seconds, lxveos_wifi_deauth_stats_t *out)
+esp_err_t lxveos_wifi_deauth_watch(uint32_t seconds, uint8_t channel, lxveos_wifi_deauth_stats_t *out)
 {
     if (out != NULL) {
         memset(out, 0, sizeof(*out));
@@ -765,19 +757,7 @@ esp_err_t lxveos_wifi_deauth_watch(uint32_t seconds, lxveos_wifi_deauth_stats_t 
     ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous_rx_cb(deauth_rx_cb), TAG, "promisc cb");
     ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous(true), TAG, "promisc on");
 
-    static const uint8_t chans[] = {1, 6, 11, 2, 3, 4, 5, 7, 8, 9, 10, 12, 13};
-    const int nch = (int)(sizeof(chans) / sizeof(chans[0]));
-    const int64_t end_us = esp_timer_get_time() + (int64_t)seconds * 1000000;
-    uint8_t swept = 0;
-    int i = 0;
-    while (esp_timer_get_time() < end_us) {
-        esp_wifi_set_channel(chans[i], WIFI_SECOND_CHAN_NONE);
-        if (swept < 255) {
-            swept++;
-        }
-        vTaskDelay(pdMS_TO_TICKS(300));
-        i = (i + 1) % nch;
-    }
+    uint8_t swept = run_channel_loop(seconds, channel, 300);
     esp_wifi_set_promiscuous(false);
 
     if (out != NULL) {

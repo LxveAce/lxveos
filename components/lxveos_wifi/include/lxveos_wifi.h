@@ -83,11 +83,12 @@ typedef struct {
     int8_t rssi;       // strongest RSSI seen for the pair (dBm)
 } lxveos_wifi_client_t;
 
-// PASSIVE client-station scan for ~`seconds`. Channel-hops in promiscuous mode and infers client<->AP
-// links from the addresses in data frames (ToDS/FromDS), learning AP ESSIDs from beacons along the way.
-// Listens only — transmits NOTHING. Copies up to `max` client records into `out`, sets *found; also
-// reports the beacon count via *beacons (may be NULL). Returns ESP_OK or an esp_err_t.
-esp_err_t lxveos_wifi_sta_scan(uint32_t seconds, lxveos_wifi_client_t *out, size_t max,
+// PASSIVE client-station scan for ~`seconds`. `channel` 0 hops the whole 2.4 GHz plan; 1-13 LOCKS to that
+// one channel for the entire window (concentrate on a known AP's channel). Runs promiscuous and infers
+// client<->AP links from the addresses in data frames (ToDS/FromDS), learning AP ESSIDs from beacons along
+// the way. Listens only — transmits NOTHING. Copies up to `max` client records into `out`, sets *found;
+// also reports the beacon count via *beacons (may be NULL). Returns ESP_OK or an esp_err_t.
+esp_err_t lxveos_wifi_sta_scan(uint32_t seconds, uint8_t channel, lxveos_wifi_client_t *out, size_t max,
                                size_t *found, uint32_t *beacons);
 
 // Tally from one deauth/disassoc watch — a passive detector for the classic Wi-Fi deauthentication
@@ -101,11 +102,12 @@ typedef struct {
     uint8_t channels_swept;
 } lxveos_wifi_deauth_stats_t;
 
-// PASSIVE deauth/disassoc watch for ~`seconds`. Channel-hops in promiscuous mode and counts
-// deauthentication / disassociation management frames (the signature of a deauth attack or a rogue
-// AP kicking clients), tracking the busiest transmitter. Listens only — transmits NOTHING, and of
-// course sends no deauth frames itself. Writes the tally to *out. Returns ESP_OK or an esp_err_t.
-esp_err_t lxveos_wifi_deauth_watch(uint32_t seconds, lxveos_wifi_deauth_stats_t *out);
+// PASSIVE deauth/disassoc watch for ~`seconds`. `channel` 0 hops the whole 2.4 GHz plan; 1-13 LOCKS to
+// that one channel for the entire window (concentrate on a known AP's channel). Runs promiscuous and
+// counts deauthentication / disassociation management frames (the signature of a deauth attack or a rogue
+// AP kicking clients), tracking the busiest transmitter. Listens only — transmits NOTHING, and of course
+// sends no deauth frames itself. Writes the tally to *out. Returns ESP_OK or an esp_err_t.
+esp_err_t lxveos_wifi_deauth_watch(uint32_t seconds, uint8_t channel, lxveos_wifi_deauth_stats_t *out);
 
 // Short human label for a wifi_auth_mode_t value ("open", "wpa2", ...). Never NULL.
 const char *lxveos_wifi_authmode_str(uint8_t authmode);
