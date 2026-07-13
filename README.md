@@ -57,6 +57,7 @@ authorized-use terms; the acceptance is stored in NVS, so it's a one-time gate p
 | `capture [seconds]` | passive EAPOL/PMKID capture — detect WPA 4-way-handshake messages + emit a hashcat-22000 `WPA*01` line per PMKID (feeds the Cyber Controller crack pipeline); listen only, never forces a handshake |
 | `defend [seconds]` | passive deauth/disassoc detector — count deauthentication/disassociation frames (deauth-attack fingerprint) + name the busiest source; listen only, sends nothing |
 | `eviltwin` | passive evil-twin / rogue-AP detector (custom) — flag any ESSID advertised by multiple BSSIDs or by both an open and an encrypted BSSID (karma/Pineapple signature); listen only |
+| `blescan [seconds]` | passive BLE device scan — NimBLE GAP observe (passive, never sends a scan request); list nearby advertisers with address / type / RSSI / adv-flags / local name. The advertising roles are compiled out, so the build cannot transmit BLE; listen only |
 | `sysinfo` | ESP-IDF version, reset reason, boot count, uptime, heap free |
 | `status` | one machine-readable line for the Cyber Controller host (below) |
 | `loglevel <tag\|*> <level>` | change ESP-IDF log verbosity at runtime |

@@ -15,3 +15,12 @@ CONFIG_ESP_WIFI_RX_IRAM_OPT=y
 
 # Keep logs at INFO in dev; release builds override to ERROR/NONE.
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# Bluetooth LE via NimBLE (all boards declare a BLE capability). NimBLE, not Bluedroid — far smaller for a
+# BLE-only use case. LxveOS only OBSERVES: the broadcaster + peripheral (advertise/connectable) roles are
+# compiled OUT, so the image is physically incapable of transmitting a BLE packet — the "listen only" gate
+# enforced in Kconfig, not just in code. The per-chip controller mode lives in sdkconfig.defaults.<target>.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_ROLE_BROADCASTER=n
+CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=n

@@ -3,3 +3,7 @@
 # in their own boards/<board>/sdkconfig.defaults.
 CONFIG_IDF_TARGET="esp32"
 CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+
+# Classic ESP32 has a dual-mode (BR/EDR + BLE) controller; NimBLE is BLE-only, so run the controller in
+# BLE-only mode to free the BR/EDR memory. (The S3's controller is BLE-only silicon — no mode knob there.)
+CONFIG_BTDM_CTRL_MODE_BLE_ONLY=y

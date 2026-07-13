@@ -23,6 +23,7 @@
 #include "sdkconfig.h"
 
 #include "bsp/display.h"
+#include "lxveos_ble.h"
 #include "lxveos_board.h"
 #include "lxveos_caps.h"
 #include "lxveos_ops.h"
@@ -613,6 +614,57 @@ static int cmd_eviltwin(int argc, char **argv)
     return 0;
 }
 
+// `blescan [seconds]` — passive BLE device scan (the `ble_scan` catalog operation). Runs a NimBLE GAP
+// discovery in PASSIVE mode (the controller never sends a SCAN_REQ) and lists nearby advertisers with
+// address, address type, RSSI, GAP flags and local name. Listen only — LxveOS compiles the BLE broadcaster
+// and peripheral roles out, so this build cannot advertise. Gated on the BLE capability.
+static int cmd_blescan(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_BLE)) {
+        printf("ble capability is not active on this build — cannot scan\n");
+        return 0;
+    }
+    uint32_t secs = 6;
+    if (argc >= 2) {
+        long v = strtol(argv[1], NULL, 10);
+        if (v >= 1 && v <= 60) {
+            secs = (uint32_t)v;
+        } else {
+            printf("usage: blescan [seconds 1-60]  (default 6)\n");
+            return 0;
+        }
+    }
+    printf("passive BLE scan for %us (GAP observe — no scan requests, advertises nothing)...\n",
+           (unsigned)secs);
+    static lxveos_ble_dev_t devs[48];
+    size_t found = 0;
+    esp_err_t e = lxveos_ble_scan(secs, devs, sizeof(devs) / sizeof(devs[0]), &found);
+    if (e != ESP_OK) {
+        printf("ble scan failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    printf("  %-17s %-7s %5s %-5s %s\n", "ADDRESS", "TYPE", "RSSI", "FLAGS", "NAME");
+    for (size_t i = 0; i < found; i++) {
+        const lxveos_ble_dev_t *d = &devs[i];
+        char flags[6];
+        if (d->flags_present) {
+            snprintf(flags, sizeof(flags), "0x%02x", d->adv_flags);
+        } else {
+            flags[0] = '-';
+            flags[1] = '\0';
+        }
+        printf("  %02x:%02x:%02x:%02x:%02x:%02x %-7s %4ddB %-5s %s\n",
+               d->addr[5], d->addr[4], d->addr[3], d->addr[2], d->addr[1], d->addr[0],
+               lxveos_ble_addr_type_str(d->addr_type), d->rssi, flags,
+               d->name_len ? d->name : "");
+    }
+    printf("%u BLE device(s) in range\n", (unsigned)found);
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -626,6 +678,7 @@ static void register_commands(void)
         {.command = "capture", .help = "Passive EAPOL/PMKID capture -> hashcat 22000: capture [seconds]", .func = &cmd_capture},
         {.command = "defend", .help = "Passive deauth/disassoc attack detector: defend [seconds]", .func = &cmd_defend},
         {.command = "eviltwin", .help = "Passive evil-twin/rogue-AP detector (duplicate-BSSID ESSIDs)", .func = &cmd_eviltwin},
+        {.command = "blescan", .help = "Passive BLE device scan: blescan [seconds] (listen only)", .func = &cmd_blescan},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
