@@ -117,7 +117,36 @@ static void promisc_rx_cb(void *buf, wifi_promiscuous_pkt_type_t type)
     }
 }
 
-esp_err_t lxveos_wifi_sniff(uint32_t seconds, lxveos_wifi_sniff_stats_t *out)
+// Steer the radio channel for a promiscuous session. `lock_channel` 1-13 stays on that one channel for the
+// whole window; 0 hops the 2.4 GHz plan (non-overlapping 1/6/11 first) dwelling `dwell_ms` per channel. In
+// promiscuous mode we drive the channel ourselves (no association). The promiscuous callback keeps tallying
+// throughout — this only steers the channel and paces the window. Returns the number of channel dwells.
+static uint8_t run_channel_loop(uint32_t seconds, uint8_t lock_channel, uint32_t dwell_ms)
+{
+    const int64_t end_us = esp_timer_get_time() + (int64_t)seconds * 1000000;
+    if (lock_channel >= 1 && lock_channel <= 13) {
+        esp_wifi_set_channel(lock_channel, WIFI_SECOND_CHAN_NONE);
+        while (esp_timer_get_time() < end_us) {
+            vTaskDelay(pdMS_TO_TICKS(dwell_ms));
+        }
+        return 1;
+    }
+    static const uint8_t chans[] = {1, 6, 11, 2, 3, 4, 5, 7, 8, 9, 10, 12, 13};
+    const int nch = (int)(sizeof(chans) / sizeof(chans[0]));
+    uint8_t swept = 0;
+    int i = 0;
+    while (esp_timer_get_time() < end_us) {
+        esp_wifi_set_channel(chans[i], WIFI_SECOND_CHAN_NONE);
+        if (swept < 255) {
+            swept++;
+        }
+        vTaskDelay(pdMS_TO_TICKS(dwell_ms));
+        i = (i + 1) % nch;
+    }
+    return swept;
+}
+
+esp_err_t lxveos_wifi_sniff(uint32_t seconds, uint8_t channel, lxveos_wifi_sniff_stats_t *out)
 {
     if (out != NULL) {
         memset(out, 0, sizeof(*out));
@@ -133,21 +162,7 @@ esp_err_t lxveos_wifi_sniff(uint32_t seconds, lxveos_wifi_sniff_stats_t *out)
     ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous_rx_cb(promisc_rx_cb), TAG, "promisc cb");
     ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous(true), TAG, "promisc on");
 
-    // Manual channel hop across the 2.4 GHz plan for the session duration. In promiscuous mode we drive the
-    // channel ourselves (no association), dwelling long enough on each to catch a beacon interval or two.
-    static const uint8_t chans[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};
-    const int nch = (int)(sizeof(chans) / sizeof(chans[0]));
-    const int64_t end_us = esp_timer_get_time() + (int64_t)seconds * 1000000;
-    uint8_t swept = 0;
-    int i = 0;
-    while (esp_timer_get_time() < end_us) {
-        esp_wifi_set_channel(chans[i], WIFI_SECOND_CHAN_NONE);
-        if (swept < 255) {
-            swept++;
-        }
-        vTaskDelay(pdMS_TO_TICKS(250));
-        i = (i + 1) % nch;
-    }
+    uint8_t swept = run_channel_loop(seconds, channel, 250);
 
     esp_wifi_set_promiscuous(false);
     if (out != NULL) {
@@ -419,7 +434,7 @@ static void eapol_rx_cb(void *buf, wifi_promiscuous_pkt_type_t type)
     }
 }
 
-esp_err_t lxveos_wifi_eapol_capture(uint32_t seconds, lxveos_wifi_line_cb emit,
+esp_err_t lxveos_wifi_eapol_capture(uint32_t seconds, uint8_t channel, lxveos_wifi_line_cb emit,
                                     lxveos_wifi_eapol_stats_t *out)
 {
     if (out != NULL) {
@@ -440,19 +455,7 @@ esp_err_t lxveos_wifi_eapol_capture(uint32_t seconds, lxveos_wifi_line_cb emit,
     ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous_rx_cb(eapol_rx_cb), TAG, "promisc cb");
     ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous(true), TAG, "promisc on");
 
-    static const uint8_t chans[] = {1, 6, 11, 2, 3, 4, 5, 7, 8, 9, 10, 12, 13};
-    const int nch = (int)(sizeof(chans) / sizeof(chans[0]));
-    const int64_t end_us = esp_timer_get_time() + (int64_t)seconds * 1000000;
-    uint8_t swept = 0;
-    int i = 0;
-    while (esp_timer_get_time() < end_us) {
-        esp_wifi_set_channel(chans[i], WIFI_SECOND_CHAN_NONE);
-        if (swept < 255) {
-            swept++;
-        }
-        vTaskDelay(pdMS_TO_TICKS(300));
-        i = (i + 1) % nch;
-    }
+    uint8_t swept = run_channel_loop(seconds, channel, 300);
     esp_wifi_set_promiscuous(false);
 
     // Emit a hashcat-22000 WPA*01 line for every captured PMKID (runs here, on the caller's task).

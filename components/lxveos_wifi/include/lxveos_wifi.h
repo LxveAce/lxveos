@@ -40,12 +40,12 @@ typedef struct {
     uint8_t channels_swept;  // number of channel dwells performed
 } lxveos_wifi_sniff_stats_t;
 
-// Run a PASSIVE packet monitor for ~`seconds` (0 -> a default), channel-hopping across the 2.4 GHz plan
-// in promiscuous mode. Listens only — enables promiscuous RX, transmits NOTHING (no probe/deauth/beacon).
-// Brings the Wi-Fi stack up on first use. Blocks for the duration, then disables promiscuous and writes
-// the tally to *out. Returns ESP_OK or an esp_err_t (out zeroed on failure). Captures no payloads/PII —
-// only per-type / per-channel counts.
-esp_err_t lxveos_wifi_sniff(uint32_t seconds, lxveos_wifi_sniff_stats_t *out);
+// Run a PASSIVE packet monitor for ~`seconds` (0 -> a default) in promiscuous mode. `channel` 0 hops the
+// whole 2.4 GHz plan; 1-13 LOCKS to that one channel for the entire window (concentrate on a known AP's
+// channel). Listens only — enables promiscuous RX, transmits NOTHING (no probe/deauth/beacon). Brings the
+// Wi-Fi stack up on first use. Blocks for the duration, then disables promiscuous and writes the tally to
+// *out. Returns ESP_OK or an esp_err_t (out zeroed on failure). Captures no payloads/PII — only counts.
+esp_err_t lxveos_wifi_sniff(uint32_t seconds, uint8_t channel, lxveos_wifi_sniff_stats_t *out);
 
 // Tally from one EAPOL/PMKID capture session.
 typedef struct {
@@ -63,14 +63,15 @@ typedef struct {
 // caller's task (after the promiscuous session ends), never from the Wi-Fi task.
 typedef void (*lxveos_wifi_line_cb)(const char *line);
 
-// PASSIVE EAPOL/PMKID capture for ~`seconds`. Channel-hops in promiscuous mode, parses beacons into a
-// BSSID->ESSID map, detects EAPOL-Key handshake messages (M1-M4), extracts any RSN PMKID from an M1, and
+// PASSIVE EAPOL/PMKID capture for ~`seconds`. `channel` 0 hops the 2.4 GHz plan; 1-13 LOCKS to that channel
+// for the whole window (dwell on a known AP's channel for better handshake/PMKID odds). Parses beacons into
+// a BSSID->ESSID map, detects EAPOL-Key handshake messages (M1-M4), extracts any RSN PMKID from an M1, and
 // pairs an M1 (ANONCE) with its M2 (MIC + EAPOL frame) when their replay counters match. It emits a
 // ready-to-crack hashcat-22000 line per artifact via `emit` (may be NULL): `WPA*01*...` for a PMKID and
 // `WPA*02*<mic>*<ap>*<sta>*<essid>*<anonce>*<eapol>*00` for a captured 4-way handshake (EAPOL from M2, MIC
 // zeroed inside the EAPOL bytes, MESSAGEPAIR 00). LISTEN ONLY — transmits nothing and NEVER deauthenticates
 // to force a handshake; it captures only what is already in the air. Stats -> *out. Returns ESP_OK/esp_err_t.
-esp_err_t lxveos_wifi_eapol_capture(uint32_t seconds, lxveos_wifi_line_cb emit,
+esp_err_t lxveos_wifi_eapol_capture(uint32_t seconds, uint8_t channel, lxveos_wifi_line_cb emit,
                                     lxveos_wifi_eapol_stats_t *out);
 
 // One discovered client station and the AP it is talking to (learned passively from data frames).

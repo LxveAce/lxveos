@@ -375,19 +375,34 @@ static int cmd_sniff(int argc, char **argv)
         return 0;
     }
     uint32_t secs = 8;
+    uint8_t channel = 0;  // 0 = hop all channels
     if (argc >= 2) {
         long v = strtol(argv[1], NULL, 10);
         if (v >= 1 && v <= 60) {
             secs = (uint32_t)v;
         } else {
-            printf("usage: sniff [seconds 1-60]  (default 8)\n");
+            printf("usage: sniff [seconds 1-60] [channel 1-13]  (default 8s, all channels)\n");
             return 0;
         }
     }
-    printf("passive Wi-Fi packet monitor for %us (promiscuous listen — no frames transmitted)...\n",
-           (unsigned)secs);
+    if (argc >= 3) {
+        long c = strtol(argv[2], NULL, 10);
+        if (c >= 1 && c <= 13) {
+            channel = (uint8_t)c;
+        } else {
+            printf("usage: sniff [seconds 1-60] [channel 1-13]  (default 8s, all channels)\n");
+            return 0;
+        }
+    }
+    if (channel) {
+        printf("passive Wi-Fi packet monitor for %us on channel %u (promiscuous listen — no frames sent)...\n",
+               (unsigned)secs, channel);
+    } else {
+        printf("passive Wi-Fi packet monitor for %us, all channels (promiscuous listen — no frames sent)...\n",
+               (unsigned)secs);
+    }
     lxveos_wifi_sniff_stats_t st;
-    esp_err_t e = lxveos_wifi_sniff(secs, &st);
+    esp_err_t e = lxveos_wifi_sniff(secs, channel, &st);
     if (e != ESP_OK) {
         printf("sniff failed: %s\n", esp_err_to_name(e));
         return 0;
@@ -427,19 +442,34 @@ static int cmd_capture(int argc, char **argv)
         return 0;
     }
     uint32_t secs = 15;
+    uint8_t channel = 0;  // 0 = hop all channels
     if (argc >= 2) {
         long v = strtol(argv[1], NULL, 10);
         if (v >= 1 && v <= 120) {
             secs = (uint32_t)v;
         } else {
-            printf("usage: capture [seconds 1-120]  (default 15)\n");
+            printf("usage: capture [seconds 1-120] [channel 1-13]  (default 15s, all channels)\n");
             return 0;
         }
     }
-    printf("passive EAPOL/PMKID capture for %us (listen only — never forces a handshake)...\n",
-           (unsigned)secs);
+    if (argc >= 3) {
+        long c = strtol(argv[2], NULL, 10);
+        if (c >= 1 && c <= 13) {
+            channel = (uint8_t)c;
+        } else {
+            printf("usage: capture [seconds 1-120] [channel 1-13]  (default 15s, all channels)\n");
+            return 0;
+        }
+    }
+    if (channel) {
+        printf("passive EAPOL/PMKID capture for %us on channel %u (listen only — never forces a handshake)...\n",
+               (unsigned)secs, channel);
+    } else {
+        printf("passive EAPOL/PMKID capture for %us, all channels (listen only — never forces a handshake)...\n",
+               (unsigned)secs);
+    }
     lxveos_wifi_eapol_stats_t st;
-    esp_err_t e = lxveos_wifi_eapol_capture(secs, capture_emit_line, &st);
+    esp_err_t e = lxveos_wifi_eapol_capture(secs, channel, capture_emit_line, &st);
     if (e != ESP_OK) {
         printf("capture failed: %s\n", esp_err_to_name(e));
         return 0;
@@ -834,9 +864,9 @@ static void register_commands(void)
         {.command = "caps", .help = "List capabilities and whether each is active", .func = &cmd_caps},
         {.command = "features", .help = "List planned/available security operations for this unit", .func = &cmd_features},
         {.command = "scan", .help = "Passive Wi-Fi AP scan (listen only, no frames sent)", .func = &cmd_scan},
-        {.command = "sniff", .help = "Passive Wi-Fi packet monitor: sniff [seconds] (listen only)", .func = &cmd_sniff},
+        {.command = "sniff", .help = "Passive Wi-Fi packet monitor: sniff [seconds] [channel] (listen only)", .func = &cmd_sniff},
         {.command = "stations", .help = "Passive client-station scan: stations [seconds] (listen only)", .func = &cmd_stations},
-        {.command = "capture", .help = "Passive EAPOL/PMKID capture -> hashcat 22000: capture [seconds]", .func = &cmd_capture},
+        {.command = "capture", .help = "Passive EAPOL/PMKID capture -> hashcat 22000: capture [seconds] [channel]", .func = &cmd_capture},
         {.command = "defend", .help = "Passive deauth/disassoc attack detector: defend [seconds]", .func = &cmd_defend},
         {.command = "eviltwin", .help = "Passive evil-twin/rogue-AP detector (duplicate-BSSID ESSIDs)", .func = &cmd_eviltwin},
         {.command = "wardrive", .help = "Passive Wi-Fi wardrive CSV export (bssid,ssid,ch,rssi,auth per line)", .func = &cmd_wardrive},
