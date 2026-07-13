@@ -162,6 +162,11 @@ static int cmd_sysinfo(int argc, char **argv)
 // prefix "LXVEOS/1 status" + space-separated key=value fields (values are safe slugs / hex / decimal, no
 // embedded spaces). This is the seed of the M1 CC bridge protocol; M1 will emit an equivalent identity
 // line at boot, framed and outside this ack gate, for headless host auto-detection.
+//
+// `ops=<ready>/<planned>/<unavailable>` summarises the operation catalog (see `features`): how many
+// security operations this unit can run now, has planned for a capability it HAS, and can't do for lack
+// of a capability — so the host sees each unit's feature surface without issuing a second command. Unknown
+// keys are safe to append: the host parser keys on field names, so older hosts ignore `ops` transparently.
 static int cmd_status(int argc, char **argv)
 {
     (void)argc;
@@ -169,11 +174,15 @@ static int cmd_status(int argc, char **argv)
     if (locked()) {
         return 0;
     }
+    size_t ops_ready = 0, ops_planned = 0, ops_unavail = 0;
+    lxveos_ops_tally(&ops_ready, &ops_planned, &ops_unavail);
     const char *panel = bsp_display_panel();
-    printf("LXVEOS/1 status board=%s chip=%s ui=%s fw=%s panel=%s caps=0x%03x heap=%u\n",
+    printf("LXVEOS/1 status board=%s chip=%s ui=%s fw=%s panel=%s caps=0x%03x ops=%u/%u/%u heap=%u\n",
            lxveos_board_id(), lxveos_board_chip(), lxveos_ui_profile(), LXVEOS_VERSION,
            (panel && panel[0]) ? panel : "none",
-           (unsigned)lxveos_caps_active(), (unsigned)esp_get_free_heap_size());
+           (unsigned)lxveos_caps_active(),
+           (unsigned)ops_ready, (unsigned)ops_planned, (unsigned)ops_unavail,
+           (unsigned)esp_get_free_heap_size());
     return 0;
 }
 

@@ -64,7 +64,7 @@ boot counter.
 [Cyber Controller](https://github.com/LxveAce/cyber-controller) host can read to identify a unit — a stable versioned
 prefix plus space-separated `key=value` fields (safe slugs / hex capability mask / decimal, no embedded spaces):
 ```
-LXVEOS/1 status board=<id> chip=<esp32|esp32s3> ui=<profile> fw=<version> panel=<driver|none> caps=0x<hex> heap=<bytes>
+LXVEOS/1 status board=<id> chip=<esp32|esp32s3> ui=<profile> fw=<version> panel=<driver|none> caps=0x<hex> ops=<ready>/<planned>/<unavailable> heap=<bytes>
 ```
 
 ## Build (once you have ESP-IDF v6.0.x)
