@@ -28,6 +28,9 @@
 #define LXVEOS_NVS_NS      "lxveos"
 #define LXVEOS_NVS_USE_ACK "use_ack"
 #define LXVEOS_NVS_BOOTCNT "boot_count"
+// User keys from the `nvs` command are prefixed so they can never collide with the internal keys above
+// (NVS keys are capped at 15 chars, so a user key is limited to 13).
+#define LXVEOS_NVS_USERPFX "u_"
 
 static const char *TAG = "lxveos_cli";
 
@@ -221,6 +224,52 @@ static int cmd_reboot(int argc, char **argv)
     esp_restart();
 }
 
+// `nvs get <key>` / `nvs set <key> <value>` — a small persistent string store for operator settings, kept
+// in the "lxveos" namespace but under a `u_` prefix so it can't touch the firmware's own keys.
+static int cmd_nvs(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    bool is_get = argc == 3 && strcmp(argv[1], "get") == 0;
+    bool is_set = argc == 4 && strcmp(argv[1], "set") == 0;
+    if (!is_get && !is_set) {
+        printf("usage: nvs get <key> | nvs set <key> <value>\n");
+        return 0;
+    }
+    char nk[16];
+    int w = snprintf(nk, sizeof(nk), LXVEOS_NVS_USERPFX "%s", argv[2]);
+    if (w < 0 || (size_t)w >= sizeof(nk)) {
+        printf("key too long (max 13 chars)\n");
+        return 0;
+    }
+    nvs_handle_t h;
+    if (nvs_open(LXVEOS_NVS_NS, is_set ? NVS_READWRITE : NVS_READONLY, &h) != ESP_OK) {
+        printf("nvs unavailable\n");
+        return 0;
+    }
+    if (is_get) {
+        char val[128];
+        size_t len = sizeof(val);
+        esp_err_t r = nvs_get_str(h, nk, val, &len);
+        if (r == ESP_OK) {
+            printf("%s = %s\n", argv[2], val);
+        } else if (r == ESP_ERR_NVS_NOT_FOUND) {
+            printf("%s: not set\n", argv[2]);
+        } else {
+            printf("%s: read error\n", argv[2]);
+        }
+    } else {
+        if (nvs_set_str(h, nk, argv[3]) == ESP_OK && nvs_commit(h) == ESP_OK) {
+            printf("%s = %s (saved)\n", argv[2], argv[3]);
+        } else {
+            printf("%s: write failed\n", argv[2]);
+        }
+    }
+    nvs_close(h);
+    return 0;
+}
+
 // `caps` — the capability registry: every capability and whether the boot probe left it active.
 static int cmd_caps(int argc, char **argv)
 {
@@ -246,6 +295,7 @@ static void register_commands(void)
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
         {.command = "reboot", .help = "Restart the unit", .func = &cmd_reboot},
+        {.command = "nvs", .help = "Persistent settings: nvs get <key> | nvs set <key> <value>", .func = &cmd_nvs},
     };
     for (size_t i = 0; i < sizeof(cmds) / sizeof(cmds[0]); i++) {
         ESP_ERROR_CHECK(esp_console_cmd_register(&cmds[i]));

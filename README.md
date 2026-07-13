@@ -53,6 +53,7 @@ authorized-use terms; the acceptance is stored in NVS, so it's a one-time gate p
 | `sysinfo` | ESP-IDF version, reset reason, boot count, uptime, heap free |
 | `status` | one machine-readable line for the Cyber Controller host (below) |
 | `loglevel <tag\|*> <level>` | change ESP-IDF log verbosity at runtime |
+| `nvs get\|set <key> [value]` | small persistent key/value store for operator settings |
 | `reboot` | restart the unit |
 
 Three facts persist in NVS across boots: the resolved CYD panel identity, the authorized-use acceptance, and a lifetime
