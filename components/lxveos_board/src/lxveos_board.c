@@ -66,7 +66,11 @@ esp_err_t bsp_display_start(void)
     resolve_panel();
     ESP_LOGI(TAG, "display: %s %dx%d bus=%s backend=%s", s_panel, LXVEOS_DISP_W, LXVEOS_DISP_H,
              LXVEOS_DISP_BUS, LXVEOS_DISP_BACKEND);
-    // TODO(M0): esp_lcd panel-IO + panel for the resolved driver; esp_lvgl_port bring-up.
+    // TODO(M0): esp_lcd panel-IO + panel for the resolved driver, then esp_lvgl_port bring-up.
+    // BLOCKED: real bring-up needs the SCLK/MOSI/DC/CS/RST/BL GPIOs, but the manifest display block has
+    // pins=null / backlight.pin=null for every board. Those must be sourced + verified (datasheet /
+    // community pinout) into cyd_boards.json first — NOT fabricated (several boards' _notes already flag
+    // "GPIOs unverified"). Extend the display schema + gen_board_configs.py to emit them, then wire esp_lcd.
     return ESP_OK;
 }
 

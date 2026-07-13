@@ -208,6 +208,19 @@ static int cmd_loglevel(int argc, char **argv)
     return 0;
 }
 
+// `reboot` — restart the unit. esp_restart() does not return, so control never falls off the end.
+static int cmd_reboot(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    if (locked()) {
+        return 0;
+    }
+    printf("rebooting...\n");
+    fflush(stdout);
+    esp_restart();
+}
+
 // `caps` — the capability registry: every capability and whether the boot probe left it active.
 static int cmd_caps(int argc, char **argv)
 {
@@ -232,6 +245,7 @@ static void register_commands(void)
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
+        {.command = "reboot", .help = "Restart the unit", .func = &cmd_reboot},
     };
     for (size_t i = 0; i < sizeof(cmds) / sizeof(cmds[0]); i++) {
         ESP_ERROR_CHECK(esp_console_cmd_register(&cmds[i]));
