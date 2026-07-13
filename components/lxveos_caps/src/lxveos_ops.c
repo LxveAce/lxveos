@@ -25,6 +25,7 @@ static const lxveos_op_t OPS[] = {
     {"ble_spam",       "BLE advertise spam",    LXVEOS_OPCAT_ATTACK,  LXVEOS_CAP_BLE,     "multi",    false},
     // ── Defense ───────────────────────────────────────────────────────────────────────────────────
     {"deauth_detect",  "Deauth/pwn detector",   LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_WIFI,    "Marauder", true},
+    {"evil_twin_detect", "Evil-twin/rogue-AP detector", LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_WIFI, "custom", true},
     // ── Logging ───────────────────────────────────────────────────────────────────────────────────
     {"pcap_log",       "PCAP capture to SD",    LXVEOS_OPCAT_LOGGING, LXVEOS_CAP_STORAGE, "Marauder", false},
     {"wardrive_log",   "GPS wardrive log",      LXVEOS_OPCAT_LOGGING, LXVEOS_CAP_GPS,     "Marauder", false},

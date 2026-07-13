@@ -542,6 +542,77 @@ static int cmd_defend(int argc, char **argv)
     return 0;
 }
 
+// `eviltwin` — passive evil-twin / rogue-AP detector (a CUSTOM LxveOS op). Runs one AP scan and flags any
+// ESSID advertised by more than one BSSID, or by both an open and an encrypted BSSID — the classic
+// karma/Wi-Fi-Pineapple signature of a cloned network. Purely analytic over the scan; sends nothing.
+static int cmd_eviltwin(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_WIFI)) {
+        printf("wifi capability is not active on this build — cannot scan\n");
+        return 0;
+    }
+    printf("passive evil-twin / rogue-AP scan (listen only — no frames sent)...\n");
+    static lxveos_wifi_ap_t aps[64];
+    size_t found = 0;
+    esp_err_t e = lxveos_wifi_scan(aps, sizeof(aps) / sizeof(aps[0]), &found);
+    if (e != ESP_OK) {
+        printf("scan failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    int flagged = 0;
+    for (size_t i = 0; i < found; i++) {
+        if (aps[i].ssid[0] == '\0') {
+            continue;  // hidden SSID — nothing to compare by name
+        }
+        bool first = true;  // report each distinct ESSID once (at its first occurrence)
+        for (size_t k = 0; k < i; k++) {
+            if (strcmp(aps[k].ssid, aps[i].ssid) == 0) {
+                first = false;
+                break;
+            }
+        }
+        if (!first) {
+            continue;
+        }
+        int nbssid = 0, nopen = 0, nenc = 0;
+        for (size_t j = 0; j < found; j++) {
+            if (strcmp(aps[j].ssid, aps[i].ssid) == 0) {
+                nbssid++;
+                if (lxveos_wifi_is_open(aps[j].authmode)) {
+                    nopen++;
+                } else {
+                    nenc++;
+                }
+            }
+        }
+        if (nbssid >= 2 || (nopen > 0 && nenc > 0)) {
+            flagged++;
+            printf("  [!] \"%s\": %d BSSIDs (%d open, %d encrypted)%s\n", aps[i].ssid, nbssid,
+                   nopen, nenc, (nopen > 0 && nenc > 0) ? "  <- open+encrypted twin" : "");
+            for (size_t j = 0; j < found; j++) {
+                if (strcmp(aps[j].ssid, aps[i].ssid) == 0) {
+                    printf("        %02x:%02x:%02x:%02x:%02x:%02x  ch%-2u %-6s %ddB\n",
+                           aps[j].bssid[0], aps[j].bssid[1], aps[j].bssid[2],
+                           aps[j].bssid[3], aps[j].bssid[4], aps[j].bssid[5],
+                           aps[j].channel, lxveos_wifi_authmode_str(aps[j].authmode), aps[j].rssi);
+                }
+            }
+        }
+    }
+    printf("%u AP(s) scanned; %d ESSID(s) flagged\n", (unsigned)found, flagged);
+    if (flagged == 0) {
+        printf("verdict: clear — no duplicate-BSSID or open/encrypted-twin ESSIDs\n");
+    } else {
+        printf("verdict: review flagged ESSIDs (can be legit multi-AP/mesh, or a cloned rogue AP)\n");
+    }
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -554,6 +625,7 @@ static void register_commands(void)
         {.command = "stations", .help = "Passive client-station scan: stations [seconds] (listen only)", .func = &cmd_stations},
         {.command = "capture", .help = "Passive EAPOL/PMKID capture -> hashcat 22000: capture [seconds]", .func = &cmd_capture},
         {.command = "defend", .help = "Passive deauth/disassoc attack detector: defend [seconds]", .func = &cmd_defend},
+        {.command = "eviltwin", .help = "Passive evil-twin/rogue-AP detector (duplicate-BSSID ESSIDs)", .func = &cmd_eviltwin},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},

@@ -714,3 +714,8 @@ const char *lxveos_wifi_authmode_str(uint8_t authmode)
     default:                       return "?";
     }
 }
+
+bool lxveos_wifi_is_open(uint8_t authmode)
+{
+    return (wifi_auth_mode_t)authmode == WIFI_AUTH_OPEN;
+}

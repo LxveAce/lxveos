@@ -106,6 +106,10 @@ esp_err_t lxveos_wifi_deauth_watch(uint32_t seconds, lxveos_wifi_deauth_stats_t 
 // Short human label for a wifi_auth_mode_t value ("open", "wpa2", ...). Never NULL.
 const char *lxveos_wifi_authmode_str(uint8_t authmode);
 
+// True if the auth mode is an open (unencrypted) network. Lets callers flag open/encrypted "twins"
+// without pulling in esp_wifi's enum.
+bool lxveos_wifi_is_open(uint8_t authmode);
+
 #ifdef __cplusplus
 }
 #endif
