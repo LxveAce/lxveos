@@ -646,7 +646,7 @@ static int cmd_blescan(int argc, char **argv)
         printf("ble scan failed: %s\n", esp_err_to_name(e));
         return 0;
     }
-    printf("  %-17s %-7s %5s %-5s %s\n", "ADDRESS", "TYPE", "RSSI", "FLAGS", "NAME");
+    printf("  %-17s %-7s %5s %-5s %-9s %s\n", "ADDRESS", "TYPE", "RSSI", "FLAGS", "VENDOR", "NAME");
     for (size_t i = 0; i < found; i++) {
         const lxveos_ble_dev_t *d = &devs[i];
         char flags[6];
@@ -656,9 +656,21 @@ static int cmd_blescan(int argc, char **argv)
             flags[0] = '-';
             flags[1] = '\0';
         }
-        printf("  %02x:%02x:%02x:%02x:%02x:%02x %-7s %4ddB %-5s %s\n",
+        char vendor[12];
+        const char *cn = d->has_mfg ? lxveos_ble_company_name(d->company_id) : NULL;
+        if (cn != NULL) {
+            snprintf(vendor, sizeof(vendor), "%s", cn);
+        } else if (d->fastpair) {
+            snprintf(vendor, sizeof(vendor), "FastPair");
+        } else if (d->has_mfg) {
+            snprintf(vendor, sizeof(vendor), "0x%04x", d->company_id);
+        } else {
+            vendor[0] = '-';
+            vendor[1] = '\0';
+        }
+        printf("  %02x:%02x:%02x:%02x:%02x:%02x %-7s %4ddB %-5s %-9s %s\n",
                d->addr[5], d->addr[4], d->addr[3], d->addr[2], d->addr[1], d->addr[0],
-               lxveos_ble_addr_type_str(d->addr_type), d->rssi, flags,
+               lxveos_ble_addr_type_str(d->addr_type), d->rssi, flags, vendor,
                d->name_len ? d->name : "");
     }
     printf("%u BLE device(s) in range\n", (unsigned)found);
@@ -707,11 +719,40 @@ static int cmd_bleflood(int argc, char **argv)
                st.top_addr[5], st.top_addr[4], st.top_addr[3], st.top_addr[2], st.top_addr[1],
                st.top_addr[0], lxveos_ble_addr_type_str(st.top_addr_type), (unsigned)st.top_count);
     }
+    // Vendor breakdown of the advert payloads — a BLE-spam flood's payloads cluster on one vendor, so the
+    // dominant spam-capable vendor (Apple/Microsoft/Google[+FastPair]/Samsung) attributes the attack.
+    uint32_t vsum = st.v_apple + st.v_microsoft + st.v_google + st.v_samsung + st.v_fastpair + st.v_other_mfg;
+    if (vsum > 0) {
+        printf("vendors (adverts): Apple %u, Microsoft %u, Google %u, Samsung %u, FastPair %u, other %u\n",
+               (unsigned)st.v_apple, (unsigned)st.v_microsoft, (unsigned)st.v_google,
+               (unsigned)st.v_samsung, (unsigned)st.v_fastpair, (unsigned)st.v_other_mfg);
+    }
+    struct {
+        const char *name;
+        uint32_t    n;
+    } vend[] = {
+        {"Apple", st.v_apple},
+        {"Microsoft", st.v_microsoft},
+        {"Google", st.v_google + st.v_fastpair},
+        {"Samsung", st.v_samsung},
+    };
+    const char *dom = NULL;
+    uint32_t    domn = 0;
+    for (size_t i = 0; i < sizeof(vend) / sizeof(vend[0]); i++) {
+        if (vend[i].n > domn) {
+            domn = vend[i].n;
+            dom  = vend[i].name;
+        }
+    }
     // A normal room shows a small, stable advertiser set; a flood churns through many rotating addresses.
     bool flood = st.unique_overflow || st.unique_addrs >= 80 || per_sec >= 12;
     if (flood) {
         printf("verdict: ⚠ possible BLE advertisement flood/spam — high advertiser churn "
-               "(many rotating addresses%s)\n", st.unique_overflow ? ", tracking table saturated" : "");
+               "(many rotating addresses%s)", st.unique_overflow ? ", tracking table saturated" : "");
+        if (dom != NULL) {
+            printf(" — dominant payload vendor: %s (BLE-spam signature)", dom);
+        }
+        printf("\n");
     } else {
         printf("verdict: clear — no BLE advertisement flood (advertiser churn normal)\n");
     }

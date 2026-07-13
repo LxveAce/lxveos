@@ -18,13 +18,18 @@ extern "C" {
 // One discovered BLE advertiser. `addr` is in NimBLE little-endian order (addr[0] is the least
 // significant octet); print it reversed for the conventional MSB-first BLE MAC display.
 typedef struct {
-    uint8_t addr[6];      // device address as reported by the controller (little-endian)
-    uint8_t addr_type;    // BLE_ADDR_* : 0 public, 1 random, 2 public-id (RPA), 3 random-id (RPA)
-    int8_t  rssi;         // last-seen signal strength (dBm)
-    uint8_t adv_flags;    // GAP flags octet (AD type 0x01), valid only when flags_present
-    bool    flags_present;
-    uint8_t name_len;     // bytes used in name[] (0 if the advert carried no local name)
-    char    name[32];     // complete/short local name if advertised, NUL-terminated
+    uint8_t  addr[6];     // device address as reported by the controller (little-endian)
+    uint8_t  addr_type;   // BLE_ADDR_* : 0 public, 1 random, 2 public-id (RPA), 3 random-id (RPA)
+    int8_t   rssi;        // last-seen signal strength (dBm)
+    uint8_t  adv_flags;   // GAP flags octet (AD type 0x01), valid only when flags_present
+    bool     flags_present;
+    uint8_t  name_len;    // bytes used in name[] (0 if the advert carried no local name)
+    char     name[32];    // complete/short local name if advertised, NUL-terminated
+    uint16_t company_id;  // manufacturer company ID (mfg_data[0..1], little-endian); valid if has_mfg
+    bool     has_mfg;     // the advert carried manufacturer-specific data
+    bool     fastpair;    // Google Fast Pair service-data (UUID 0xFE2C) present
+    uint16_t appearance;  // GAP appearance value; valid only if appearance_present
+    bool     appearance_present;
 } lxveos_ble_dev_t;
 
 // Run a PASSIVE BLE GAP discovery for `seconds` (clamped to a sane default if 0), collecting up to `max`
@@ -47,6 +52,14 @@ typedef struct {
     uint8_t  top_addr[6];     // busiest single advertiser (most advertisements), little-endian
     uint8_t  top_addr_type;   // its address type (BLE_ADDR_*)
     uint32_t top_count;       // advertisements from that busiest advertiser
+    // Advert-payload vendor tally (counts adverts, not unique addresses). A BLE-spam flood's payloads
+    // cluster on one vendor, so the dominant counter attributes the flood.
+    uint32_t v_apple;         // manufacturer company 0x004C (Apple continuity/proximity)
+    uint32_t v_microsoft;     // 0x0006 (Microsoft Swift Pair)
+    uint32_t v_google;        // 0x00E0 (Google)
+    uint32_t v_samsung;       // 0x0075 (Samsung)
+    uint32_t v_fastpair;      // Google Fast Pair service-data UUID 0xFE2C
+    uint32_t v_other_mfg;     // manufacturer data present, company not in the known set
 } lxveos_ble_flood_stats_t;
 
 // Watch the air for `seconds` (default if 0) with a PASSIVE GAP discovery and measure advertiser churn
@@ -55,6 +68,10 @@ esp_err_t lxveos_ble_flood_watch(uint32_t seconds, lxveos_ble_flood_stats_t *out
 
 // Human-readable name for a BLE address type (public / random / pub-id / rnd-id / ?).
 const char *lxveos_ble_addr_type_str(uint8_t addr_type);
+
+// Short vendor name for a BLE company identifier (Apple/Microsoft/Google/Samsung/Nordic/Garmin), or NULL
+// if the ID is not in the known set. Used to attribute advertisers + BLE-spam floods to a vendor.
+const char *lxveos_ble_company_name(uint16_t company_id);
 
 #ifdef __cplusplus
 }

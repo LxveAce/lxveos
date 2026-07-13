@@ -55,6 +55,58 @@ const char *lxveos_ble_addr_type_str(uint8_t addr_type)
     }
 }
 
+// A small table of Bluetooth SIG company identifiers — deliberately limited to vendors we are certain of
+// and that matter for BLE-spam attribution (Apple/Microsoft/Google/Samsung are the popup-flood payloads),
+// plus a couple of very common device vendors. Unknown IDs are shown as raw hex, never mis-attributed.
+#define LXVEOS_BLE_CID_APPLE     0x004Cu
+#define LXVEOS_BLE_CID_MICROSOFT 0x0006u
+#define LXVEOS_BLE_CID_GOOGLE    0x00E0u
+#define LXVEOS_BLE_CID_SAMSUNG   0x0075u
+#define LXVEOS_BLE_SVC_FASTPAIR  0xFE2Cu  // Google Fast Pair service-data UUID
+
+static const struct {
+    uint16_t    id;
+    const char *name;
+} BLE_COMPANIES[] = {
+    {LXVEOS_BLE_CID_APPLE,     "Apple"},
+    {LXVEOS_BLE_CID_MICROSOFT, "Microsoft"},
+    {LXVEOS_BLE_CID_GOOGLE,    "Google"},
+    {LXVEOS_BLE_CID_SAMSUNG,   "Samsung"},
+    {0x0059,                   "Nordic"},
+    {0x0087,                   "Garmin"},
+};
+
+const char *lxveos_ble_company_name(uint16_t company_id)
+{
+    for (size_t i = 0; i < sizeof(BLE_COMPANIES) / sizeof(BLE_COMPANIES[0]); i++) {
+        if (BLE_COMPANIES[i].id == company_id) {
+            return BLE_COMPANIES[i].name;
+        }
+    }
+    return NULL;
+}
+
+// Read the 16-bit manufacturer company ID from a parsed advert (mfg_data[0..1], little-endian); returns
+// false if the advert carried no manufacturer-specific data.
+static bool adv_company_id(const struct ble_hs_adv_fields *f, uint16_t *out_id)
+{
+    if (f->mfg_data == NULL || f->mfg_data_len < 2) {
+        return false;
+    }
+    *out_id = (uint16_t)(f->mfg_data[0] | ((uint16_t)f->mfg_data[1] << 8));
+    return true;
+}
+
+// True if the advert carries Google Fast Pair service data (16-bit service-data UUID 0xFE2C).
+static bool adv_is_fastpair(const struct ble_hs_adv_fields *f)
+{
+    if (f->svc_data_uuid16 == NULL || f->svc_data_uuid16_len < 2) {
+        return false;
+    }
+    uint16_t uuid = (uint16_t)(f->svc_data_uuid16[0] | ((uint16_t)f->svc_data_uuid16[1] << 8));
+    return uuid == LXVEOS_BLE_SVC_FASTPAIR;
+}
+
 static void on_reset(int reason)
 {
     ESP_LOGW(TAG, "NimBLE host reset (reason %d)", reason);
@@ -169,6 +221,18 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg)
                     slot->name[n]  = '\0';
                     slot->name_len = n;
                 }
+                uint16_t cid;
+                if (adv_company_id(&fields, &cid)) {
+                    slot->company_id = cid;
+                    slot->has_mfg    = true;
+                }
+                if (adv_is_fastpair(&fields)) {
+                    slot->fastpair = true;
+                }
+                if (fields.appearance_is_present) {
+                    slot->appearance         = fields.appearance;
+                    slot->appearance_present = true;
+                }
             }
         }
         return 0;
@@ -263,8 +327,41 @@ struct flood_ctx {
     uint32_t            random_uniques;
     size_t              top_idx;
     uint32_t            top_count;
+    // Per-advert vendor tally (see lxveos_ble_flood_stats_t) — attributes a flood to a vendor.
+    uint32_t            v_apple;
+    uint32_t            v_microsoft;
+    uint32_t            v_google;
+    uint32_t            v_samsung;
+    uint32_t            v_fastpair;
+    uint32_t            v_other_mfg;
     SemaphoreHandle_t   done;
 };
+
+// Classify one advert's payload by vendor and bump the matching flood counter. Parses defensively; an
+// advert with no manufacturer/service data simply contributes to none of the vendor counters.
+static void flood_classify(struct flood_ctx *c, const struct ble_gap_disc_desc *d)
+{
+    if (d->length_data == 0) {
+        return;
+    }
+    struct ble_hs_adv_fields f;
+    if (ble_hs_adv_parse_fields(&f, d->data, d->length_data) != 0) {
+        return;
+    }
+    uint16_t cid;
+    if (adv_company_id(&f, &cid)) {
+        switch (cid) {
+        case LXVEOS_BLE_CID_APPLE:     c->v_apple++;     break;
+        case LXVEOS_BLE_CID_MICROSOFT: c->v_microsoft++; break;
+        case LXVEOS_BLE_CID_GOOGLE:    c->v_google++;    break;
+        case LXVEOS_BLE_CID_SAMSUNG:   c->v_samsung++;   break;
+        default:                       c->v_other_mfg++; break;
+        }
+    }
+    if (adv_is_fastpair(&f)) {
+        c->v_fastpair++;
+    }
+}
 
 static int flood_event_cb(struct ble_gap_event *event, void *arg)
 {
@@ -274,6 +371,7 @@ static int flood_event_cb(struct ble_gap_event *event, void *arg)
     case BLE_GAP_EVENT_DISC: {
         const struct ble_gap_disc_desc *d = &event->disc;
         c->total_adv++;
+        flood_classify(c, d);
 
         for (size_t i = 0; i < c->n; i++) {
             if (c->seen[i].type == d->addr.type && memcmp(c->seen[i].addr, d->addr.val, 6) == 0) {
@@ -373,5 +471,11 @@ esp_err_t lxveos_ble_flood_watch(uint32_t seconds, lxveos_ble_flood_stats_t *out
         out->top_addr_type = c.seen[c.top_idx].type;
         out->top_count     = c.top_count;
     }
+    out->v_apple     = c.v_apple;
+    out->v_microsoft = c.v_microsoft;
+    out->v_google    = c.v_google;
+    out->v_samsung   = c.v_samsung;
+    out->v_fastpair  = c.v_fastpair;
+    out->v_other_mfg = c.v_other_mfg;
     return ESP_OK;
 }
