@@ -33,7 +33,16 @@ typedef struct {
     uint16_t svc_uuids[8];   // advertised 16-bit service-class UUIDs (AD type 0x02/0x03)
     uint8_t  svc_uuid_count; // entries used in svc_uuids[] (0 if none advertised)
     bool     svc_uuids_partial; // the advert listed more 16-bit UUIDs than svc_uuids[] holds (truncated)
+    uint8_t  tracker;        // item-tracker classification (LXVEOS_BLE_TRACKER_*); 0 = not a known tracker
 } lxveos_ble_dev_t;
+
+// Item-tracker classifications for lxveos_ble_dev_t.tracker. Signatures verified against the TU-Darmstadt
+// AirGuard anti-stalking project: Apple Find My = mfg company 0x004C + payload type byte 0x12 (offline
+// finding); Tile = service UUID 0xFEED; Samsung SmartTag = service UUID 0xFD5A.
+#define LXVEOS_BLE_TRACKER_NONE        0
+#define LXVEOS_BLE_TRACKER_APPLE_FINDMY 1  // AirTag / Find My accessory in offline-finding state
+#define LXVEOS_BLE_TRACKER_TILE        2
+#define LXVEOS_BLE_TRACKER_SMARTTAG    3  // Samsung Galaxy SmartTag (SmartThings Find)
 
 // Run a PASSIVE BLE GAP discovery for `seconds` (clamped to a sane default if 0), collecting up to `max`
 // unique advertisers into `out`. De-dups by address (RSSI/name refresh on repeat sightings). On return
@@ -80,6 +89,10 @@ const char *lxveos_ble_company_name(uint16_t company_id);
 // …), or NULL if the UUID is not in the known set — the caller then shows the raw 0xNNNN (honesty gate,
 // same policy as the company table: named only when certain, never mislabelled).
 const char *lxveos_ble_service_name(uint16_t uuid16);
+
+// Short human label for an item-tracker classification (LXVEOS_BLE_TRACKER_*): "AirTag/FindMy", "Tile",
+// "SmartTag", or NULL for LXVEOS_BLE_TRACKER_NONE. Used by the passive tracker/stalking detector.
+const char *lxveos_ble_tracker_str(uint8_t tracker);
 
 // Write a short human label for a GAP appearance value into `buf` (category = value >> 6): common consumer
 // categories (Phone/Watch/Computer/Audio/Heart-Rate/…) are named, HID (cat 15) resolves its keyboard/mouse

@@ -64,6 +64,10 @@ const char *lxveos_ble_addr_type_str(uint8_t addr_type)
 #define LXVEOS_BLE_CID_GOOGLE    0x00E0u
 #define LXVEOS_BLE_CID_SAMSUNG   0x0075u
 #define LXVEOS_BLE_SVC_FASTPAIR  0xFE2Cu  // Google Fast Pair service-data UUID
+// Item-tracker signatures (verified against the TU-Darmstadt AirGuard anti-stalking project):
+#define LXVEOS_BLE_APPLE_TYPE_FINDMY 0x12u  // Apple mfg-data payload type byte = Offline Finding (Find My)
+#define LXVEOS_BLE_SVC_TILE          0xFEEDu // Tile trackers
+#define LXVEOS_BLE_SVC_SMARTTAG      0xFD5Au // Samsung Galaxy SmartTag (SmartThings Find)
 
 static const struct {
     uint16_t    id;
@@ -193,6 +197,54 @@ static bool adv_is_fastpair(const struct ble_hs_adv_fields *f)
     }
     uint16_t uuid = (uint16_t)(f->svc_data_uuid16[0] | ((uint16_t)f->svc_data_uuid16[1] << 8));
     return uuid == LXVEOS_BLE_SVC_FASTPAIR;
+}
+
+// True if the advert carries a given 16-bit UUID in EITHER its service DATA (AD 0x16) or its advertised
+// service-class UUID list (AD 0x02/0x03) — item-trackers put their identifying UUID in one or the other.
+static bool adv_has_service_uuid16(const struct ble_hs_adv_fields *f, uint16_t want)
+{
+    if (f->svc_data_uuid16 != NULL && f->svc_data_uuid16_len >= 2) {
+        uint16_t u = (uint16_t)(f->svc_data_uuid16[0] | ((uint16_t)f->svc_data_uuid16[1] << 8));
+        if (u == want) {
+            return true;
+        }
+    }
+    for (int i = 0; i < f->num_uuids16; i++) {
+        if (f->uuids16[i].value == want) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Classify an advertiser as a known item-tracker (or NONE). Signatures verified against AirGuard: Apple
+// Find My = Apple mfg data whose first payload byte is the Offline-Finding type 0x12; Tile = service UUID
+// 0xFEED; Samsung SmartTag = service UUID 0xFD5A. Anything else is NONE (never a false tracker label).
+static uint8_t classify_tracker(const struct ble_hs_adv_fields *f)
+{
+    if (f->mfg_data != NULL && f->mfg_data_len >= 3) {
+        uint16_t cid = (uint16_t)(f->mfg_data[0] | ((uint16_t)f->mfg_data[1] << 8));
+        if (cid == LXVEOS_BLE_CID_APPLE && f->mfg_data[2] == LXVEOS_BLE_APPLE_TYPE_FINDMY) {
+            return LXVEOS_BLE_TRACKER_APPLE_FINDMY;
+        }
+    }
+    if (adv_has_service_uuid16(f, LXVEOS_BLE_SVC_TILE)) {
+        return LXVEOS_BLE_TRACKER_TILE;
+    }
+    if (adv_has_service_uuid16(f, LXVEOS_BLE_SVC_SMARTTAG)) {
+        return LXVEOS_BLE_TRACKER_SMARTTAG;
+    }
+    return LXVEOS_BLE_TRACKER_NONE;
+}
+
+const char *lxveos_ble_tracker_str(uint8_t tracker)
+{
+    switch (tracker) {
+    case LXVEOS_BLE_TRACKER_APPLE_FINDMY: return "AirTag/FindMy";
+    case LXVEOS_BLE_TRACKER_TILE:         return "Tile";
+    case LXVEOS_BLE_TRACKER_SMARTTAG:     return "SmartTag";
+    default:                              return NULL;
+    }
 }
 
 static void on_reset(int reason)
@@ -337,6 +389,7 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg)
                     }
                     slot->svc_uuid_count = n;
                 }
+                slot->tracker = classify_tracker(&fields);
             }
         }
         return 0;

@@ -857,6 +857,63 @@ static int cmd_bleflood(int argc, char **argv)
     return 0;
 }
 
+// `btracker [seconds]` — passive BLE item-tracker / stalking detector (the `ble_tracker_detect` catalog op,
+// a CUSTOM defense feature). Runs one passive GAP observe and flags advertisers whose payload matches a
+// known item-tracker signature — Apple Find My/AirTag (Apple mfg type 0x12), Tile (svc 0xFEED), Samsung
+// SmartTag (svc 0xFD5A) — signatures verified against the AirGuard anti-stalking project. A tracker that
+// travels with you but is NOT yours is the AirTag-stalking signal; re-run over time and watch for one that
+// persistently follows. Listen only — advertises nothing. BLE-capability gated.
+static int cmd_btracker(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_BLE)) {
+        printf("ble capability is not active on this build — cannot scan for trackers\n");
+        return 0;
+    }
+    uint32_t secs = 8;
+    if (argc >= 2) {
+        long v = strtol(argv[1], NULL, 10);
+        if (v >= 1 && v <= 60) {
+            secs = (uint32_t)v;
+        } else {
+            printf("usage: btracker [seconds 1-60]  (default 8)\n");
+            return 0;
+        }
+    }
+    printf("passive BLE item-tracker scan for %us (GAP observe — advertises nothing)...\n", (unsigned)secs);
+    static lxveos_ble_dev_t devs[48];
+    size_t found = 0;
+    esp_err_t e = lxveos_ble_scan(secs, devs, sizeof(devs) / sizeof(devs[0]), &found);
+    if (e != ESP_OK) {
+        printf("btracker scan failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    int trackers = 0;
+    printf("  %-17s %-7s %5s %-14s %s\n", "ADDRESS", "TYPE", "RSSI", "TRACKER", "NAME");
+    for (size_t i = 0; i < found; i++) {
+        const lxveos_ble_dev_t *d = &devs[i];
+        const char *tn = lxveos_ble_tracker_str(d->tracker);
+        if (tn == NULL) {
+            continue;  // not a known tracker
+        }
+        trackers++;
+        printf("  %02x:%02x:%02x:%02x:%02x:%02x %-7s %4ddB %-14s %s\n",
+               d->addr[5], d->addr[4], d->addr[3], d->addr[2], d->addr[1], d->addr[0],
+               lxveos_ble_addr_type_str(d->addr_type), d->rssi, tn, d->name_len ? d->name : "");
+    }
+    printf("%d tracker(s) among %u BLE device(s) in range\n", trackers, (unsigned)found);
+    if (trackers == 0) {
+        printf("verdict: clear — no known item-trackers advertising nearby\n");
+    } else {
+        printf("verdict: %d tracker(s) present. A tracker you don't own that FOLLOWS you over time/place is "
+               "the stalking signal — re-run `btracker` as you move and watch for one that persists.\n",
+               trackers);
+    }
+    return 0;
+}
+
 // `wardrive` — passive Wi-Fi wardrive CSV export (the `wifi_wardrive` catalog op). Runs one passive AP scan
 // and prints a machine-importable CSV — one row per AP: bssid,ssid,channel,rssi,auth,hidden — for a host
 // mapping/inventory tool to ingest. The unit has no GPS, so coordinates are the host's to add (pair the
@@ -920,6 +977,7 @@ static void register_commands(void)
         {.command = "wardrive", .help = "Passive Wi-Fi wardrive CSV export (bssid,ssid,ch,rssi,auth per line)", .func = &cmd_wardrive},
         {.command = "blescan", .help = "Passive BLE device scan (+vendor/appearance/service-UUIDs): blescan [seconds] (listen only)", .func = &cmd_blescan},
         {.command = "bleflood", .help = "Passive BLE advert-flood/spam detector: bleflood [seconds] (listen only)", .func = &cmd_bleflood},
+        {.command = "btracker", .help = "Passive BLE item-tracker/stalking detector (AirTag/Tile/SmartTag): btracker [seconds]", .func = &cmd_btracker},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
