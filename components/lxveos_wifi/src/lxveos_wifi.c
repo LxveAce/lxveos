@@ -192,23 +192,30 @@ typedef struct {
     bool has_pmkid;
     uint8_t msg_mask;  // bit0..3 = M1..M4 seen
     bool used;
-    // WPA*02 (EAPOL/MIC) material. The MIC + the full EAPOL frame (MIC field zeroed) + replay counter come
-    // from M2. The ANONCE (AP key nonce) can come from EITHER M1 or M3 — both carry it:
-    //   · M1 (replay == M2's)      -> MESSAGEPAIR 00 (M12E2, "challenge"): the classic capture.
-    //   · M3 (replay == M2's + 1)  -> MESSAGEPAIR 02 (M32E2, "authorized"): lets us still emit a crackable
-    //     line when M1 was missed but M2+M3 were caught. (Both hcxtools values, verified against its source.)
-    // A line is emitted when M2 is present and a matching ANONCE source (M1 or M3) pairs by replay counter.
+    // WPA*02 (EAPOL/MIC) material. A crackable line pairs an ANONCE source (M1 or M3, both AP->STA) with an
+    // EAPOL/MIC source (M2 or M4, both STA->AP), by replay counter — the three hcxtools message pairs we can
+    // build passively (values verified against hcxtools' source):
+    //   · M1 + M2 (replay ==)      -> MESSAGEPAIR 00 (M12E2, "challenge"):  EAPOL from M2, ANONCE from M1
+    //   · M3 + M2 (M3 == M2's + 1)  -> MESSAGEPAIR 02 (M32E2, "authorized"): EAPOL from M2, ANONCE from M3
+    //   · M3 + M4 (replay ==)       -> MESSAGEPAIR 05 (M34E4):               EAPOL from M4, ANONCE from M3
+    // M2-based pairs are preferred (M2 always carries a real SNONCE); an M4 with an all-zero nonce is unusable
+    // and dropped at capture (as hcxtools does), so a stored M4 always has a real SNONCE inside its EAPOL.
     uint8_t anonce[32];    // ANONCE from M1
     uint8_t m1_replay[8];
     bool has_anonce;
-    uint8_t mic[16];
+    uint8_t mic[16];       // MIC from M2
     uint8_t m2_replay[8];
-    uint8_t eapol[256];
+    uint8_t eapol[256];    // M2's EAPOL frame, MIC field zeroed
     uint16_t eapol_len;
     bool has_m2;
     uint8_t m3_anonce[32]; // ANONCE echoed by the AP in M3 (same value as M1's, captured independently)
     uint8_t m3_replay[8];  // M3 replay counter (= M2's + 1 in a valid exchange)
     bool has_m3;
+    uint8_t m4_mic[16];    // MIC from M4
+    uint8_t m4_replay[8];  // M4 replay counter (== M3's in a valid exchange)
+    uint8_t m4_eapol[256]; // M4's EAPOL frame, MIC field zeroed
+    uint16_t m4_eapol_len;
+    bool has_m4;
 } hs_ent_t;
 
 static essid_ent_t s_essid[LXVEOS_ESSID_MAX];
@@ -360,6 +367,33 @@ static void store_m3(hs_ent_t *h, const uint8_t *frame, int len, int kf_off)
     h->has_m3 = true;
 }
 
+// From M4 (STA->AP, MIC+Secure, no ACK/Install): stash the MIC + replay + full EAPOL frame (MIC zeroed) so
+// an M3+M4 pair can be emitted (MESSAGEPAIR 05) when neither M1 nor M2 was seen. An M4 whose key nonce is
+// all-zero carries no usable SNONCE (not crackable) and is dropped — exactly as hcxtools does.
+static void store_m4(hs_ent_t *h, const uint8_t *frame, int len, int eapol_off, int kf_off)
+{
+    if (h == NULL || h->has_m4) {
+        return;
+    }
+    if (kf_off + EK_MIC_OFF + 16 > len || kf_off + EK_NONCE_OFF + 32 > len) {
+        return;
+    }
+    static const uint8_t zero32[32] = {0};
+    if (memcmp(&frame[kf_off + EK_NONCE_OFF], zero32, 32) == 0) {
+        return;  // zeroed SNONCE -> unusable for cracking
+    }
+    int elen = 4 + ((frame[eapol_off + 2] << 8) | frame[eapol_off + 3]);
+    if (elen < 99 || elen > (int)sizeof(h->m4_eapol) || eapol_off + elen > len) {
+        return;
+    }
+    memcpy(h->m4_mic, &frame[kf_off + EK_MIC_OFF], 16);
+    memcpy(h->m4_replay, &frame[kf_off + EK_REPLAY_OFF], 8);
+    memcpy(h->m4_eapol, &frame[eapol_off], (size_t)elen);
+    memset(&h->m4_eapol[81], 0, 16);  // zero the MIC inside the stored EAPOL frame
+    h->m4_eapol_len = (uint16_t)elen;
+    h->has_m4 = true;
+}
+
 // Read an 8-byte big-endian EAPOL replay counter as a uint64 (for the M2->M3 "+1" pairing check).
 static uint64_t replay_be64(const uint8_t *p)
 {
@@ -460,7 +494,7 @@ static void eapol_rx_cb(void *buf, wifi_promiscuous_pkt_type_t type)
     case 1: s_estats.m1++; extract_pmkid(f, len, kf_off, h); store_m1(h, f, len, kf_off); break;
     case 2: s_estats.m2++; store_m2(h, f, len, eapol_off, kf_off); break;
     case 3: s_estats.m3++; store_m3(h, f, len, kf_off); break;
-    case 4: s_estats.m4++; break;
+    case 4: s_estats.m4++; store_m4(h, f, len, eapol_off, kf_off); break;
     default: break;
     }
 }
@@ -515,32 +549,39 @@ esp_err_t lxveos_wifi_eapol_capture(uint32_t seconds, uint8_t channel, lxveos_wi
             emit(line);
         }
 
-        // WPA*02 (EAPOL/MIC): the MIC + EAPOL always come from M2; the ANONCE comes from whichever AP->STA
-        // message we caught that pairs with it by replay counter:
-        //   · M1 (replay == M2's)     -> MESSAGEPAIR 00 (M12E2, EAPOL from M2, ANONCE from M1)
-        //   · M3 (replay == M2's + 1) -> MESSAGEPAIR 02 (M32E2, EAPOL from M2, ANONCE from M3)
-        // M1 is preferred when both are present (identical ANONCE, so no need to emit twice). The line can
-        // reach ~712 chars (EAPOL up to 256 B + a 32-char ESSID), so it uses its own static buffer.
+        // WPA*02 (EAPOL/MIC): pair an ANONCE source (M1/M3) with an EAPOL+MIC source (M2/M4) by replay
+        // counter, preferring M2-based pairs (M2 always carries a real SNONCE):
+        //   · M1 + M2 (replay ==)      -> MESSAGEPAIR 00 (M12E2, EAPOL from M2, ANONCE from M1)
+        //   · M3 + M2 (M3 == M2's + 1) -> MESSAGEPAIR 02 (M32E2, EAPOL from M2, ANONCE from M3)
+        //   · M3 + M4 (replay ==)      -> MESSAGEPAIR 05 (M34E4, EAPOL from M4, ANONCE from M3)
+        // At most one line per exchange (they carry the same ANONCE). The line can reach ~712 chars (EAPOL up
+        // to 256 B + a 32-char ESSID), so it uses its own static buffer.
         for (int j = 0; j < LXVEOS_HS_MAX; j++) {
             hs_ent_t *h = &s_hs[j];
-            if (!h->used || !h->has_m2) {
-                continue;  // no MIC/EAPOL to quote
+            if (!h->used) {
+                continue;
             }
-            const uint8_t *anonce;
+            const uint8_t *anonce, *mic, *eapol;
+            uint16_t eapol_len;
             const char *messagepair;
-            if (h->has_anonce && memcmp(h->m1_replay, h->m2_replay, 8) == 0) {
-                anonce      = h->anonce;     // M1+M2
-                messagepair = "00";
-            } else if (h->has_m3 && replay_be64(h->m3_replay) == replay_be64(h->m2_replay) + 1) {
-                anonce      = h->m3_anonce;  // M2+M3 ("authorized")
-                messagepair = "02";
+            if (h->has_m2 && h->has_anonce && memcmp(h->m1_replay, h->m2_replay, 8) == 0) {
+                anonce = h->anonce;    mic = h->mic;    eapol = h->eapol;    eapol_len = h->eapol_len;
+                messagepair = "00";    // M1+M2
+            } else if (h->has_m2 && h->has_m3 &&
+                       replay_be64(h->m3_replay) == replay_be64(h->m2_replay) + 1) {
+                anonce = h->m3_anonce; mic = h->mic;    eapol = h->eapol;    eapol_len = h->eapol_len;
+                messagepair = "02";    // M2+M3 ("authorized")
+            } else if (h->has_m3 && h->has_m4 &&
+                       memcmp(h->m3_replay, h->m4_replay, 8) == 0) {
+                anonce = h->m3_anonce; mic = h->m4_mic; eapol = h->m4_eapol; eapol_len = h->m4_eapol_len;
+                messagepair = "05";    // M3+M4
             } else {
-                continue;  // M2 alone, or the ANONCE we have belongs to a different exchange — not a pair
+                continue;  // no valid ANONCE+EAPOL pairing for this exchange
             }
             static char l2[800];
             int n = snprintf(l2, sizeof(l2), "WPA*02*");
             for (int k = 0; k < 16; k++) {
-                n += snprintf(l2 + n, sizeof(l2) - n, "%02x", h->mic[k]);
+                n += snprintf(l2 + n, sizeof(l2) - n, "%02x", mic[k]);
             }
             n += snprintf(l2 + n, sizeof(l2) - n, "*%02x%02x%02x%02x%02x%02x*",
                           h->ap[0], h->ap[1], h->ap[2], h->ap[3], h->ap[4], h->ap[5]);
@@ -555,8 +596,8 @@ esp_err_t lxveos_wifi_eapol_capture(uint32_t seconds, uint8_t channel, lxveos_wi
                 n += snprintf(l2 + n, sizeof(l2) - n, "%02x", anonce[k]);
             }
             n += snprintf(l2 + n, sizeof(l2) - n, "*");
-            for (int k = 0; k < h->eapol_len && n < (int)sizeof(l2) - 6; k++) {
-                n += snprintf(l2 + n, sizeof(l2) - n, "%02x", h->eapol[k]);
+            for (int k = 0; k < eapol_len && n < (int)sizeof(l2) - 6; k++) {
+                n += snprintf(l2 + n, sizeof(l2) - n, "%02x", eapol[k]);
             }
             snprintf(l2 + n, sizeof(l2) - n, "*%s", messagepair);
             emit(l2);

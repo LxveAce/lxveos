@@ -68,11 +68,12 @@ typedef void (*lxveos_wifi_line_cb)(const char *line);
 // a BSSID->ESSID map, detects EAPOL-Key handshake messages (M1-M4), extracts any RSN PMKID from an M1, and
 // pairs the M2 (MIC + EAPOL frame) with an ANONCE source by replay counter. It emits a ready-to-crack
 // hashcat-22000 line per artifact via `emit` (may be NULL): `WPA*01*...` for a PMKID and
-// `WPA*02*<mic>*<ap>*<sta>*<essid>*<anonce>*<eapol>*<mp>` for a captured handshake — EAPOL always from M2
-// (MIC zeroed inside the bytes), with the ANONCE + MESSAGEPAIR from whichever AP->STA message paired:
-// M1 (replay == M2's) -> mp 00 (M12E2), or M3 (replay == M2's + 1) -> mp 02 (M32E2, when M1 was missed).
-// LISTEN ONLY — transmits nothing and NEVER deauthenticates to force a handshake; it captures only what is
-// already in the air. Stats -> *out. Returns ESP_OK/esp_err_t.
+// `WPA*02*<mic>*<ap>*<sta>*<essid>*<anonce>*<eapol>*<mp>` for a captured handshake — it pairs an ANONCE
+// source (M1/M3) with an EAPOL+MIC source (M2/M4) by replay counter, emitting one of three hcxtools message
+// pairs: M1+M2 -> mp 00 (M12E2), M3+M2 -> mp 02 (M32E2, when M1 was missed), or M3+M4 -> mp 05 (M34E4, when
+// neither M1 nor M2 was seen). EAPOL bytes carry the MIC zeroed; M2-based pairs are preferred and a zeroed-
+// nonce M4 is dropped as unusable. LISTEN ONLY — transmits nothing and NEVER deauthenticates to force a
+// handshake; it captures only what is already in the air. Stats -> *out. Returns ESP_OK/esp_err_t.
 esp_err_t lxveos_wifi_eapol_capture(uint32_t seconds, uint8_t channel, lxveos_wifi_line_cb emit,
                                     lxveos_wifi_eapol_stats_t *out);
 
