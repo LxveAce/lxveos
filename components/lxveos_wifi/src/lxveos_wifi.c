@@ -793,8 +793,7 @@ static void probe_upsert(const char *ssid, int8_t rssi)
     }
     for (int i = 0; i < LXVEOS_PROBE_MAX; i++) {
         if (!s_probes[i].used) {
-            strncpy(s_probes[i].ssid, ssid, sizeof(s_probes[i].ssid) - 1);
-            s_probes[i].ssid[sizeof(s_probes[i].ssid) - 1] = '\0';
+            snprintf(s_probes[i].ssid, sizeof(s_probes[i].ssid), "%s", ssid);
             s_probes[i].count = 1;
             s_probes[i].rssi = rssi;
             s_probes[i].used = true;
@@ -883,8 +882,7 @@ esp_err_t lxveos_wifi_probe_scan(uint32_t seconds, uint8_t channel, lxveos_wifi_
         if (!s_probes[i].used) {
             continue;
         }
-        strncpy(out[k].ssid, s_probes[i].ssid, sizeof(out[k].ssid) - 1);
-        out[k].ssid[sizeof(out[k].ssid) - 1] = '\0';
+        snprintf(out[k].ssid, sizeof(out[k].ssid), "%s", s_probes[i].ssid);
         out[k].count = s_probes[i].count;
         out[k].rssi = s_probes[i].rssi;
         k++;
