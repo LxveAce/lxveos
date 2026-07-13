@@ -19,6 +19,7 @@
 #include "nvs.h"
 #include "sdkconfig.h"
 
+#include "bsp/display.h"
 #include "lxveos_board.h"
 #include "lxveos_caps.h"
 
@@ -127,6 +128,25 @@ static int cmd_sysinfo(int argc, char **argv)
     return 0;
 }
 
+// `status` — ONE machine-readable line the Cyber Controller host parses to identify this unit. Versioned
+// prefix "LXVEOS/1 status" + space-separated key=value fields (values are safe slugs / hex / decimal, no
+// embedded spaces). This is the seed of the M1 CC bridge protocol; M1 will emit an equivalent identity
+// line at boot, framed and outside this ack gate, for headless host auto-detection.
+static int cmd_status(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    if (locked()) {
+        return 0;
+    }
+    const char *panel = bsp_display_panel();
+    printf("LXVEOS/1 status board=%s chip=%s ui=%s fw=%s panel=%s caps=0x%03x heap=%u\n",
+           lxveos_board_id(), lxveos_board_chip(), lxveos_ui_profile(), LXVEOS_VERSION,
+           (panel && panel[0]) ? panel : "none",
+           (unsigned)lxveos_caps_active(), (unsigned)esp_get_free_heap_size());
+    return 0;
+}
+
 // `caps` — the capability registry: every capability and whether the boot probe left it active.
 static int cmd_caps(int argc, char **argv)
 {
@@ -149,6 +169,7 @@ static void register_commands(void)
         {.command = "info", .help = "Show firmware version, board id, chip and UI profile", .func = &cmd_info},
         {.command = "caps", .help = "List capabilities and whether each is active", .func = &cmd_caps},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
+        {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
     };
     for (size_t i = 0; i < sizeof(cmds) / sizeof(cmds[0]); i++) {
         ESP_ERROR_CHECK(esp_console_cmd_register(&cmds[i]));
