@@ -20,7 +20,9 @@
         "native_w": 240, "native_h": 320, "bus": "spi", "hal_backend": "esp_lcd",
         "color_format": "rgb565", "default_rotation": null, "color_invert": null,
         "rgb_order": null, "col_offset": 0, "row_offset": 0,
-        "backlight": { "pin": null, "pwm": true, "active_level": 1 }, "pins": null
+        "backlight": { "pin": 21, "pwm": true, "active_level": 1 },
+        "pins": { "sclk": 14, "mosi": 13, "miso": 12, "cs": 15, "dc": 2, "rst": -1,
+          "_note": "Display SPI on HSPI/SPI2. Community-sourced + adversarially verified (witnessmenow ESP32-Cheap-Yellow-Display User_Setup.h, rzeldent sunton board JSON, Random Nerd Tutorials, espboards.dev): unanimous across 4 refs, skeptic CONFIRMED, no 1-USB/2-USB divergence (pinouts identical, only the driver IC differs). rst=-1 tied to EN. Backlight GPIO21 active-HIGH (distinct from the RGB LED on 4/16/17). UNVERIFIED on this unit's hardware. Touch XPT2046 is a SEPARATE bus: sclk25/mosi32/miso39/cs33/irq36." }
       },
       "input": [
         { "class": "touch", "controller": "XPT2046", "bus": "spi", "addr_or_cs": 33, "maps_to_lvgl": "pointer", "_note": "resistive; CS GPIO33 datasheet-community" }

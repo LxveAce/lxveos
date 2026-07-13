@@ -98,6 +98,17 @@ def validate_manifest(boards, root=ROOT):
                             ("hal_backend", bool(d.get("hal_backend")))):
                 if not ok:
                     errs.append(f"{p} display.present but '{key}' missing/invalid")
+            # optional GPIO pinout — if present it must be an object of valid pin ints (-1 = tied/none).
+            pins = d.get("pins")
+            if pins is not None:
+                if not isinstance(pins, dict):
+                    errs.append(f"{p} display.pins must be an object or null")
+                else:
+                    for pk, pv in pins.items():
+                        if pk.startswith("_"):
+                            continue
+                        if not isinstance(pv, int) or pv < -1 or pv > 48:
+                            errs.append(f"{p} display.pins.{pk}={pv!r} must be an int in [-1,48]")
     return errs
 
 
@@ -147,6 +158,25 @@ def board_info_h(bid, b):
             f'#define LXVEOS_DISP_BUS          {s(d.get("bus"))}',
             f'#define LXVEOS_DISP_BACKEND      {s(d.get("hal_backend"))}',
         ]
+        # GPIO pinout — emitted only when the manifest carries a verified `pins` block (many boards
+        # still have pins=null). LXVEOS_DISP_HAS_PINS gates the esp_lcd SPI bring-up in lxveos_board;
+        # -1 means the line is tied/absent (e.g. RST tied to EN). BL pin comes from display.backlight.
+        pd = d.get("pins")
+        pins = pd if isinstance(pd, dict) else {}
+        need = ("sclk", "mosi", "cs", "dc")  # minimum to open an SPI panel-IO handle
+        has_pins = all(isinstance(pins.get(k), int) for k in need)
+        lines.append(f'#define LXVEOS_DISP_HAS_PINS     {1 if has_pins else 0}')
+        if has_pins:
+            bl = (d.get("backlight") or {}).get("pin")
+            lines += [
+                f'#define LXVEOS_DISP_PIN_SCLK     {pins.get("sclk", -1)}',
+                f'#define LXVEOS_DISP_PIN_MOSI     {pins.get("mosi", -1)}',
+                f'#define LXVEOS_DISP_PIN_MISO     {pins.get("miso", -1)}',
+                f'#define LXVEOS_DISP_PIN_CS       {pins.get("cs", -1)}',
+                f'#define LXVEOS_DISP_PIN_DC       {pins.get("dc", -1)}',
+                f'#define LXVEOS_DISP_PIN_RST      {pins.get("rst", -1)}',
+                f'#define LXVEOS_DISP_PIN_BL       {bl if isinstance(bl, int) else -1}',
+            ]
     # Input devices as an X-macro list so the board layer can iterate them at compile time:
     #   #define X(class, controller, bus, lvgl_indev) ...   then   LXVEOS_INPUT_LIST(X)
     # Empty (LXVEOS_INPUT_COUNT 0, empty list) on headless boards.

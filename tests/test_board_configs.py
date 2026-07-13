@@ -58,6 +58,38 @@ def test_display_boards_emit_driver_defines():
             assert "#define LXVEOS_HAS_DISPLAY       0" in h
 
 
+def test_display_pins_emitted_when_present():
+    """A display board with a `pins` block emits LXVEOS_DISP_HAS_PINS 1 plus one define per line
+    matching the manifest; boards without pins emit LXVEOS_DISP_HAS_PINS 0 and no pin defines."""
+    for bid, b in BOARDS.items():
+        d = b.get("display", {})
+        if not d.get("present"):
+            continue
+        h = g.board_info_h(bid, b)
+        pins = d.get("pins") if isinstance(d.get("pins"), dict) else {}
+        if all(isinstance(pins.get(k), int) for k in ("sclk", "mosi", "cs", "dc")):
+            assert "#define LXVEOS_DISP_HAS_PINS     1" in h, f"{bid}: expected HAS_PINS 1"
+            for name, key in (("SCLK", "sclk"), ("MOSI", "mosi"), ("CS", "cs"), ("DC", "dc")):
+                assert f"#define LXVEOS_DISP_PIN_{name}" in h and f" {pins[key]}" in h, \
+                    f"{bid}: pin {name}={pins[key]} not emitted"
+            bl = (d.get("backlight") or {}).get("pin")
+            assert f"#define LXVEOS_DISP_PIN_BL       {bl if isinstance(bl, int) else -1}" in h, \
+                f"{bid}: backlight pin not emitted"
+        else:
+            assert "#define LXVEOS_DISP_HAS_PINS     0" in h, f"{bid}: expected HAS_PINS 0"
+            assert "LXVEOS_DISP_PIN_SCLK" not in h, f"{bid}: leaked pin defines without a pins block"
+
+
+def test_cyd_pins_match_verified_pinout():
+    """Guard the flagship CYD pinout against silent manifest drift (community-verified constants)."""
+    h = g.board_info_h("cyd_2432S028_classic", BOARDS["cyd_2432S028_classic"])
+    for line in ("#define LXVEOS_DISP_PIN_SCLK     14", "#define LXVEOS_DISP_PIN_MOSI     13",
+                 "#define LXVEOS_DISP_PIN_MISO     12", "#define LXVEOS_DISP_PIN_CS       15",
+                 "#define LXVEOS_DISP_PIN_DC       2", "#define LXVEOS_DISP_PIN_RST      -1",
+                 "#define LXVEOS_DISP_PIN_BL       21"):
+        assert line in h, f"CYD pinout drift: missing `{line}`"
+
+
 def test_input_summary_emitted():
     """board_info.h carries LXVEOS_INPUT_COUNT matching the manifest and an LXVEOS_INPUT_LIST X-macro
     with one X(...) row per input device (none on headless boards)."""
