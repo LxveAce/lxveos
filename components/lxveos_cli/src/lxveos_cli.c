@@ -545,6 +545,78 @@ static int cmd_stations(int argc, char **argv)
     return 0;
 }
 
+// `probes [seconds] [channel]` — passive probe-request SSID logger (the `wifi_probe_scan` catalog op). Lists
+// the SSIDs nearby client devices are actively probing for — each directed probe names a network the device
+// has connected to before, so this reveals saved-network history (a recon signal + a privacy leak). Listens
+// only — never sends a probe response. WIFI-capability gated.
+static int cmd_probes(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_WIFI)) {
+        printf("wifi capability is not active on this build — cannot scan probes\n");
+        return 0;
+    }
+    uint32_t secs = 12;
+    uint8_t channel = 0;  // 0 = hop all channels
+    if (argc >= 2) {
+        long v = strtol(argv[1], NULL, 10);
+        if (v >= 1 && v <= 120) {
+            secs = (uint32_t)v;
+        } else {
+            printf("usage: probes [seconds 1-120] [channel 1-13]  (default 12s, all channels)\n");
+            return 0;
+        }
+    }
+    if (argc >= 3) {
+        long c = strtol(argv[2], NULL, 10);
+        if (c >= 1 && c <= 13) {
+            channel = (uint8_t)c;
+        } else {
+            printf("usage: probes [seconds 1-120] [channel 1-13]  (default 12s, all channels)\n");
+            return 0;
+        }
+    }
+    if (channel) {
+        printf("passive probe-request scan for %us on channel %u (listen only — sends nothing)...\n",
+               (unsigned)secs, channel);
+    } else {
+        printf("passive probe-request scan for %us, all channels (listen only — sends nothing)...\n",
+               (unsigned)secs);
+    }
+    static lxveos_wifi_probe_t pr[48];
+    size_t found = 0;
+    uint32_t total = 0, wildcard = 0;
+    esp_err_t e = lxveos_wifi_probe_scan(secs, channel, pr, sizeof(pr) / sizeof(pr[0]), &found, &total,
+                                         &wildcard);
+    if (e != ESP_OK) {
+        printf("probe scan failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    printf("  %-32s %5s %s\n", "SSID (device is hunting for)", "SEEN", "RSSI");
+    for (size_t i = 0; i < found; i++) {
+        printf("  ");
+        // Sanitize the SSID: replace control/non-printable bytes with '.' so a crafted SSID can't garble the
+        // console; pad to a fixed width for the column.
+        int w = 0;
+        for (const char *s = pr[i].ssid; *s && w < 32; s++, w++) {
+            unsigned char c = (unsigned char)*s;
+            putchar((c < 0x20 || c == 0x7f) ? '.' : (int)c);
+        }
+        for (; w < 32; w++) {
+            putchar(' ');
+        }
+        printf(" %5u %4ddB\n", (unsigned)pr[i].count, pr[i].rssi);
+    }
+    printf("%u directed SSID(s) from %u probe request(s) (%u wildcard/broadcast)\n",
+           (unsigned)found, (unsigned)total, (unsigned)wildcard);
+    if (found == 0) {
+        printf("(no directed probe requests this window — nearby devices sent only wildcard probes or none)\n");
+    }
+    return 0;
+}
+
 // `defend [seconds]` — passive deauth/disassoc detector (the `deauth_detect` catalog operation). Counts
 // deauthentication/disassociation frames — the fingerprint of a deauth attack or a rogue AP kicking
 // clients — and names the busiest transmitter. Listens only; sends nothing.
@@ -971,6 +1043,7 @@ static void register_commands(void)
         {.command = "scan", .help = "Passive Wi-Fi AP scan (listen only, no frames sent)", .func = &cmd_scan},
         {.command = "sniff", .help = "Passive Wi-Fi packet monitor: sniff [seconds] [channel] (listen only)", .func = &cmd_sniff},
         {.command = "stations", .help = "Passive client-station scan: stations [seconds] [channel] (listen only)", .func = &cmd_stations},
+        {.command = "probes", .help = "Passive probe-request SSID logger: probes [seconds] [channel] (listen only)", .func = &cmd_probes},
         {.command = "capture", .help = "Passive EAPOL/PMKID capture -> hashcat 22000: capture [seconds] [channel]", .func = &cmd_capture},
         {.command = "defend", .help = "Passive deauth/disassoc attack detector: defend [seconds] [channel]", .func = &cmd_defend},
         {.command = "eviltwin", .help = "Passive evil-twin/rogue-AP detector (duplicate-BSSID ESSIDs)", .func = &cmd_eviltwin},

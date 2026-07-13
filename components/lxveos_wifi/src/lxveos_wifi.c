@@ -762,6 +762,145 @@ esp_err_t lxveos_wifi_sta_scan(uint32_t seconds, uint8_t channel, lxveos_wifi_cl
     return ESP_OK;
 }
 
+// ── Probe-request logger (passive recon) ─────────────────────────────────────────────────────────────
+// Records the SSIDs nearby client devices are actively looking for. A DIRECTED probe request carries the
+// SSID of a network the device has connected to before, so a passive listen reveals a device's saved-
+// network history — a classic recon signal and a privacy leak. Written by the rx callback, read after
+// promiscuous is disabled. Purely observational: never sends a probe response.
+#define LXVEOS_PROBE_MAX 48
+
+typedef struct {
+    char ssid[33];
+    uint32_t count;
+    int8_t rssi;
+    bool used;
+} probe_ent_t;
+
+static probe_ent_t s_probes[LXVEOS_PROBE_MAX];
+static volatile uint32_t s_probe_total;     // every probe request seen (directed + wildcard)
+static volatile uint32_t s_probe_wildcard;  // broadcast probes with an empty SSID (no saved-net leak)
+
+static void probe_upsert(const char *ssid, int8_t rssi)
+{
+    for (int i = 0; i < LXVEOS_PROBE_MAX; i++) {
+        if (s_probes[i].used && strcmp(s_probes[i].ssid, ssid) == 0) {
+            s_probes[i].count++;
+            if (rssi > s_probes[i].rssi) {
+                s_probes[i].rssi = rssi;
+            }
+            return;
+        }
+    }
+    for (int i = 0; i < LXVEOS_PROBE_MAX; i++) {
+        if (!s_probes[i].used) {
+            strncpy(s_probes[i].ssid, ssid, sizeof(s_probes[i].ssid) - 1);
+            s_probes[i].ssid[sizeof(s_probes[i].ssid) - 1] = '\0';
+            s_probes[i].count = 1;
+            s_probes[i].rssi = rssi;
+            s_probes[i].used = true;
+            return;
+        }
+    }
+}
+
+static void probe_rx_cb(void *buf, wifi_promiscuous_pkt_type_t type)
+{
+    const wifi_promiscuous_pkt_t *pkt = (const wifi_promiscuous_pkt_t *)buf;
+    if (pkt == NULL) {
+        return;
+    }
+    const uint8_t *f = pkt->payload;
+    const int len = pkt->rx_ctrl.sig_len;
+    if (len < 24) {
+        return;
+    }
+    const uint8_t ftype = (f[0] >> 2) & 0x3;
+    const uint8_t fsub = (f[0] >> 4) & 0xF;
+    if (type != WIFI_PKT_MGMT || ftype != 0 || fsub != 4) {
+        return;  // only probe-request management frames (subtype 4)
+    }
+    s_probe_total++;
+    // Probe requests have NO fixed body fields — the tagged parameters begin at offset 24, and the SSID
+    // element (tag 0) is mandated first.
+    const int p = 24;
+    if (p + 2 > len) {
+        return;
+    }
+    if (f[p] != 0) {
+        return;  // first element isn't the SSID — malformed; ignore
+    }
+    int slen = f[p + 1];
+    if (p + 2 + slen > len) {
+        return;  // truncated
+    }
+    if (slen == 0) {
+        s_probe_wildcard++;  // wildcard/broadcast probe — reveals no saved network
+        return;
+    }
+    if (slen > 32) {
+        slen = 32;
+    }
+    char name[33];
+    memcpy(name, f + p + 2, (size_t)slen);
+    name[slen] = '\0';
+    probe_upsert(name, pkt->rx_ctrl.rssi);
+}
+
+esp_err_t lxveos_wifi_probe_scan(uint32_t seconds, uint8_t channel, lxveos_wifi_probe_t *out, size_t max,
+                                 size_t *found, uint32_t *total, uint32_t *wildcard)
+{
+    if (found != NULL) {
+        *found = 0;
+    }
+    if (total != NULL) {
+        *total = 0;
+    }
+    if (wildcard != NULL) {
+        *wildcard = 0;
+    }
+    if (out == NULL || max == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (seconds == 0) {
+        seconds = 12;
+    }
+    ESP_RETURN_ON_ERROR(ensure_wifi_up(), TAG, "wifi bring-up");
+
+    memset(s_probes, 0, sizeof(s_probes));
+    s_probe_total = 0;
+    s_probe_wildcard = 0;
+
+    const wifi_promiscuous_filter_t filt = {.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
+    ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous_filter(&filt), TAG, "promisc filter");
+    ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous_rx_cb(probe_rx_cb), TAG, "promisc cb");
+    ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous(true), TAG, "promisc on");
+
+    run_channel_loop(seconds, channel, 300);
+    esp_wifi_set_promiscuous(false);
+
+    size_t k = 0;
+    for (int i = 0; i < LXVEOS_PROBE_MAX && k < max; i++) {
+        if (!s_probes[i].used) {
+            continue;
+        }
+        strncpy(out[k].ssid, s_probes[i].ssid, sizeof(out[k].ssid) - 1);
+        out[k].ssid[sizeof(out[k].ssid) - 1] = '\0';
+        out[k].count = s_probes[i].count;
+        out[k].rssi = s_probes[i].rssi;
+        k++;
+    }
+    if (found != NULL) {
+        *found = k;
+    }
+    if (total != NULL) {
+        *total = s_probe_total;
+    }
+    if (wildcard != NULL) {
+        *wildcard = s_probe_wildcard;
+    }
+    return ESP_OK;
+}
+
 // ── Deauth / disassoc watch (passive defense) ────────────────────────────────────────────────────────
 // Counts deauthentication (mgmt subtype 12) and disassociation (subtype 10) frames — the fingerprint of a
 // deauth attack — and tracks the busiest transmitter. Reuses the promiscuous plumbing; written by the rx

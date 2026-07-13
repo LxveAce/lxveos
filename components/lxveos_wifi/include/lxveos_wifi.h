@@ -105,6 +105,23 @@ typedef struct {
     uint8_t channels_swept;
 } lxveos_wifi_deauth_stats_t;
 
+// One SSID that nearby client devices are actively probing for (learned passively from probe-request
+// frames). A directed probe request names a network the device has previously connected to and is looking
+// for — a recon signal (and a privacy leak) that reveals a device's saved-network history.
+typedef struct {
+    char ssid[33];   // the SSID being probed for (NUL-terminated)
+    uint32_t count;  // number of probe-request frames seen for this SSID
+    int8_t rssi;     // strongest RSSI seen (dBm)
+} lxveos_wifi_probe_t;
+
+// PASSIVE probe-request scan for ~`seconds`. `channel` 0 hops the whole 2.4 GHz plan; 1-13 LOCKS to that one
+// channel. Runs promiscuous and records the SSIDs in 802.11 probe-request frames — the networks nearby
+// clients are hunting for. Listens only — transmits NOTHING (never a probe response). Copies up to `max`
+// distinct directed SSIDs into `out`, sets *found; also reports the total probe-request count via *total and
+// the wildcard/broadcast-probe count via *wildcard (both may be NULL). Returns ESP_OK or an esp_err_t.
+esp_err_t lxveos_wifi_probe_scan(uint32_t seconds, uint8_t channel, lxveos_wifi_probe_t *out, size_t max,
+                                 size_t *found, uint32_t *total, uint32_t *wildcard);
+
 // PASSIVE deauth/disassoc watch for ~`seconds`. `channel` 0 hops the whole 2.4 GHz plan; 1-13 LOCKS to
 // that one channel for the entire window (concentrate on a known AP's channel). Runs promiscuous and
 // counts deauthentication / disassociation management frames (the signature of a deauth attack or a rogue
