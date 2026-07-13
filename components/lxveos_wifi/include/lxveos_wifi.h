@@ -47,6 +47,29 @@ typedef struct {
 // only per-type / per-channel counts.
 esp_err_t lxveos_wifi_sniff(uint32_t seconds, lxveos_wifi_sniff_stats_t *out);
 
+// Tally from one EAPOL/PMKID capture session.
+typedef struct {
+    uint32_t beacons;       // beacons/probe-responses parsed (source of the BSSID->ESSID map)
+    uint32_t essids;        // distinct BSSID->ESSID entries learned
+    uint32_t eapol_frames;  // EAPOL-Key frames seen
+    uint32_t m1, m2, m3, m4;  // 4-way-handshake messages seen (by key-info classification)
+    uint32_t pmkids;        // RSN PMKIDs extracted from M1 (each yields a hashcat WPA*01 line)
+    uint8_t channels_swept;
+} lxveos_wifi_eapol_stats_t;
+
+// Sink for one text line the capture wants to surface (a hashcat-22000 WPA*01 PMKID line). UI-free: the
+// caller supplies the printer, so the driver stays free of stdio. Called from the caller's task (after the
+// promiscuous session ends), never from the Wi-Fi task.
+typedef void (*lxveos_wifi_line_cb)(const char *line);
+
+// PASSIVE EAPOL/PMKID capture for ~`seconds`. Channel-hops in promiscuous mode, parses beacons into a
+// BSSID->ESSID map, detects EAPOL-Key handshake messages (M1-M4), and extracts any RSN PMKID from an M1.
+// For each PMKID it emits a ready-to-crack hashcat-22000 `WPA*01*<pmkid>*<ap>*<sta>*<essid>***` line via
+// `emit` (may be NULL). LISTEN ONLY — transmits nothing and NEVER deauthenticates to force a handshake;
+// it captures only what is already in the air. Stats -> *out. Returns ESP_OK or an esp_err_t.
+esp_err_t lxveos_wifi_eapol_capture(uint32_t seconds, lxveos_wifi_line_cb emit,
+                                    lxveos_wifi_eapol_stats_t *out);
+
 // Short human label for a wifi_auth_mode_t value ("open", "wpa2", ...). Never NULL.
 const char *lxveos_wifi_authmode_str(uint8_t authmode);
 

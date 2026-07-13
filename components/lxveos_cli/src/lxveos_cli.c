@@ -406,6 +406,53 @@ static int cmd_sniff(int argc, char **argv)
     return 0;
 }
 
+// Sink for the hashcat-22000 lines the capture produces — printed one per line, indented.
+static void capture_emit_line(const char *line)
+{
+    printf("  %s\n", line);
+}
+
+// `capture [seconds]` — passive EAPOL/PMKID capture (the `eapol_capture` catalog operation). Listens in
+// promiscuous mode, parses beacons for ESSIDs and EAPOL-Key frames for the 4-way handshake, and prints a
+// hashcat-22000 WPA*01 line for any RSN PMKID seen (feeds the Cyber Controller WPA crack pipeline). LISTEN
+// ONLY — never transmits a deauth to force a handshake; captures only what is already in the air.
+static int cmd_capture(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_WIFI)) {
+        printf("wifi capability is not active on this build — cannot capture\n");
+        return 0;
+    }
+    uint32_t secs = 15;
+    if (argc >= 2) {
+        long v = strtol(argv[1], NULL, 10);
+        if (v >= 1 && v <= 120) {
+            secs = (uint32_t)v;
+        } else {
+            printf("usage: capture [seconds 1-120]  (default 15)\n");
+            return 0;
+        }
+    }
+    printf("passive EAPOL/PMKID capture for %us (listen only — never forces a handshake)...\n",
+           (unsigned)secs);
+    lxveos_wifi_eapol_stats_t st;
+    esp_err_t e = lxveos_wifi_eapol_capture(secs, capture_emit_line, &st);
+    if (e != ESP_OK) {
+        printf("capture failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    printf("beacons %u (%u ESSIDs) — EAPOL %u (M1 %u M2 %u M3 %u M4 %u) — PMKIDs %u — %u channel dwells\n",
+           (unsigned)st.beacons, (unsigned)st.essids, (unsigned)st.eapol_frames,
+           (unsigned)st.m1, (unsigned)st.m2, (unsigned)st.m3, (unsigned)st.m4,
+           (unsigned)st.pmkids, (unsigned)st.channels_swept);
+    if (st.eapol_frames == 0) {
+        printf("(no EAPOL in the air this window — no client (re)associated; honest result)\n");
+    }
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -415,6 +462,7 @@ static void register_commands(void)
         {.command = "features", .help = "List planned/available security operations for this unit", .func = &cmd_features},
         {.command = "scan", .help = "Passive Wi-Fi AP scan (listen only, no frames sent)", .func = &cmd_scan},
         {.command = "sniff", .help = "Passive Wi-Fi packet monitor: sniff [seconds] (listen only)", .func = &cmd_sniff},
+        {.command = "capture", .help = "Passive EAPOL/PMKID capture -> hashcat 22000: capture [seconds]", .func = &cmd_capture},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
