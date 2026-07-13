@@ -25,6 +25,7 @@
 #include "lxveos_board.h"
 #include "lxveos_caps.h"
 #include "lxveos_ops.h"
+#include "lxveos_wifi.h"
 
 #define LXVEOS_NVS_NS      "lxveos"
 #define LXVEOS_NVS_USE_ACK "use_ack"
@@ -326,6 +327,39 @@ static int cmd_features(int argc, char **argv)
     return 0;
 }
 
+// `scan` — passive Wi-Fi AP scan (the `wifi_ap_scan` catalog operation). Listens for beacons only and
+// transmits nothing; gated on the WIFI capability. Prints a table of the access points in range.
+static int cmd_scan(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_WIFI)) {
+        printf("wifi capability is not active on this build — nothing to scan\n");
+        return 0;
+    }
+    printf("passive Wi-Fi AP scan (listening only — no frames transmitted)...\n");
+    static lxveos_wifi_ap_t aps[32];
+    size_t found = 0;
+    esp_err_t e = lxveos_wifi_scan(aps, sizeof(aps) / sizeof(aps[0]), &found);
+    if (e != ESP_OK) {
+        printf("scan failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    printf("  %-32s %5s %3s %-8s %s\n", "SSID", "RSSI", "CH", "AUTH", "BSSID");
+    for (size_t i = 0; i < found; i++) {
+        printf("  %-32s %4ddB %3u %-8s %02x:%02x:%02x:%02x:%02x:%02x\n",
+               aps[i].ssid[0] ? aps[i].ssid : "<hidden>",
+               aps[i].rssi, aps[i].channel, lxveos_wifi_authmode_str(aps[i].authmode),
+               aps[i].bssid[0], aps[i].bssid[1], aps[i].bssid[2],
+               aps[i].bssid[3], aps[i].bssid[4], aps[i].bssid[5]);
+    }
+    printf("%u AP(s) in range\n", (unsigned)found);
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -333,6 +367,7 @@ static void register_commands(void)
         {.command = "info", .help = "Show firmware version, board id, chip and UI profile", .func = &cmd_info},
         {.command = "caps", .help = "List capabilities and whether each is active", .func = &cmd_caps},
         {.command = "features", .help = "List planned/available security operations for this unit", .func = &cmd_features},
+        {.command = "scan", .help = "Passive Wi-Fi AP scan (listen only, no frames sent)", .func = &cmd_scan},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},

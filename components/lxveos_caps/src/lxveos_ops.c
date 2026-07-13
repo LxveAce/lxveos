@@ -12,7 +12,7 @@
 // (capability absent) at runtime. Keep new rows in category order; the CC bridge keys on `slug`.
 static const lxveos_op_t OPS[] = {
     // ── Recon ────────────────────────────────────────────────────────────────────────────────────
-    {"wifi_ap_scan",   "Wi-Fi AP scan",         LXVEOS_OPCAT_RECON,   LXVEOS_CAP_WIFI,    "Marauder", false},
+    {"wifi_ap_scan",   "Wi-Fi AP scan",         LXVEOS_OPCAT_RECON,   LXVEOS_CAP_WIFI,    "Marauder", true},
     {"wifi_sta_scan",  "Wi-Fi station scan",    LXVEOS_OPCAT_RECON,   LXVEOS_CAP_WIFI,    "Marauder", false},
     {"wifi_sniff",     "Wi-Fi packet monitor",  LXVEOS_OPCAT_RECON,   LXVEOS_CAP_WIFI,    "Marauder", false},
     {"eapol_capture",  "EAPOL/PMKID capture",   LXVEOS_OPCAT_RECON,   LXVEOS_CAP_WIFI,    "Marauder", false},
