@@ -6,9 +6,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
 #include "esp_check.h"
 #include "esp_event.h"
 #include "esp_netif.h"
+#include "esp_timer.h"
 #include "esp_wifi.h"
 
 static const char *TAG = "lxveos_wifi";
@@ -88,6 +92,69 @@ esp_err_t lxveos_wifi_scan(lxveos_wifi_ap_t *out, size_t max, size_t *found)
     }
     free(recs);
     return e;
+}
+
+// Live tally for an in-flight sniff. Written from the Wi-Fi task's promiscuous callback, read by the
+// caller after promiscuous is disabled. Counters are monotonic so the benign read/write overlap during a
+// session is harmless; we snapshot only after esp_wifi_set_promiscuous(false) quiesces the callback.
+static volatile lxveos_wifi_sniff_stats_t s_sniff;
+
+static void promisc_rx_cb(void *buf, wifi_promiscuous_pkt_type_t type)
+{
+    const wifi_promiscuous_pkt_t *pkt = (const wifi_promiscuous_pkt_t *)buf;
+    s_sniff.total++;
+    switch (type) {
+    case WIFI_PKT_MGMT: s_sniff.mgmt++; break;
+    case WIFI_PKT_CTRL: s_sniff.ctrl++; break;
+    case WIFI_PKT_DATA: s_sniff.data++; break;
+    default:            s_sniff.misc++; break;
+    }
+    if (pkt != NULL) {
+        int ch = pkt->rx_ctrl.channel;
+        if (ch >= 1 && ch <= 13) {
+            s_sniff.per_channel[ch]++;
+        }
+    }
+}
+
+esp_err_t lxveos_wifi_sniff(uint32_t seconds, lxveos_wifi_sniff_stats_t *out)
+{
+    if (out != NULL) {
+        memset(out, 0, sizeof(*out));
+    }
+    if (seconds == 0) {
+        seconds = 8;
+    }
+    ESP_RETURN_ON_ERROR(ensure_wifi_up(), TAG, "wifi bring-up");
+
+    memset((void *)&s_sniff, 0, sizeof(s_sniff));
+    const wifi_promiscuous_filter_t filt = {.filter_mask = WIFI_PROMIS_FILTER_MASK_ALL};
+    ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous_filter(&filt), TAG, "promisc filter");
+    ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous_rx_cb(promisc_rx_cb), TAG, "promisc cb");
+    ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous(true), TAG, "promisc on");
+
+    // Manual channel hop across the 2.4 GHz plan for the session duration. In promiscuous mode we drive the
+    // channel ourselves (no association), dwelling long enough on each to catch a beacon interval or two.
+    static const uint8_t chans[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};
+    const int nch = (int)(sizeof(chans) / sizeof(chans[0]));
+    const int64_t end_us = esp_timer_get_time() + (int64_t)seconds * 1000000;
+    uint8_t swept = 0;
+    int i = 0;
+    while (esp_timer_get_time() < end_us) {
+        esp_wifi_set_channel(chans[i], WIFI_SECOND_CHAN_NONE);
+        if (swept < 255) {
+            swept++;
+        }
+        vTaskDelay(pdMS_TO_TICKS(250));
+        i = (i + 1) % nch;
+    }
+
+    esp_wifi_set_promiscuous(false);
+    if (out != NULL) {
+        memcpy(out, (const void *)&s_sniff, sizeof(*out));
+        out->channels_swept = swept;
+    }
+    return ESP_OK;
 }
 
 const char *lxveos_wifi_authmode_str(uint8_t authmode)

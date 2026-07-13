@@ -52,6 +52,7 @@ authorized-use terms; the acceptance is stored in NVS, so it's a one-time gate p
 | `caps` | capability registry — which subsystems (wifi / ble / storage / …) are active |
 | `features` | operation catalog — the security ops (Wi-Fi scan/monitor/capture, BLE, sub-GHz, …) this unit can run or has planned, each gated by capability |
 | `scan` | passive Wi-Fi AP scan — listen for beacons and list APs in range (SSID / RSSI / channel / auth / BSSID); transmits nothing |
+| `sniff [seconds]` | passive Wi-Fi packet monitor — promiscuous channel-hop, tally frames by 802.11 type + channel (counts only, no payloads); transmits nothing |
 | `sysinfo` | ESP-IDF version, reset reason, boot count, uptime, heap free |
 | `status` | one machine-readable line for the Cyber Controller host (below) |
 | `loglevel <tag\|*> <level>` | change ESP-IDF log verbosity at runtime |

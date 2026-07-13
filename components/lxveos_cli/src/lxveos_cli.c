@@ -11,6 +11,7 @@
 #include "lxveos_cli.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "esp_console.h"
@@ -360,6 +361,51 @@ static int cmd_scan(int argc, char **argv)
     return 0;
 }
 
+// `sniff [seconds]` — passive Wi-Fi packet monitor (the `wifi_sniff` catalog operation). Enables
+// promiscuous RX and channel-hops the 2.4 GHz plan, tallying frames by 802.11 type and channel. Listens
+// only — transmits nothing, and captures no payloads/PII (counts only). WIFI-capability gated.
+static int cmd_sniff(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_WIFI)) {
+        printf("wifi capability is not active on this build — cannot sniff\n");
+        return 0;
+    }
+    uint32_t secs = 8;
+    if (argc >= 2) {
+        long v = strtol(argv[1], NULL, 10);
+        if (v >= 1 && v <= 60) {
+            secs = (uint32_t)v;
+        } else {
+            printf("usage: sniff [seconds 1-60]  (default 8)\n");
+            return 0;
+        }
+    }
+    printf("passive Wi-Fi packet monitor for %us (promiscuous listen — no frames transmitted)...\n",
+           (unsigned)secs);
+    lxveos_wifi_sniff_stats_t st;
+    esp_err_t e = lxveos_wifi_sniff(secs, &st);
+    if (e != ESP_OK) {
+        printf("sniff failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    printf("frames: %u total — mgmt %u, data %u, ctrl %u, misc %u  (%u channel dwells)\n",
+           (unsigned)st.total, (unsigned)st.mgmt, (unsigned)st.data, (unsigned)st.ctrl,
+           (unsigned)st.misc, (unsigned)st.channels_swept);
+    printf("per channel:");
+    bool any = false;
+    for (int c = 1; c <= 13; c++) {
+        if (st.per_channel[c]) {
+            printf(" ch%d=%u", c, (unsigned)st.per_channel[c]);
+            any = true;
+        }
+    }
+    printf("%s\n", any ? "" : " (none)");
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -368,6 +414,7 @@ static void register_commands(void)
         {.command = "caps", .help = "List capabilities and whether each is active", .func = &cmd_caps},
         {.command = "features", .help = "List planned/available security operations for this unit", .func = &cmd_features},
         {.command = "scan", .help = "Passive Wi-Fi AP scan (listen only, no frames sent)", .func = &cmd_scan},
+        {.command = "sniff", .help = "Passive Wi-Fi packet monitor: sniff [seconds] (listen only)", .func = &cmd_sniff},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
