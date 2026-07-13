@@ -2,8 +2,9 @@ name: build-matrix
 # Regenerates board inputs from cyd_boards.json and builds every board with ESP-IDF v6.0.2. A fast
 # host-side `validate` job (no ESP-IDF) gates the matrix: it validates the manifest and runs the
 # board-config unit tests, so a manifest typo fails in seconds instead of after five parallel toolchain
-# builds. NOTE: the ESP-IDF build stage is still a scaffold — it has not yet compiled clean against the
-# toolchain. TODO: scripts/size_report.py flash/IRAM gate + Unity/pytest-embedded.
+# builds. Each board's build produces a single-file flashable image (merge-bin) uploaded as an artifact,
+# so any machine can flash a device without an ESP-IDF toolchain. TODO: scripts/size_report.py flash/IRAM
+# gate + Unity/pytest-embedded on-device tests.
 on:
   push:
   pull_request:
@@ -56,4 +57,18 @@ jobs:
             idf.py -B build/${{ matrix.board }}
             -D SDKCONFIG=build/${{ matrix.board }}/sdkconfig
             -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.${{ matrix.target }};boards/${{ matrix.board }}/sdkconfig.defaults"
-            build
+            build &&
+            idf.py -B build/${{ matrix.board }}
+            -D SDKCONFIG=build/${{ matrix.board }}/sdkconfig
+            merge-bin -o build/${{ matrix.board }}/${{ matrix.board }}-merged.bin
+      # Publish a single-file flashable image per board so a device can be flashed without an ESP-IDF
+      # toolchain: `esptool --port <COM> write_flash 0x0 <board>-merged.bin`. flasher_args.json is kept
+      # for the per-offset alternative. This is what makes on-hardware bring-up possible from any machine.
+      - name: Upload ${{ matrix.board }} firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: lxveos-${{ matrix.board }}
+          path: |
+            build/${{ matrix.board }}/${{ matrix.board }}-merged.bin
+            build/${{ matrix.board }}/flasher_args.json
+          if-no-files-found: error
