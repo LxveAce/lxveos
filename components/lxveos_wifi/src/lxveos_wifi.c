@@ -177,6 +177,17 @@ typedef struct {
     bool has_pmkid;
     uint8_t msg_mask;  // bit0..3 = M1..M4 seen
     bool used;
+    // WPA*02 (EAPOL/MIC) material: ANONCE + replay counter come from M1, the MIC + the full EAPOL frame
+    // (with its MIC field zeroed) + replay counter come from M2. A line is emitted when both are present
+    // and the replay counters agree (the two halves of the same 4-way exchange).
+    uint8_t anonce[32];
+    uint8_t m1_replay[8];
+    bool has_anonce;
+    uint8_t mic[16];
+    uint8_t m2_replay[8];
+    uint8_t eapol[256];
+    uint16_t eapol_len;
+    bool has_m2;
 } hs_ent_t;
 
 static essid_ent_t s_essid[LXVEOS_ESSID_MAX];
@@ -269,6 +280,50 @@ static void extract_pmkid(const uint8_t *frame, int len, int kf_off, hs_ent_t *h
     }
 }
 
+// EAPOL-Key body field offsets (relative to kf_off, the byte after the 4-byte 802.1X header):
+//   +5 replay counter (8) · +13 key nonce (32) · +77 key MIC (16) · +93 key-data-length (2).
+#define EK_REPLAY_OFF 5
+#define EK_NONCE_OFF  13
+#define EK_MIC_OFF    77
+
+// From M1 (AP->STA): stash the ANONCE (the AP's key nonce) and the replay counter for later pairing.
+static void store_m1(hs_ent_t *h, const uint8_t *frame, int len, int kf_off)
+{
+    if (h == NULL || h->has_anonce) {
+        return;
+    }
+    if (kf_off + EK_NONCE_OFF + 32 > len) {
+        return;
+    }
+    memcpy(h->m1_replay, &frame[kf_off + EK_REPLAY_OFF], 8);
+    memcpy(h->anonce, &frame[kf_off + EK_NONCE_OFF], 32);
+    h->has_anonce = true;
+}
+
+// From M2 (STA->AP): stash the MIC, the replay counter, and the full 802.1X/EAPOL-Key frame with the MIC
+// field zeroed (hashcat computes the MIC over the frame with MIC=0). `eapol_off` is the 802.1X version byte.
+static void store_m2(hs_ent_t *h, const uint8_t *frame, int len, int eapol_off, int kf_off)
+{
+    if (h == NULL || h->has_m2) {
+        return;
+    }
+    if (kf_off + EK_MIC_OFF + 16 > len) {
+        return;  // MIC field not fully present
+    }
+    // Full frame length = 4-byte 802.1X header + the declared body length (never trust the 802.11 len,
+    // which includes FCS/padding). The MIC sits at offset 81 within this frame (eapol_off+4+77).
+    int elen = 4 + ((frame[eapol_off + 2] << 8) | frame[eapol_off + 3]);
+    if (elen < 99 || elen > (int)sizeof(h->eapol) || eapol_off + elen > len) {
+        return;  // implausible / truncated / too large to store
+    }
+    memcpy(h->mic, &frame[kf_off + EK_MIC_OFF], 16);
+    memcpy(h->m2_replay, &frame[kf_off + EK_REPLAY_OFF], 8);
+    memcpy(h->eapol, &frame[eapol_off], (size_t)elen);
+    memset(&h->eapol[81], 0, 16);  // zero the MIC inside the stored EAPOL frame
+    h->eapol_len = (uint16_t)elen;
+    h->has_m2 = true;
+}
+
 static void eapol_rx_cb(void *buf, wifi_promiscuous_pkt_type_t type)
 {
     const wifi_promiscuous_pkt_t *pkt = (const wifi_promiscuous_pkt_t *)buf;
@@ -356,8 +411,8 @@ static void eapol_rx_cb(void *buf, wifi_promiscuous_pkt_type_t type)
         h->msg_mask |= (uint8_t)(1u << (msg - 1));
     }
     switch (msg) {
-    case 1: s_estats.m1++; extract_pmkid(f, len, kf_off, h); break;
-    case 2: s_estats.m2++; break;
+    case 1: s_estats.m1++; extract_pmkid(f, len, kf_off, h); store_m1(h, f, len, kf_off); break;
+    case 2: s_estats.m2++; store_m2(h, f, len, eapol_off, kf_off); break;
     case 3: s_estats.m3++; break;
     case 4: s_estats.m4++; break;
     default: break;
@@ -424,6 +479,43 @@ esp_err_t lxveos_wifi_eapol_capture(uint32_t seconds, lxveos_wifi_line_cb emit,
             }
             snprintf(line + n, sizeof(line) - n, "***");
             emit(line);
+        }
+
+        // WPA*02 (EAPOL/MIC): a captured M1+M2 pair whose replay counters agree. MESSAGEPAIR 00 = M1+M2,
+        // EAPOL taken from M2, replay-counter checked. The line can reach ~712 chars (EAPOL up to 256 B +
+        // a 32-char ESSID), so it uses its own static buffer rather than the WPA*01 stack buffer above.
+        for (int j = 0; j < LXVEOS_HS_MAX; j++) {
+            hs_ent_t *h = &s_hs[j];
+            if (!h->used || !h->has_anonce || !h->has_m2) {
+                continue;
+            }
+            if (memcmp(h->m1_replay, h->m2_replay, 8) != 0) {
+                continue;  // the M1 and M2 belong to different exchanges — not a valid pair
+            }
+            static char l2[800];
+            int n = snprintf(l2, sizeof(l2), "WPA*02*");
+            for (int k = 0; k < 16; k++) {
+                n += snprintf(l2 + n, sizeof(l2) - n, "%02x", h->mic[k]);
+            }
+            n += snprintf(l2 + n, sizeof(l2) - n, "*%02x%02x%02x%02x%02x%02x*",
+                          h->ap[0], h->ap[1], h->ap[2], h->ap[3], h->ap[4], h->ap[5]);
+            n += snprintf(l2 + n, sizeof(l2) - n, "%02x%02x%02x%02x%02x%02x*",
+                          h->sta[0], h->sta[1], h->sta[2], h->sta[3], h->sta[4], h->sta[5]);
+            const char *essid = essid_lookup(h->ap);
+            for (const char *e = essid; *e && n < (int)sizeof(l2) - 4; e++) {
+                n += snprintf(l2 + n, sizeof(l2) - n, "%02x", (uint8_t)*e);
+            }
+            n += snprintf(l2 + n, sizeof(l2) - n, "*");
+            for (int k = 0; k < 32; k++) {
+                n += snprintf(l2 + n, sizeof(l2) - n, "%02x", h->anonce[k]);
+            }
+            n += snprintf(l2 + n, sizeof(l2) - n, "*");
+            for (int k = 0; k < h->eapol_len && n < (int)sizeof(l2) - 6; k++) {
+                n += snprintf(l2 + n, sizeof(l2) - n, "%02x", h->eapol[k]);
+            }
+            snprintf(l2 + n, sizeof(l2) - n, "*00");
+            emit(l2);
+            s_estats.mics++;
         }
     }
 

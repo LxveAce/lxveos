@@ -444,12 +444,15 @@ static int cmd_capture(int argc, char **argv)
         printf("capture failed: %s\n", esp_err_to_name(e));
         return 0;
     }
-    printf("beacons %u (%u ESSIDs) — EAPOL %u (M1 %u M2 %u M3 %u M4 %u) — PMKIDs %u — %u channel dwells\n",
+    printf("beacons %u (%u ESSIDs) — EAPOL %u (M1 %u M2 %u M3 %u M4 %u) — PMKIDs %u — handshakes %u — %u channel dwells\n",
            (unsigned)st.beacons, (unsigned)st.essids, (unsigned)st.eapol_frames,
            (unsigned)st.m1, (unsigned)st.m2, (unsigned)st.m3, (unsigned)st.m4,
-           (unsigned)st.pmkids, (unsigned)st.channels_swept);
+           (unsigned)st.pmkids, (unsigned)st.mics, (unsigned)st.channels_swept);
     if (st.eapol_frames == 0) {
         printf("(no EAPOL in the air this window — no client (re)associated; honest result)\n");
+    } else {
+        printf("(emitted %u WPA*01 PMKID + %u WPA*02 handshake hashcat-22000 line(s))\n",
+               (unsigned)st.pmkids, (unsigned)st.mics);
     }
     return 0;
 }
