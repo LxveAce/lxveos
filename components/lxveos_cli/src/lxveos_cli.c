@@ -496,6 +496,52 @@ static int cmd_stations(int argc, char **argv)
     return 0;
 }
 
+// `defend [seconds]` — passive deauth/disassoc detector (the `deauth_detect` catalog operation). Counts
+// deauthentication/disassociation frames — the fingerprint of a deauth attack or a rogue AP kicking
+// clients — and names the busiest transmitter. Listens only; sends nothing.
+static int cmd_defend(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_WIFI)) {
+        printf("wifi capability is not active on this build — cannot watch\n");
+        return 0;
+    }
+    uint32_t secs = 15;
+    if (argc >= 2) {
+        long v = strtol(argv[1], NULL, 10);
+        if (v >= 1 && v <= 120) {
+            secs = (uint32_t)v;
+        } else {
+            printf("usage: defend [seconds 1-120]  (default 15)\n");
+            return 0;
+        }
+    }
+    printf("passive deauth/disassoc watch for %us (listen only — sends nothing)...\n", (unsigned)secs);
+    lxveos_wifi_deauth_stats_t st;
+    esp_err_t e = lxveos_wifi_deauth_watch(secs, &st);
+    if (e != ESP_OK) {
+        printf("watch failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    printf("beacons %u — deauth %u, disassoc %u  (%u channel dwells)\n",
+           (unsigned)st.beacons, (unsigned)st.deauth, (unsigned)st.disassoc,
+           (unsigned)st.channels_swept);
+    uint32_t hits = st.deauth + st.disassoc;
+    if (hits == 0) {
+        printf("verdict: clear — no deauth/disassoc activity seen\n");
+    } else {
+        printf("busiest source %02x:%02x:%02x:%02x:%02x:%02x (%u frames)\n",
+               st.top_bssid[0], st.top_bssid[1], st.top_bssid[2],
+               st.top_bssid[3], st.top_bssid[4], st.top_bssid[5], (unsigned)st.top_count);
+        printf("verdict: %s\n", hits >= 20
+               ? "⚠ elevated deauth/disassoc — possible attack or aggressive AP"
+               : "some deauth/disassoc seen (normal at low rates; watch the busiest source)");
+    }
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -507,6 +553,7 @@ static void register_commands(void)
         {.command = "sniff", .help = "Passive Wi-Fi packet monitor: sniff [seconds] (listen only)", .func = &cmd_sniff},
         {.command = "stations", .help = "Passive client-station scan: stations [seconds] (listen only)", .func = &cmd_stations},
         {.command = "capture", .help = "Passive EAPOL/PMKID capture -> hashcat 22000: capture [seconds]", .func = &cmd_capture},
+        {.command = "defend", .help = "Passive deauth/disassoc attack detector: defend [seconds]", .func = &cmd_defend},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},

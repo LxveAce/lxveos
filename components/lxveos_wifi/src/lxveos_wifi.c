@@ -592,6 +592,114 @@ esp_err_t lxveos_wifi_sta_scan(uint32_t seconds, lxveos_wifi_client_t *out, size
     return ESP_OK;
 }
 
+// ── Deauth / disassoc watch (passive defense) ────────────────────────────────────────────────────────
+// Counts deauthentication (mgmt subtype 12) and disassociation (subtype 10) frames — the fingerprint of a
+// deauth attack — and tracks the busiest transmitter. Reuses the promiscuous plumbing; written by the rx
+// callback, read after promiscuous is disabled. Purely observational: transmits nothing.
+#define LXVEOS_OFFENDER_MAX 16
+
+typedef struct {
+    uint8_t bssid[6];
+    uint32_t count;
+    bool used;
+} offender_ent_t;
+
+static offender_ent_t s_offender[LXVEOS_OFFENDER_MAX];
+static volatile lxveos_wifi_deauth_stats_t s_dstats;
+
+static void offender_bump(const uint8_t *bssid)
+{
+    for (int i = 0; i < LXVEOS_OFFENDER_MAX; i++) {
+        if (s_offender[i].used && mac_eq(s_offender[i].bssid, bssid)) {
+            s_offender[i].count++;
+            return;
+        }
+    }
+    for (int i = 0; i < LXVEOS_OFFENDER_MAX; i++) {
+        if (!s_offender[i].used) {
+            memcpy(s_offender[i].bssid, bssid, 6);
+            s_offender[i].count = 1;
+            s_offender[i].used = true;
+            return;
+        }
+    }
+}
+
+static void deauth_rx_cb(void *buf, wifi_promiscuous_pkt_type_t type)
+{
+    const wifi_promiscuous_pkt_t *pkt = (const wifi_promiscuous_pkt_t *)buf;
+    if (pkt == NULL) {
+        return;
+    }
+    const uint8_t *f = pkt->payload;
+    if (pkt->rx_ctrl.sig_len < 24) {
+        return;
+    }
+    if (type != WIFI_PKT_MGMT || ((f[0] >> 2) & 0x3) != 0) {
+        return;
+    }
+    const uint8_t fsub = (f[0] >> 4) & 0xF;
+    if (fsub == 8 || fsub == 5) {
+        s_dstats.beacons++;
+        return;
+    }
+    if (fsub == 12) {
+        s_dstats.deauth++;
+        offender_bump(f + 10);
+    } else if (fsub == 10) {
+        s_dstats.disassoc++;
+        offender_bump(f + 10);
+    }
+}
+
+esp_err_t lxveos_wifi_deauth_watch(uint32_t seconds, lxveos_wifi_deauth_stats_t *out)
+{
+    if (out != NULL) {
+        memset(out, 0, sizeof(*out));
+    }
+    if (seconds == 0) {
+        seconds = 15;
+    }
+    ESP_RETURN_ON_ERROR(ensure_wifi_up(), TAG, "wifi bring-up");
+
+    memset((void *)&s_dstats, 0, sizeof(s_dstats));
+    memset(s_offender, 0, sizeof(s_offender));
+
+    const wifi_promiscuous_filter_t filt = {.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
+    ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous_filter(&filt), TAG, "promisc filter");
+    ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous_rx_cb(deauth_rx_cb), TAG, "promisc cb");
+    ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous(true), TAG, "promisc on");
+
+    static const uint8_t chans[] = {1, 6, 11, 2, 3, 4, 5, 7, 8, 9, 10, 12, 13};
+    const int nch = (int)(sizeof(chans) / sizeof(chans[0]));
+    const int64_t end_us = esp_timer_get_time() + (int64_t)seconds * 1000000;
+    uint8_t swept = 0;
+    int i = 0;
+    while (esp_timer_get_time() < end_us) {
+        esp_wifi_set_channel(chans[i], WIFI_SECOND_CHAN_NONE);
+        if (swept < 255) {
+            swept++;
+        }
+        vTaskDelay(pdMS_TO_TICKS(300));
+        i = (i + 1) % nch;
+    }
+    esp_wifi_set_promiscuous(false);
+
+    if (out != NULL) {
+        memcpy(out, (const void *)&s_dstats, sizeof(*out));
+        out->channels_swept = swept;
+        uint32_t best = 0;
+        for (int j = 0; j < LXVEOS_OFFENDER_MAX; j++) {
+            if (s_offender[j].used && s_offender[j].count > best) {
+                best = s_offender[j].count;
+                memcpy(out->top_bssid, s_offender[j].bssid, 6);
+                out->top_count = s_offender[j].count;
+            }
+        }
+    }
+    return ESP_OK;
+}
+
 const char *lxveos_wifi_authmode_str(uint8_t authmode)
 {
     switch ((wifi_auth_mode_t)authmode) {

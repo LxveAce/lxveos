@@ -86,6 +86,23 @@ typedef struct {
 esp_err_t lxveos_wifi_sta_scan(uint32_t seconds, lxveos_wifi_client_t *out, size_t max,
                                size_t *found, uint32_t *beacons);
 
+// Tally from one deauth/disassoc watch — a passive detector for the classic Wi-Fi deauthentication
+// attack. `top_bssid`/`top_count` name the transmitter that sent the most deauth/disassoc frames.
+typedef struct {
+    uint32_t beacons;
+    uint32_t deauth;      // deauthentication frames (mgmt subtype 12)
+    uint32_t disassoc;    // disassociation frames (mgmt subtype 10)
+    uint8_t top_bssid[6]; // transmitter (addr2) responsible for the most deauth/disassoc frames
+    uint32_t top_count;
+    uint8_t channels_swept;
+} lxveos_wifi_deauth_stats_t;
+
+// PASSIVE deauth/disassoc watch for ~`seconds`. Channel-hops in promiscuous mode and counts
+// deauthentication / disassociation management frames (the signature of a deauth attack or a rogue
+// AP kicking clients), tracking the busiest transmitter. Listens only — transmits NOTHING, and of
+// course sends no deauth frames itself. Writes the tally to *out. Returns ESP_OK or an esp_err_t.
+esp_err_t lxveos_wifi_deauth_watch(uint32_t seconds, lxveos_wifi_deauth_stats_t *out);
+
 // Short human label for a wifi_auth_mode_t value ("open", "wpa2", ...). Never NULL.
 const char *lxveos_wifi_authmode_str(uint8_t authmode);
 
