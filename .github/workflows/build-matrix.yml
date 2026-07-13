@@ -64,11 +64,16 @@ jobs:
       # Publish a single-file flashable image per board so a device can be flashed without an ESP-IDF
       # toolchain: `esptool --port <COM> write_flash 0x0 <board>-merged.bin`. flasher_args.json is kept
       # for the per-offset alternative. This is what makes on-hardware bring-up possible from any machine.
+      # Best-effort: a green build (the actual validation) must not be marked red just because GitHub's
+      # account-wide artifact STORAGE quota is full — the merged .bin is still produced in the runner.
+      # continue-on-error keeps the build green; short retention keeps the footprint small.
       - name: Upload ${{ matrix.board }} firmware
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: lxveos-${{ matrix.board }}
           path: |
             build/${{ matrix.board }}/${{ matrix.board }}-merged.bin
             build/${{ matrix.board }}/flasher_args.json
           if-no-files-found: error
+          retention-days: 5
