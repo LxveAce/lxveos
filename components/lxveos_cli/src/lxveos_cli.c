@@ -16,6 +16,7 @@
 #include "esp_idf_version.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "nvs.h"
 #include "sdkconfig.h"
 
@@ -25,11 +26,15 @@
 
 #define LXVEOS_NVS_NS      "lxveos"
 #define LXVEOS_NVS_USE_ACK "use_ack"
+#define LXVEOS_NVS_BOOTCNT "boot_count"
 
 static const char *TAG = "lxveos_cli";
 
 // True once the operator has accepted the authorized-use terms (mirrors the NVS-persisted flag).
 static bool s_use_ack;
+
+// This unit's lifetime boot count, read+incremented once per boot (0 if NVS is unavailable).
+static uint32_t s_boot_count;
 
 static bool read_use_ack(void)
 {
@@ -54,6 +59,24 @@ static void persist_use_ack(void)
         nvs_commit(h);
     }
     nvs_close(h);
+}
+
+// Read this unit's lifetime boot counter, increment it, and persist. Called once per boot; leaves
+// s_boot_count at 0 if NVS is unavailable (a missing key just starts the count at 1).
+static void bump_boot_count(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(LXVEOS_NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
+        return;
+    }
+    uint32_t n = 0;
+    nvs_get_u32(h, LXVEOS_NVS_BOOTCNT, &n);  // ESP_ERR_NVS_NOT_FOUND leaves n == 0
+    n++;
+    if (nvs_set_u32(h, LXVEOS_NVS_BOOTCNT, n) == ESP_OK) {
+        nvs_commit(h);
+    }
+    nvs_close(h);
+    s_boot_count = n;
 }
 
 // Commands other than `agree` refuse to run until the terms are accepted. Returns 0 either way so the
@@ -123,6 +146,8 @@ static int cmd_sysinfo(int argc, char **argv)
     }
     printf("idf     : %s\n", esp_get_idf_version());
     printf("reset   : %s\n", reset_reason_str(esp_reset_reason()));
+    printf("boot #  : %u\n", (unsigned)s_boot_count);
+    printf("uptime  : %llu s\n", (unsigned long long)(esp_timer_get_time() / 1000000));
     printf("heap    : %u free / %u min-free (bytes)\n",
            (unsigned)esp_get_free_heap_size(), (unsigned)esp_get_minimum_free_heap_size());
     return 0;
@@ -179,8 +204,10 @@ static void register_commands(void)
 esp_err_t lxveos_cli_start(void)
 {
     s_use_ack = read_use_ack();
+    bump_boot_count();
 
-    ESP_LOGI(TAG, "LxveOS ready on '%s' (ui: %s).", lxveos_board_id(), lxveos_ui_profile());
+    ESP_LOGI(TAG, "LxveOS ready on '%s' (ui: %s, boot #%u).", lxveos_board_id(), lxveos_ui_profile(),
+             (unsigned)s_boot_count);
     ESP_LOGW(TAG, "Authorized, lawful security research & education only. No jammer. See RESPONSIBLE-USE.md.");
     if (!s_use_ack) {
         ESP_LOGW(TAG, "First run: commands are LOCKED until you type 'agree' to accept the authorized-use terms.");
