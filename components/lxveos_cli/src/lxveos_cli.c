@@ -1227,6 +1227,27 @@ static int cmd_evilportal(int argc, char **argv)
         }
         return 0;
     }
+    if (argc >= 2 && strcmp(argv[1], "karma") == 0) {
+        if (lxveos_evilportal_running()) {
+            printf("evil-portal already running — 'evilportal stop' first\n");
+            return 0;
+        }
+        if (!lxveos_arm_can_emit()) {
+            printf("offensive TX not permitted — run 'arm' first (this is an offensive-TX op).\n");
+            return 0;
+        }
+        printf("karma: listening 10s for the SSID nearby clients probe for most...\n");
+        char chosen[33] = {0};
+        esp_err_t e = lxveos_evilportal_start_karma(chosen, sizeof(chosen));
+        if (e == ESP_OK) {
+            printf("karma AP up as \"%s\" — captive login at http://192.168.4.1/ (armed)\n", chosen);
+        } else if (e == ESP_ERR_NOT_FOUND) {
+            printf("no directed probe requests seen — nothing to lure with. Try `probes`, or `evilportal <ssid>`.\n");
+        } else {
+            printf("karma start failed: %s\n", esp_err_to_name(e));
+        }
+        return 0;
+    }
     if (lxveos_evilportal_running()) {
         printf("evil-portal already running (%u captured) — 'evilportal stop' to end\n",
                (unsigned)lxveos_evilportal_captures());
@@ -1270,7 +1291,7 @@ static void register_commands(void)
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
         {.command = "arm", .help = "Two-factor enable for offensive-TX ops: arm (request), then arm <token> (confirm)", .func = &cmd_arm},
         {.command = "disarm", .help = "Hard-disarm: return to SAFE (offensive TX not permitted)", .func = &cmd_disarm},
-        {.command = "evilportal", .help = "Rogue AP + captive credential portal (needs arm): evilportal [ssid|template <id>|templates|creds|stop]", .func = &cmd_evilportal},
+        {.command = "evilportal", .help = "Rogue AP + captive portal (needs arm): evilportal [ssid|karma|template <id>|templates|creds|stop]", .func = &cmd_evilportal},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
         {.command = "reboot", .help = "Restart the unit", .func = &cmd_reboot},
         {.command = "nvs", .help = "Persistent settings: nvs get <key> | nvs set <key> <value>", .func = &cmd_nvs},

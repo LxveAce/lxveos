@@ -3,5 +3,5 @@
 idf_component_register(
     SRCS "src/lxveos_evilportal.c"
     INCLUDE_DIRS "include"
-    REQUIRES esp_wifi esp_netif esp_event esp_http_server lwip lxveos_arm
+    REQUIRES esp_wifi esp_netif esp_event esp_http_server lwip lxveos_arm lxveos_wifi
 )

