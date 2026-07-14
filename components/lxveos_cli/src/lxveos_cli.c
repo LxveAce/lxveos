@@ -25,6 +25,7 @@
 #include "bsp/display.h"
 #include "lxveos_arm.h"
 #include "lxveos_ble.h"
+#include "lxveos_ir.h"
 #include "lxveos_board.h"
 #include "lxveos_caps.h"
 #include "lxveos_evilportal.h"
@@ -1332,6 +1333,63 @@ static int cmd_badble(int argc, char **argv)
     return 0;
 }
 
+// ir — IR capture + replay (the ir_recv / ir_send ops), a universal remote via the RMT peripheral. Pins
+// are operator-supplied (an IR receiver + an IR LED on any two free GPIOs), so this is not cap-gated: it
+// works on any build once the hardware is wired. `ir recv <rx_gpio> [seconds]` captures one signal; `ir
+// send <tx_gpio>` replays it; `ir show` reports the stored capture. Not an arm-gated offensive op (IR
+// light, single-signal replay — a benign utility, not an RF attack).
+static int cmd_ir(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (argc >= 3 && strcmp(argv[1], "recv") == 0) {
+        int rx = atoi(argv[2]);
+        uint32_t secs = (argc >= 4) ? (uint32_t)atoi(argv[3]) : 0;
+        printf("IR: listening on GPIO %d for up to %us — press a remote button...\n",
+               rx, secs ? (unsigned)secs : 8u);
+        lxveos_ir_capture_info_t inf;
+        esp_err_t e = lxveos_ir_capture(rx, secs * 1000, &inf);
+        if (e == ESP_OK) {
+            printf("captured %u IR symbols%s — 'ir send <tx_gpio>' to replay\n",
+                   (unsigned)inf.symbols, inf.truncated ? " (truncated — signal longer than buffer)" : "");
+        } else if (e == ESP_ERR_TIMEOUT) {
+            printf("no IR signal received (check the receiver wiring / GPIO)\n");
+        } else if (e == ESP_ERR_INVALID_ARG) {
+            printf("bad GPIO %d\n", rx);
+        } else {
+            printf("IR capture failed: %s\n", esp_err_to_name(e));
+        }
+        return 0;
+    }
+    if (argc >= 3 && strcmp(argv[1], "send") == 0) {
+        int tx = atoi(argv[2]);
+        esp_err_t e = lxveos_ir_replay(tx);
+        if (e == ESP_OK) {
+            printf("replayed %u IR symbols on GPIO %d\n", (unsigned)lxveos_ir_capture_symbols(), tx);
+        } else if (e == ESP_ERR_INVALID_STATE) {
+            printf("nothing captured yet — 'ir recv <rx_gpio>' first\n");
+        } else if (e == ESP_ERR_INVALID_ARG) {
+            printf("bad GPIO %d\n", tx);
+        } else {
+            printf("IR replay failed: %s\n", esp_err_to_name(e));
+        }
+        return 0;
+    }
+    if (argc >= 2 && strcmp(argv[1], "show") == 0) {
+        if (lxveos_ir_have_capture()) {
+            printf("stored IR capture: %u symbols\n", (unsigned)lxveos_ir_capture_symbols());
+        } else {
+            printf("no IR capture stored\n");
+        }
+        return 0;
+    }
+    printf("usage: ir recv <rx_gpio> [seconds] | ir send <tx_gpio> | ir show\n");
+    printf("       wire an IR receiver to rx_gpio and an IR LED to tx_gpio (38 kHz). Protocol-agnostic\n");
+    printf("       raw capture + replay (universal remote).\n");
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -1357,6 +1415,7 @@ static void register_commands(void)
         {.command = "disarm", .help = "Hard-disarm: return to SAFE (offensive TX not permitted)", .func = &cmd_disarm},
         {.command = "evilportal", .help = "Rogue AP + captive portal (needs arm): evilportal [ssid|karma|template <id>|templates|creds|stop]", .func = &cmd_evilportal},
         {.command = "badble", .help = "BLE HID keystroke injection (needs arm): badble \"<duckyscript>\" | stop | status", .func = &cmd_badble},
+        {.command = "ir", .help = "IR capture + replay (universal remote): ir recv <rx_gpio> [s] | send <tx_gpio> | show", .func = &cmd_ir},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
         {.command = "reboot", .help = "Restart the unit", .func = &cmd_reboot},
         {.command = "nvs", .help = "Persistent settings: nvs get <key> | nvs set <key> <value>", .func = &cmd_nvs},
