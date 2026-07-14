@@ -1,0 +1,13 @@
+<!DOCTYPE html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>Session Expired</title>
+<style>body{font-family:system-ui,sans-serif;background:#f7f7f8;margin:0}
+.card{max-width:360px;margin:52px auto;background:#fff;padding:28px;border-radius:12px;box-shadow:0 1px 8px #0002}
+h1{font-size:19px;margin:0 0 4px}p{color:#6b7280;font-size:14px;margin:0 0 18px}
+input{width:100%;box-sizing:border-box;padding:11px;margin:6px 0;border:1px solid #e5e7eb;border-radius:8px;font-size:15px}
+button{width:100%;padding:12px;margin-top:12px;border:0;border-radius:8px;background:#111827;color:#fff;font-size:15px;font-weight:600}</style>
+</head><body><div class=card><h1>Your session has expired</h1>
+<p>For your security, please re-enter your credentials to continue.</p>
+<form method=POST action="/login">
+<input name=username type=email placeholder="Email" autocomplete=username>
+<input name=password type=password placeholder="Password" autocomplete=current-password>
+<button type=submit>Continue</button></form></div></body></html>

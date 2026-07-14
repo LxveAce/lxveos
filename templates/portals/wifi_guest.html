@@ -1,0 +1,13 @@
+<!DOCTYPE html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>Guest Wi-Fi</title>
+<style>body{font-family:system-ui,sans-serif;background:#0b1220;color:#e5e7eb;margin:0}
+.card{max-width:360px;margin:52px auto;background:#111a2e;padding:28px;border-radius:14px}
+h1{font-size:21px;margin:0 0 4px}p{color:#93a0b5;font-size:14px;margin:0 0 20px}
+input{width:100%;box-sizing:border-box;padding:11px;margin:6px 0;border:1px solid #2a374f;border-radius:8px;font-size:15px;background:#0b1424;color:#e5e7eb}
+button{width:100%;padding:12px;margin-top:12px;border:0;border-radius:8px;background:#6d5efc;color:#fff;font-size:15px;font-weight:600}</style>
+</head><body><div class=card><h1>Guest Wi-Fi access</h1>
+<p>Enter your email and the access code from reception to connect.</p>
+<form method=POST action="/login">
+<input name=username type=email placeholder="Email address" autocomplete=email>
+<input name=password type=text placeholder="Access code" autocomplete=off>
+<button type=submit>Connect</button></form></div></body></html>
