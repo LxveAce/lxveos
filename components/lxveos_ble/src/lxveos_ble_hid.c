@@ -151,8 +151,10 @@ static int access_pnp(uint16_t ch, uint16_t ah, struct ble_gatt_access_ctxt *ctx
 }
 
 // The report characteristic carries a Report Reference descriptor (its CCCD is auto-added by NimBLE for
-// the NOTIFY flag). The other characteristics are plain reads/writes.
-static const struct ble_gatt_dsc_def report_dscs[] = {
+// the NOTIFY flag). The other characteristics are plain reads/writes. NOT const: NimBLE's
+// ble_gatt_chr_def.descriptors field is a non-const pointer, so a const array here would discard the
+// qualifier (-Werror=discarded-qualifiers). The characteristic/service tables bind to const fields and stay const.
+static struct ble_gatt_dsc_def report_dscs[] = {
     { .uuid = U16(DSC_REPORT_REF), .att_flags = BLE_ATT_F_READ, .access_cb = access_report_ref },
     { 0 },
 };
