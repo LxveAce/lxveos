@@ -38,6 +38,25 @@ uint8_t lxveos_subghz_version(void);
 // if not begun, or ESP_ERR_INVALID_ARG for an out-of-band frequency. Receive only.
 esp_err_t lxveos_subghz_rssi(float mhz, int8_t *rssi_dbm);
 
+// ── Increment 2: OOK capture + replay (the subghz_replay op) ─────────────────────────────────────────
+// Capture a raw sub-GHz OOK transmission at `mhz`: puts the CC1101 in async-serial RX (GDO0 outputs the
+// demodulated bitstream) and records the GDO0 edge timing via RMT on `gdo0_gpio` for up to `timeout_ms`.
+// Stores the symbols internally (replacing any prior capture). Protocol-agnostic — records whatever OOK
+// signal is in the air (garage/gate/sensor remotes). Returns ESP_OK, ESP_ERR_TIMEOUT if nothing arrived,
+// ESP_ERR_INVALID_STATE if not begun, ESP_ERR_INVALID_ARG for a bad gpio/frequency. Receive only.
+esp_err_t lxveos_subghz_capture(int gdo0_gpio, float mhz, uint32_t timeout_ms, uint32_t *symbols);
+
+// Replay the last captured OOK signal: puts the CC1101 in async-serial TX at the captured frequency and
+// re-emits the stored edge timing via RMT on `gdo0_gpio` (the CC1101 does the RF modulation; no RMT
+// carrier). This is an OFFENSIVE-TX op — gated on the arm framework (lxveos_arm_can_emit() must be true).
+// Returns ESP_ERR_NOT_ALLOWED if not armed / TX compiled out, ESP_ERR_INVALID_STATE if nothing captured or
+// not begun, ESP_ERR_INVALID_ARG for a bad gpio, or an esp_err_t. Emits the one captured signal once.
+esp_err_t lxveos_subghz_replay(int gdo0_gpio);
+
+// True if an OOK capture is stored. / Number of symbols in the stored capture.
+bool lxveos_subghz_have_capture(void);
+uint32_t lxveos_subghz_capture_symbols(void);
+
 #ifdef __cplusplus
 }
 #endif

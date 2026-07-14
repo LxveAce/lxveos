@@ -9,25 +9,37 @@
 // correct; extra confirms the identity read + RSSI behaviour on a real module (that is why the catalog row
 // stays planned until HW-validated).
 #include "lxveos_subghz.h"
+#include "lxveos_arm.h"
 
+#include <string.h>
+
+#include "esp_attr.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include "driver/spi_master.h"
+#include "driver/rmt_rx.h"
+#include "driver/rmt_tx.h"
+#include "driver/rmt_encoder.h"
 
 static const char *TAG = "lxveos_subghz";
 
 // CC1101 command strobes
 #define CC1101_SRES   0x30
 #define CC1101_SRX    0x34
+#define CC1101_STX    0x35
 #define CC1101_SIDLE  0x36
 #define CC1101_SFRX   0x3A
+#define CC1101_SFTX   0x3B
 // Status registers (read with the burst bit, addr|0xC0)
 #define CC1101_PARTNUM 0x30
 #define CC1101_VERSION 0x31
 #define CC1101_RSSI    0x34
 #define CC1101_MARCSTATE 0x35
 // Config registers used here
+#define CC1101_IOCFG0 0x02
+#define CC1101_PKTCTRL0 0x08
 #define CC1101_FREQ2  0x0D
 #define CC1101_FREQ1  0x0E
 #define CC1101_FREQ0  0x0F
@@ -217,3 +229,159 @@ esp_err_t lxveos_subghz_rssi(float mhz, int8_t *rssi_dbm)
     cc1101_strobe(CC1101_SIDLE);
     return ESP_OK;
 }
+
+// ── Increment 2: OOK capture + replay via CC1101 async-serial mode + RMT ──────────────────────────────
+#define SG_RESOLUTION_HZ 1000000   // 1 MHz -> 1 us/tick
+#define SG_MEM_SYMBOLS   64
+#define SG_MAX_SYMBOLS   256
+
+static rmt_symbol_word_t s_syms[SG_MAX_SYMBOLS];
+static size_t            s_nsym;
+static float             s_cap_mhz;
+
+static void cc1101_set_freq(float mhz)
+{
+    uint32_t fw = (uint32_t)((mhz * 1000000.0f) * 65536.0f / CC1101_XOSC_HZ);
+    cc1101_write_reg(CC1101_FREQ2, (fw >> 16) & 0xFF);
+    cc1101_write_reg(CC1101_FREQ1, (fw >> 8) & 0xFF);
+    cc1101_write_reg(CC1101_FREQ0, fw & 0xFF);
+}
+
+static bool IRAM_ATTR sg_rx_done(rmt_channel_handle_t ch, const rmt_rx_done_event_data_t *ed, void *user)
+{
+    (void)ch;
+    QueueHandle_t q = (QueueHandle_t)user;
+    BaseType_t hp = pdFALSE;
+    xQueueSendFromISR(q, ed, &hp);
+    return hp == pdTRUE;
+}
+
+esp_err_t lxveos_subghz_capture(int gdo0_gpio, float mhz, uint32_t timeout_ms, uint32_t *symbols)
+{
+    if (symbols) {
+        *symbols = 0;
+    }
+    if (!s_begun) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (gdo0_gpio < 0 || mhz < 300.0f || mhz > 928.0f) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (timeout_ms == 0) {
+        timeout_ms = 8000;
+    }
+
+    // CC1101 -> async-serial RX: GDO0 outputs the demodulated OOK bitstream.
+    cc1101_strobe(CC1101_SIDLE);
+    cc1101_set_freq(mhz);
+    cc1101_write_reg(CC1101_IOCFG0, 0x0D);    // GDO0 = async serial data output
+    cc1101_write_reg(CC1101_PKTCTRL0, 0x30);  // async serial mode, infinite packet length
+    cc1101_strobe(CC1101_SRX);
+
+    rmt_rx_channel_config_t rx_cfg = {
+        .clk_src = RMT_CLK_SRC_DEFAULT,
+        .resolution_hz = SG_RESOLUTION_HZ,
+        .mem_block_symbols = SG_MEM_SYMBOLS,
+        .gpio_num = gdo0_gpio,
+    };
+    rmt_channel_handle_t rx = NULL;
+    esp_err_t err = rmt_new_rx_channel(&rx_cfg, &rx);
+    if (err != ESP_OK) {
+        cc1101_strobe(CC1101_SIDLE);
+        return err;
+    }
+    QueueHandle_t q = xQueueCreate(1, sizeof(rmt_rx_done_event_data_t));
+    if (q == NULL) {
+        rmt_del_channel(rx);
+        cc1101_strobe(CC1101_SIDLE);
+        return ESP_ERR_NO_MEM;
+    }
+    rmt_rx_event_callbacks_t cbs = { .on_recv_done = sg_rx_done };
+    rmt_rx_register_event_callbacks(rx, &cbs, q);
+    rmt_enable(rx);
+
+    rmt_receive_config_t rc = { .signal_range_min_ns = 10000, .signal_range_max_ns = 20000000 };
+    rmt_symbol_word_t buf[SG_MAX_SYMBOLS];
+    err = rmt_receive(rx, buf, sizeof(buf), &rc);
+    if (err == ESP_OK) {
+        rmt_rx_done_event_data_t ev;
+        if (xQueueReceive(q, &ev, pdMS_TO_TICKS(timeout_ms)) == pdTRUE) {
+            size_t n = ev.num_symbols;
+            if (n > SG_MAX_SYMBOLS) {
+                n = SG_MAX_SYMBOLS;
+            }
+            memcpy(s_syms, ev.received_symbols, n * sizeof(rmt_symbol_word_t));
+            s_nsym = n;
+            s_cap_mhz = mhz;
+            if (symbols) {
+                *symbols = (uint32_t)n;
+            }
+            ESP_LOGI(TAG, "captured %u sub-GHz OOK symbols @ %.2f MHz", (unsigned)n, (double)mhz);
+        } else {
+            err = ESP_ERR_TIMEOUT;
+        }
+    }
+
+    rmt_disable(rx);
+    rmt_del_channel(rx);
+    vQueueDelete(q);
+    cc1101_strobe(CC1101_SIDLE);
+    return err;
+}
+
+esp_err_t lxveos_subghz_replay(int gdo0_gpio)
+{
+    if (!s_begun || s_nsym == 0) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (gdo0_gpio < 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!lxveos_arm_can_emit()) {
+        return ESP_ERR_NOT_ALLOWED;   // offensive TX — must be armed
+    }
+
+    // CC1101 -> async-serial TX: GDO0 is the data input; RMT drives it, the CC1101 does the RF modulation.
+    cc1101_strobe(CC1101_SIDLE);
+    cc1101_set_freq(s_cap_mhz);
+    cc1101_write_reg(CC1101_IOCFG0, 0x2D);    // GDO0 = async serial data input
+    cc1101_write_reg(CC1101_PKTCTRL0, 0x30);  // async serial mode
+    cc1101_strobe(CC1101_STX);
+
+    rmt_tx_channel_config_t tx_cfg = {
+        .clk_src = RMT_CLK_SRC_DEFAULT,
+        .resolution_hz = SG_RESOLUTION_HZ,
+        .mem_block_symbols = SG_MEM_SYMBOLS,
+        .trans_queue_depth = 4,
+        .gpio_num = gdo0_gpio,
+    };
+    rmt_channel_handle_t tx = NULL;
+    esp_err_t err = rmt_new_tx_channel(&tx_cfg, &tx);
+    if (err != ESP_OK) {
+        cc1101_strobe(CC1101_SIDLE);
+        return err;
+    }
+    // NO RMT carrier — the CC1101 supplies the RF carrier; RMT only keys the OOK envelope.
+    rmt_copy_encoder_config_t copy_cfg = {};
+    rmt_encoder_handle_t enc = NULL;
+    err = rmt_new_copy_encoder(&copy_cfg, &enc);
+    if (err == ESP_OK) {
+        rmt_enable(tx);
+        rmt_transmit_config_t tc = { .loop_count = 0 };
+        err = rmt_transmit(tx, enc, s_syms, s_nsym * sizeof(rmt_symbol_word_t), &tc);
+        if (err == ESP_OK) {
+            err = rmt_tx_wait_all_done(tx, pdMS_TO_TICKS(2000));
+        }
+        rmt_disable(tx);
+        rmt_del_encoder(enc);
+    }
+    ESP_LOGI(TAG, "replayed %u sub-GHz OOK symbols @ %.2f MHz (%s)",
+             (unsigned)s_nsym, (double)s_cap_mhz, esp_err_to_name(err));
+
+    rmt_del_channel(tx);
+    cc1101_strobe(CC1101_SIDLE);
+    return err;
+}
+
+bool lxveos_subghz_have_capture(void) { return s_nsym > 0; }
+uint32_t lxveos_subghz_capture_symbols(void) { return (uint32_t)s_nsym; }

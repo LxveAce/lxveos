@@ -1430,14 +1430,48 @@ static int cmd_subghz(int argc, char **argv)
         }
         return 0;
     }
+    if (argc >= 4 && strcmp(argv[1], "capture") == 0) {
+        int gdo0 = atoi(argv[2]);
+        float mhz = strtof(argv[3], NULL);
+        uint32_t secs = (argc >= 5) ? (uint32_t)atoi(argv[4]) : 0;
+        uint32_t n = 0;
+        printf("sub-GHz: capturing OOK on GDO0=%d @ %.2f MHz (up to %us)...\n",
+               gdo0, (double)mhz, secs ? (unsigned)secs : 8u);
+        esp_err_t e = lxveos_subghz_capture(gdo0, mhz, secs * 1000, &n);
+        if (e == ESP_OK) {
+            printf("captured %u symbols — 'subghz replay <gdo0>' to re-emit (needs arm)\n", (unsigned)n);
+        } else if (e == ESP_ERR_TIMEOUT) {
+            printf("no signal captured (check GDO0 wiring / frequency)\n");
+        } else if (e == ESP_ERR_INVALID_STATE) {
+            printf("not begun — 'subghz begin ...' first\n");
+        } else {
+            printf("subghz capture failed: %s\n", esp_err_to_name(e));
+        }
+        return 0;
+    }
+    if (argc >= 3 && strcmp(argv[1], "replay") == 0) {
+        int gdo0 = atoi(argv[2]);
+        esp_err_t e = lxveos_subghz_replay(gdo0);
+        if (e == ESP_OK) {
+            printf("replayed %u sub-GHz symbols on GDO0=%d (armed)\n",
+                   (unsigned)lxveos_subghz_capture_symbols(), gdo0);
+        } else if (e == ESP_ERR_NOT_ALLOWED) {
+            printf("offensive TX not permitted — run 'arm' first (this is an offensive-TX op).\n");
+        } else if (e == ESP_ERR_INVALID_STATE) {
+            printf("nothing captured / not begun — 'subghz begin ...' then 'subghz capture ...' first\n");
+        } else {
+            printf("subghz replay failed: %s\n", esp_err_to_name(e));
+        }
+        return 0;
+    }
     if (argc >= 2 && strcmp(argv[1], "end") == 0) {
         lxveos_subghz_end();
         printf("subghz link released\n");
         return 0;
     }
-    printf("usage: subghz begin <sclk> <miso> <mosi> <cs> | subghz rssi <mhz> | subghz end\n");
-    printf("       CC1101 add-on on SPI3/VSPI (keep off the display's SPI2). Increment 1: identify + RSSI\n");
-    printf("       sense (receive only). Capture/replay is a later increment.\n");
+    printf("usage: subghz begin <sclk> <miso> <mosi> <cs> | rssi <mhz> | capture <gdo0> <mhz> [s] |\n");
+    printf("       replay <gdo0> | end.  CC1101 on SPI3/VSPI (keep off display SPI2); capture/replay use\n");
+    printf("       GDO0 async-serial + RMT. Replay is arm-gated (offensive TX). Single-signal, not a brute.\n");
     return 0;
 }
 
