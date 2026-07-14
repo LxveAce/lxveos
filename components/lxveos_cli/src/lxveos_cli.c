@@ -27,6 +27,7 @@
 #include "lxveos_ble.h"
 #include "lxveos_ir.h"
 #include "lxveos_subghz.h"
+#include "lxveos_nrf24.h"
 #include "lxveos_board.h"
 #include "lxveos_caps.h"
 #include "lxveos_evilportal.h"
@@ -1439,6 +1440,64 @@ static int cmd_subghz(int argc, char **argv)
     return 0;
 }
 
+// nrf24 — nRF24L01+ 2.4 GHz radio (nrf24_scan recon op, increment 1). `nrf24 begin <sck> <miso> <mosi>
+// <csn> <ce>` brings the SPI+CE link up + identifies the chip; `nrf24 scan [sweeps]` runs the RPD channel-
+// activity sweep (2.4 GHz spectrum map); `nrf24 end` releases. Add-on on operator-supplied SPI3/VSPI pins +
+// a CE GPIO; not cap-gated. Receive only in this increment (no TX, no arm gate).
+static int cmd_nrf24(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (argc >= 7 && strcmp(argv[1], "begin") == 0) {
+        esp_err_t e = lxveos_nrf24_begin(atoi(argv[2]), atoi(argv[3]), atoi(argv[4]),
+                                         atoi(argv[5]), atoi(argv[6]));
+        if (e == ESP_OK) {
+            printf("nRF24 begin: %s\n", lxveos_nrf24_present() ? "module detected (RF_CH read-back OK)"
+                                                               : "NO valid chip (check wiring)");
+        } else if (e == ESP_ERR_INVALID_STATE) {
+            printf("nrf24 already begun — 'nrf24 end' first\n");
+        } else {
+            printf("nrf24 begin failed: %s\n", esp_err_to_name(e));
+        }
+        return 0;
+    }
+    if (argc >= 2 && strcmp(argv[1], "scan") == 0) {
+        uint16_t sweeps = (argc >= 3) ? (uint16_t)atoi(argv[2]) : 0;
+        static uint8_t counts[LXVEOS_NRF24_CHANNELS];
+        esp_err_t e = lxveos_nrf24_scan(counts, sweeps);
+        if (e == ESP_OK) {
+            printf("2.4 GHz channel activity (ch: 2400+ch MHz, hits over sweeps):\n");
+            for (int ch = 0; ch < LXVEOS_NRF24_CHANNELS; ch++) {
+                if (counts[ch] == 0) {
+                    continue;   // only list channels that saw energy
+                }
+                int bars = counts[ch] / 8;
+                printf("  ch %3d (%d MHz): %3u ", ch, 2400 + ch, (unsigned)counts[ch]);
+                for (int b = 0; b < bars && b < 32; b++) {
+                    printf("#");
+                }
+                printf("\n");
+            }
+            return 0;
+        } else if (e == ESP_ERR_INVALID_STATE) {
+            printf("not begun — 'nrf24 begin <sck> <miso> <mosi> <csn> <ce>' first\n");
+        } else {
+            printf("nrf24 scan failed: %s\n", esp_err_to_name(e));
+        }
+        return 0;
+    }
+    if (argc >= 2 && strcmp(argv[1], "end") == 0) {
+        lxveos_nrf24_end();
+        printf("nrf24 link released\n");
+        return 0;
+    }
+    printf("usage: nrf24 begin <sck> <miso> <mosi> <csn> <ce> | nrf24 scan [sweeps] | nrf24 end\n");
+    printf("       nRF24L01+ add-on on SPI3/VSPI + a CE GPIO. Increment 1: RPD 2.4 GHz channel-activity\n");
+    printf("       scan (receive only). MouseJack inject is a later, arm-gated increment.\n");
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -1466,6 +1525,7 @@ static void register_commands(void)
         {.command = "badble", .help = "BLE HID keystroke injection (needs arm): badble \"<duckyscript>\" | stop | status", .func = &cmd_badble},
         {.command = "ir", .help = "IR capture + replay (universal remote): ir recv <rx_gpio> [s] | send <tx_gpio> | show", .func = &cmd_ir},
         {.command = "subghz", .help = "Sub-GHz CC1101 (recv): subghz begin <sclk> <miso> <mosi> <cs> | rssi <mhz> | end", .func = &cmd_subghz},
+        {.command = "nrf24", .help = "nRF24 2.4GHz scan (recv): nrf24 begin <sck> <miso> <mosi> <csn> <ce> | scan [sweeps] | end", .func = &cmd_nrf24},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
         {.command = "reboot", .help = "Restart the unit", .func = &cmd_reboot},
         {.command = "nvs", .help = "Persistent settings: nvs get <key> | nvs set <key> <value>", .func = &cmd_nvs},
