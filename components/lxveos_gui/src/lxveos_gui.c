@@ -1,11 +1,12 @@
-// LxveOS on-device GUI — LVGL launcher. Increment 3a: bring the LVGL port up on the board's esp_lcd
-// panel and draw the launcher SHELL (branded title + a live status subtitle from board id / UI profile /
-// op-catalog tally). The scrollable op-category menu + navigation land in 3b, once this proves the LVGL
-// stack fetches, compiles under our strict toolchain, links, and initialises across the board matrix.
+// LxveOS on-device GUI — LVGL launcher. Brings the LVGL port up on the board's esp_lcd panel (resolved +
+// initialised by lxveos_board) and draws the launcher: a branded header (title + board/op tally) and a
+// scrollable capability menu built straight from the op catalog, grouped by category with per-op status
+// and policy tags. Read-only display for now — touch/keypad activation (an LVGL indev via
+// lvgl_port_add_touch + bsp_input_start) is the next increment.
 //
-// Labels only here on purpose: the first LVGL compile is the risky part (managed lvgl + esp_lvgl_port
-// under -Werror -Wextra), so 3a keeps the widget surface minimal. UNVERIFIED on hardware; extra tunes
-// the draw buffer size, byte order (swap_bytes) and rotation on real glass.
+// No-op on headless boards (null panel handle). UNVERIFIED on hardware; extra tunes the draw-buffer size,
+// byte order (swap_bytes) and rotation on real glass. Widget surface is deliberately conservative
+// (labels + one scroll container) so it stays green under our strict -Werror -Wextra toolchain.
 #include "lxveos_gui.h"
 
 #include "bsp/display.h"
@@ -21,6 +22,51 @@
 #include <stdio.h>
 
 static const char *TAG = "lxveos_gui";
+
+// Compose the capability menu as one formatted, grouped block: a category header (RECON / ATTACK /
+// DEFENSE / …) whenever the category changes, then one line per op — a status glyph ([+] ready, [.]
+// planned, [x] this board can't) + the op slug + a policy tag ((arm) for arm-gated offensive, (upstream)
+// for the interference class LxveOS carries as control-surface only). Data comes straight from the op
+// catalog so the on-device menu can never claim a feature the firmware doesn't actually have. Bounded.
+static void compose_menu(char *buf, size_t cap)
+{
+    if (cap == 0) {
+        return;
+    }
+    buf[0] = '\0';
+    size_t n = lxveos_ops_count();
+    size_t off = 0;
+    lxveos_opcat_t last = LXVEOS_OPCAT_COUNT;
+    for (size_t i = 0; i < n; i++) {
+        const lxveos_op_t *op = lxveos_ops_get(i);
+        if (op == NULL) {
+            continue;
+        }
+        if (op->category != last) {
+            last = op->category;
+            int w = snprintf(buf + off, cap - off, "%s%s\n", (i ? "\n" : ""), lxveos_opcat_name(last));
+            if (w < 0 || (size_t)w >= cap - off) {
+                break;
+            }
+            off += (size_t)w;
+        }
+        const char *g;
+        switch (lxveos_op_status(op)) {
+            case LXVEOS_OP_READY:   g = "[+]"; break;
+            case LXVEOS_OP_PLANNED: g = "[.]"; break;
+            default:                g = "[x]"; break;
+        }
+        lxveos_opclass_t k = lxveos_op_class(op);
+        const char *tag = (k == LXVEOS_OPCLASS_OFFENSIVE)  ? " (arm)"
+                        : (k == LXVEOS_OPCLASS_RESTRICTED) ? " (upstream)"
+                        : "";
+        int w = snprintf(buf + off, cap - off, " %s %s%s\n", g, op->slug, tag);
+        if (w < 0 || (size_t)w >= cap - off) {
+            break;
+        }
+        off += (size_t)w;
+    }
+}
 
 esp_err_t lxveos_gui_start(void)
 {
@@ -62,10 +108,11 @@ esp_err_t lxveos_gui_start(void)
 
     size_t ready = 0, planned = 0, unavail = 0;
     lxveos_ops_tally(&ready, &planned, &unavail);
-    char sub[96];
-    snprintf(sub, sizeof(sub), "%s  ·  %s\n%u ready / %u planned / %u n-a",
-             lxveos_board_id(), lxveos_ui_profile(),
+    char hdr[48];
+    snprintf(hdr, sizeof(hdr), "%s  ops %u/%u/%u", lxveos_ui_profile(),
              (unsigned)ready, (unsigned)planned, (unsigned)unavail);
+    static char menu[2600];
+    compose_menu(menu, sizeof(menu));
 
     // All LVGL object calls run under the port lock.
     lvgl_port_lock(0);
@@ -75,16 +122,30 @@ esp_err_t lxveos_gui_start(void)
     lv_obj_t *title = lv_label_create(scr);
     lv_label_set_text(title, "LxveOS");
     lv_obj_set_style_text_color(title, lv_color_hex(0x39FF14), 0);   // brand green
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 12);
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 6, 5);
 
-    lv_obj_t *status = lv_label_create(scr);
-    lv_label_set_text(status, sub);
-    lv_obj_set_style_text_color(status, lv_color_hex(0xC8C8C8), 0);
-    lv_obj_set_style_text_align(status, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(status, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_t *tally = lv_label_create(scr);
+    lv_label_set_text(tally, hdr);
+    lv_obj_set_style_text_color(tally, lv_color_hex(0x9A9A9A), 0);
+    lv_obj_align(tally, LV_ALIGN_TOP_RIGHT, -6, 7);
+
+    // Scrollable capability menu (grouped by category) fills the area below the header.
+    lv_obj_t *box = lv_obj_create(scr);
+    lv_obj_set_size(box, caps.width, caps.height - 30);
+    lv_obj_align(box, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_color(box, lv_color_hex(0x0E0E0E), 0);
+    lv_obj_set_style_border_width(box, 0, 0);
+    lv_obj_set_style_pad_all(box, 6, 0);
+    lv_obj_set_scroll_dir(box, LV_DIR_VER);
+
+    lv_obj_t *lbl = lv_label_create(box);
+    lv_label_set_text(lbl, menu);
+    lv_obj_set_width(lbl, caps.width - 20);
+    lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(0xCFCFCF), 0);
     lvgl_port_unlock();
 
-    ESP_LOGI(TAG, "LVGL up: %dx%d, launcher shell drawn (%u ops ready)", caps.width, caps.height,
-             (unsigned)ready);
+    ESP_LOGI(TAG, "LVGL up: %dx%d, launcher + capability menu drawn (%u ops ready)", caps.width,
+             caps.height, (unsigned)ready);
     return ESP_OK;
 }
