@@ -17,6 +17,7 @@
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_vendor.h"
 #include "esp_lcd_panel_ops.h"
+#include "esp_lcd_ili9341.h"
 #endif
 #endif
 
@@ -138,27 +139,27 @@ static esp_err_t bring_up_panel_io(void)
 }
 
 // Create the concrete esp_lcd panel on the panel-IO handle, initialise it, and paint a solid
-// proof-of-life fill. Increment 1 constructs the BUILT-IN ST7789 driver (zero managed dependencies) for
-// every CYD variant; the 1-USB CYD's ILI9341 (probed as RDID4 0xD3 == 00 93 41) needs the managed
-// espressif/esp_lcd_ili9341 driver, wired in the next increment — until then ST7789 init is used and the
-// mismatch is logged. reset_gpio_num = -1 is valid (RST tied to EN on the CYD). A lit, green-filled
-// screen is the visible "the panel is really up" signal. UNVERIFIED on hardware; extra confirms.
+// proof-of-life fill. The panel driver is chosen from the RDID4 (0xD3) probe: a 1-USB CYD reads
+// 00 93 41 => ILI9341 (the managed espressif/esp_lcd_ili9341 driver); a 2-USB CYD => ST7789 (built into
+// esp_lcd). Both share the esp_lcd_panel_dev_config_t + panel-ops interface. reset_gpio_num = -1 is valid
+// (RST tied to EN on the CYD). A lit, green-filled screen is the visible "the panel is really up" signal.
+// UNVERIFIED on hardware; extra confirms which variant + tunes byte order/rotation on real glass.
 static esp_err_t create_panel(void)
 {
     const bool is_ili9341 = (s_probe_d3[0] == 0x00 && s_probe_d3[1] == 0x93 && s_probe_d3[2] == 0x41);
-    if (is_ili9341) {
-        ESP_LOGW(TAG, "panel probed ILI9341 (0xD3=00 93 41); using ST7789 init as interim "
-                      "(managed esp_lcd_ili9341 driver = next increment)");
-    }
     esp_lcd_panel_dev_config_t pcfg = {
         .reset_gpio_num = LXVEOS_DISP_PIN_RST,        // -1 == RST tied to EN (no dedicated reset line)
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,   // CYD panels are BGR
         .bits_per_pixel = 16,
     };
-    ESP_RETURN_ON_ERROR(esp_lcd_new_panel_st7789(s_panel_io, &pcfg, &s_panel_handle), TAG, "new st7789");
+    if (is_ili9341) {
+        ESP_RETURN_ON_ERROR(esp_lcd_new_panel_ili9341(s_panel_io, &pcfg, &s_panel_handle), TAG, "new ili9341");
+    } else {
+        ESP_RETURN_ON_ERROR(esp_lcd_new_panel_st7789(s_panel_io, &pcfg, &s_panel_handle), TAG, "new st7789");
+    }
     ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(s_panel_handle), TAG, "panel reset");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_init(s_panel_handle), TAG, "panel init");
-    esp_lcd_panel_invert_color(s_panel_handle, true);   // ST7789 / most CYD panels need color inversion
+    esp_lcd_panel_invert_color(s_panel_handle, !is_ili9341);   // ST7789 needs inversion; ILI9341 does not
     esp_lcd_panel_disp_on_off(s_panel_handle, true);
 
     // Proof-of-life: paint the panel LxveAce green in DRAM-friendly 16-line horizontal bands (no full
@@ -173,7 +174,8 @@ static esp_err_t create_panel(void)
         int h = (y + 16 <= LXVEOS_DISP_H) ? 16 : (LXVEOS_DISP_H - y);
         esp_lcd_panel_draw_bitmap(s_panel_handle, 0, y, LXVEOS_DISP_W, y + h, band);
     }
-    ESP_LOGI(TAG, "panel up: ST7789 %dx%d initialised + filled (proof-of-life)", LXVEOS_DISP_W, LXVEOS_DISP_H);
+    ESP_LOGI(TAG, "panel up: %s %dx%d initialised + filled (proof-of-life)",
+             is_ili9341 ? "ILI9341" : "ST7789", LXVEOS_DISP_W, LXVEOS_DISP_H);
     return ESP_OK;
 }
 #endif  // LXVEOS_DISP_HAS_PINS
@@ -186,9 +188,8 @@ esp_err_t bsp_display_start(void)
 #if LXVEOS_DISP_HAS_PINS
     ESP_RETURN_ON_ERROR(bring_up_panel_io(), TAG, "display bring-up");
     ESP_RETURN_ON_ERROR(create_panel(), TAG, "panel create");
-    // TODO(M1-C next): swap ST7789 for the managed espressif/esp_lcd_ili9341 driver when the probe says
-    // ILI9341, add LEDC PWM backlight dimming, then hand s_panel_handle/s_panel_io to esp_lvgl_port and
-    // build the LVGL launcher (lxveos_gui).
+    // TODO(M1-C next): add LEDC PWM backlight dimming, then hand s_panel_handle/s_panel_io to
+    // esp_lvgl_port and build the LVGL launcher (lxveos_gui).
 #else
     // This board's display GPIOs aren't in the manifest yet (pins=null). Source + verify them into
     // cyd_boards.json display.pins (datasheet/community, NOT fabricated) to unlock esp_lcd bring-up here.

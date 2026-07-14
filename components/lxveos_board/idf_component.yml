@@ -1,0 +1,7 @@
+## Managed dependencies for lxveos_board (fetched by the ESP-IDF Component Manager at build time).
+##
+## esp_lcd_ili9341: the 1-USB Cheap-Yellow-Display's panel driver. The 2-USB CYD variant is an ST7789,
+## which is built into esp_lcd — so only the ILI9341 driver needs pulling in. create_panel() picks between
+## them at boot from the RDID4 (0xD3) probe. Requires ESP-IDF >= 4.4 (we build on v6.0.2).
+dependencies:
+  espressif/esp_lcd_ili9341: "^2.0"
