@@ -27,3 +27,11 @@ CONFIG_BT_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
 CONFIG_BT_NIMBLE_ROLE_BROADCASTER=n
 CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y
+
+# IRAM relief. The sub-GHz CC1101 driver links the SPI master, and spi_bus_add_device registers the SPI
+# master ISR (IRAM-resident) — previously garbage-collected because nothing referenced it. On the tightest
+# esp32 boards (m5stickc_plus2) that tips iram0_0_seg over by a few KB. LxveOS uses polling SPI transfers
+# (spi_device_polling_transmit), not the SPI ISR, so move that ISR out of IRAM. Also relax the WiFi RX IRAM
+# optimization for extra headroom on the small boards (a minor RX-throughput trade, fine for this tool).
+CONFIG_SPI_MASTER_ISR_IN_IRAM=n
+CONFIG_ESP_WIFI_RX_IRAM_OPT=n
