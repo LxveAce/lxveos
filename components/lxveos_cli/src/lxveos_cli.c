@@ -316,9 +316,10 @@ static int cmd_features(int argc, char **argv)
         if (op == NULL) {
             continue;
         }
-        printf("  [%-11s] %-8s %-14s %-22s (%s, ~%s)\n",
+        printf("  [%-11s] %-8s %-10s %-14s %-22s (%s, ~%s)\n",
                lxveos_op_status_name(lxveos_op_status(op)),
-               lxveos_opcat_name(op->category), op->slug, op->title,
+               lxveos_opcat_name(op->category), lxveos_op_class_name(lxveos_op_class(op)),
+               op->slug, op->title,
                lxveos_cap_name(op->required_cap), op->inspired_by);
     }
     size_t ready = 0, planned = 0, unavailable = 0;

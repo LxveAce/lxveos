@@ -6,6 +6,7 @@
 #include "lxveos_ops.h"
 
 #include <stddef.h>
+#include <string.h>
 
 // The catalog. Grouped by category, then by capability. `implemented` is false for every row in M0 —
 // no operation has a live driver yet, so each reads "planned" (capability present) or "unavailable"
@@ -104,6 +105,40 @@ const char *lxveos_op_status_name(lxveos_op_status_t s)
         return "?";
     }
     return STATUS_NAMES[s];
+}
+
+static const char *const OPCLASS_NAMES[] = {
+    [LXVEOS_OPCLASS_STD]        = "std",
+    [LXVEOS_OPCLASS_OFFENSIVE]  = "offensive",
+    [LXVEOS_OPCLASS_RESTRICTED] = "restricted",
+};
+
+// The jammer / DoS-flood / deauth-injection slugs: catalogued + control-surfaced, but the hub authors no
+// TX payload for them (pure denial-of-service) — the emitter is owner/upstream-supplied. Keep in sync with
+// the two labelled Attack groups in OPS[] above.
+static const char *const RESTRICTED_SLUGS[] = {
+    "beacon_flood", "deauth_burst", "handshake_force", "ble_spam",
+};
+
+lxveos_opclass_t lxveos_op_class(const lxveos_op_t *op)
+{
+    if (op == NULL || op->category != LXVEOS_OPCAT_ATTACK) {
+        return LXVEOS_OPCLASS_STD;
+    }
+    for (size_t i = 0; i < sizeof(RESTRICTED_SLUGS) / sizeof(RESTRICTED_SLUGS[0]); i++) {
+        if (strcmp(op->slug, RESTRICTED_SLUGS[i]) == 0) {
+            return LXVEOS_OPCLASS_RESTRICTED;
+        }
+    }
+    return LXVEOS_OPCLASS_OFFENSIVE;
+}
+
+const char *lxveos_op_class_name(lxveos_opclass_t k)
+{
+    if ((int)k < 0 || k > LXVEOS_OPCLASS_RESTRICTED) {
+        return "?";
+    }
+    return OPCLASS_NAMES[k];
 }
 
 void lxveos_ops_tally(size_t *ready, size_t *planned, size_t *unavailable)

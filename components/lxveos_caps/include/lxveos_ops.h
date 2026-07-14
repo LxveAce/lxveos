@@ -38,6 +38,14 @@ typedef enum {
     LXVEOS_OP_UNAVAILABLE     // this board lacks the required capability
 } lxveos_op_status_t;
 
+// Policy class of an op — how it is handled, distinct from what it does. Lets the CLI, the on-device UI,
+// and the Cyber Controller Operate tab render each control correctly (they are NOT uniform across ops).
+typedef enum {
+    LXVEOS_OPCLASS_STD = 0,     // recon / defense / logging — no offensive-TX gating
+    LXVEOS_OPCLASS_OFFENSIVE,   // hub-built offensive TX (portal / PIN / karma / HID / replay / NFC) — arm-gated
+    LXVEOS_OPCLASS_RESTRICTED   // jammer / DoS-flood / deauth-injection — hub authors no TX; owner/upstream-supplied
+} lxveos_opclass_t;
+
 typedef struct {
     const char *slug;            // stable machine slug for the CC bridge / UI, e.g. "wifi_ap_scan"
     const char *title;           // short human title
@@ -60,6 +68,13 @@ lxveos_op_status_t lxveos_op_status(const lxveos_op_t *op);
 // Stable lowercase slug for a category / status ("recon", "planned", ...); "?" if out of range.
 const char *lxveos_opcat_name(lxveos_opcat_t c);
 const char *lxveos_op_status_name(lxveos_op_status_t s);
+
+// Policy class of `op` (see lxveos_opclass_t). Non-attack ops and NULL are STD; the jammer/DoS-flood
+// class is RESTRICTED; every other ATTACK op is OFFENSIVE. Centralises the one policy distinction so the
+// CLI / UI / CC bridge never re-derive it.
+lxveos_opclass_t lxveos_op_class(const lxveos_op_t *op);
+// Stable lowercase slug for a policy class ("std" / "offensive" / "restricted"); "?" if out of range.
+const char *lxveos_op_class_name(lxveos_opclass_t k);
 
 // Tally the catalog by runtime status for a one-line summary. Any out-param may be NULL.
 void lxveos_ops_tally(size_t *ready, size_t *planned, size_t *unavailable);
