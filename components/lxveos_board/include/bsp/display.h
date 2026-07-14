@@ -29,6 +29,12 @@ esp_err_t bsp_display_backlight_set(uint8_t pct);
 // boards. Valid after bsp_display_start().
 const char *bsp_display_panel(void);
 
+// Opaque esp_lcd handles for the LVGL port layer (lxveos_gui). Cast to esp_lcd_panel_handle_t and
+// esp_lcd_panel_io_handle_t respectively. NULL until bsp_display_start() creates the panel, and on
+// headless boards / display boards whose GPIOs are not yet in the manifest.
+void *bsp_display_panel_handle(void);
+void *bsp_display_io_handle(void);
+
 #ifdef __cplusplus
 }
 #endif

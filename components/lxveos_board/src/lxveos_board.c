@@ -15,6 +15,8 @@
 #include "driver/spi_master.h"
 #include "esp_check.h"
 #include "esp_lcd_panel_io.h"
+#include "esp_lcd_panel_vendor.h"
+#include "esp_lcd_panel_ops.h"
 #endif
 #endif
 
@@ -72,7 +74,9 @@ const char *bsp_display_panel(void) { return s_panel; }
 // display on another host would key this off board_info.h; SPI2 is correct for the current fleet.
 #define LXVEOS_LCD_SPI_HOST  SPI2_HOST
 
-static esp_lcd_panel_io_handle_t s_panel_io;  // valid after a successful bring_up_panel_io()
+static esp_lcd_panel_io_handle_t s_panel_io;      // valid after a successful bring_up_panel_io()
+static esp_lcd_panel_handle_t    s_panel_handle;  // concrete panel, valid after create_panel()
+static uint8_t s_probe_d3[3];                     // RDID4 (0xD3) read at bring-up: 00 93 41 => ILI9341
 
 // Bring up the display SPI bus + esp_lcd panel-IO handle from the generated GPIOs (LXVEOS_DISP_PIN_*).
 // This is the transport half; creating the concrete panel (ST7789 built-in vs ILI9341 managed, per the
@@ -115,6 +119,9 @@ static esp_err_t bring_up_panel_io(void)
     ESP_LOGI(TAG, "panel probe: RDDID(0x04)=%02x %02x %02x [%s]  RDID4(0xD3)=%02x %02x %02x [%s]",
              id04[0], id04[1], id04[2], esp_err_to_name(r04),
              idd3[0], idd3[1], idd3[2], esp_err_to_name(rd3));
+    s_probe_d3[0] = idd3[0];  // kept for create_panel()'s ILI9341 (00 93 41) vs ST7789 decision
+    s_probe_d3[1] = idd3[1];
+    s_probe_d3[2] = idd3[2];
 
     // Backlight on (GPIO21, active-HIGH on the CYD). Simple push-pull drive for this probe; LEDC PWM
     // dimming arrives with the panel driver. A lit backlight is the visible "this is the CYD" signal.
@@ -129,6 +136,46 @@ static esp_err_t bring_up_panel_io(void)
 #endif
     return ESP_OK;
 }
+
+// Create the concrete esp_lcd panel on the panel-IO handle, initialise it, and paint a solid
+// proof-of-life fill. Increment 1 constructs the BUILT-IN ST7789 driver (zero managed dependencies) for
+// every CYD variant; the 1-USB CYD's ILI9341 (probed as RDID4 0xD3 == 00 93 41) needs the managed
+// espressif/esp_lcd_ili9341 driver, wired in the next increment — until then ST7789 init is used and the
+// mismatch is logged. reset_gpio_num = -1 is valid (RST tied to EN on the CYD). A lit, green-filled
+// screen is the visible "the panel is really up" signal. UNVERIFIED on hardware; extra confirms.
+static esp_err_t create_panel(void)
+{
+    const bool is_ili9341 = (s_probe_d3[0] == 0x00 && s_probe_d3[1] == 0x93 && s_probe_d3[2] == 0x41);
+    if (is_ili9341) {
+        ESP_LOGW(TAG, "panel probed ILI9341 (0xD3=00 93 41); using ST7789 init as interim "
+                      "(managed esp_lcd_ili9341 driver = next increment)");
+    }
+    esp_lcd_panel_dev_config_t pcfg = {
+        .reset_gpio_num = LXVEOS_DISP_PIN_RST,        // -1 == RST tied to EN (no dedicated reset line)
+        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,   // CYD panels are BGR
+        .bits_per_pixel = 16,
+    };
+    ESP_RETURN_ON_ERROR(esp_lcd_new_panel_st7789(s_panel_io, &pcfg, &s_panel_handle), TAG, "new st7789");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(s_panel_handle), TAG, "panel reset");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_init(s_panel_handle), TAG, "panel init");
+    esp_lcd_panel_invert_color(s_panel_handle, true);   // ST7789 / most CYD panels need color inversion
+    esp_lcd_panel_disp_on_off(s_panel_handle, true);
+
+    // Proof-of-life: paint the panel LxveAce green in DRAM-friendly 16-line horizontal bands (no full
+    // framebuffer — the classic CYD has no PSRAM). Every band holds identical pixels, so reusing the one
+    // static buffer across queued draws is safe. Byte order / exact hue are HW-tune once on real glass.
+    static uint16_t band[LXVEOS_DISP_W * 16];
+    const uint16_t green = 0x3FE2;   // #39FF14 in RGB565
+    for (int i = 0; i < LXVEOS_DISP_W * 16; i++) {
+        band[i] = green;
+    }
+    for (int y = 0; y < LXVEOS_DISP_H; y += 16) {
+        int h = (y + 16 <= LXVEOS_DISP_H) ? 16 : (LXVEOS_DISP_H - y);
+        esp_lcd_panel_draw_bitmap(s_panel_handle, 0, y, LXVEOS_DISP_W, y + h, band);
+    }
+    ESP_LOGI(TAG, "panel up: ST7789 %dx%d initialised + filled (proof-of-life)", LXVEOS_DISP_W, LXVEOS_DISP_H);
+    return ESP_OK;
+}
 #endif  // LXVEOS_DISP_HAS_PINS
 
 esp_err_t bsp_display_start(void)
@@ -138,9 +185,10 @@ esp_err_t bsp_display_start(void)
              LXVEOS_DISP_BUS, LXVEOS_DISP_BACKEND);
 #if LXVEOS_DISP_HAS_PINS
     ESP_RETURN_ON_ERROR(bring_up_panel_io(), TAG, "display bring-up");
-    // TODO(M0): create the panel from the resolved identity — ST7789 via the built-in
-    // esp_lcd_new_panel_st7789(), or ILI9341 via the managed espressif/esp_lcd_ili9341 component — then
-    // reset/init, drive the GPIO21 backlight (active-HIGH), and hand the panel to esp_lvgl_port.
+    ESP_RETURN_ON_ERROR(create_panel(), TAG, "panel create");
+    // TODO(M1-C next): swap ST7789 for the managed espressif/esp_lcd_ili9341 driver when the probe says
+    // ILI9341, add LEDC PWM backlight dimming, then hand s_panel_handle/s_panel_io to esp_lvgl_port and
+    // build the LVGL launcher (lxveos_gui).
 #else
     // This board's display GPIOs aren't in the manifest yet (pins=null). Source + verify them into
     // cyd_boards.json display.pins (datasheet/community, NOT fabricated) to unlock esp_lcd bring-up here.
@@ -165,9 +213,30 @@ esp_err_t bsp_display_backlight_set(uint8_t pct)
     return ESP_OK;  // TODO(M0): PWM backlight per board_info.h
 }
 
+// Opaque esp_lcd handles for the LVGL port layer (lxveos_gui). NULL until create_panel() runs, and on
+// display boards whose GPIOs aren't in the manifest yet. Cast to esp_lcd_panel_handle_t / _io_handle_t.
+void *bsp_display_panel_handle(void)
+{
+#if LXVEOS_DISP_HAS_PINS
+    return s_panel_handle;
+#else
+    return NULL;
+#endif
+}
+void *bsp_display_io_handle(void)
+{
+#if LXVEOS_DISP_HAS_PINS
+    return s_panel_io;
+#else
+    return NULL;
+#endif
+}
+
 #else  // headless — no panel
 
 const char *bsp_display_panel(void) { return ""; }
+void *bsp_display_panel_handle(void) { return NULL; }
+void *bsp_display_io_handle(void) { return NULL; }
 
 esp_err_t bsp_display_start(void) { return ESP_OK; }
 
