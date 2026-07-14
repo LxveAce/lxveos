@@ -36,6 +36,19 @@ bool lxveos_nrf24_present(void);
 // ESP_ERR_INVALID_STATE if not begun, ESP_ERR_INVALID_ARG for a NULL buffer. Receive only.
 esp_err_t lxveos_nrf24_scan(uint8_t *counts, uint16_t sweeps);
 
+// ── Increment 2: MouseJack (the nrf24_mousejack op) ──────────────────────────────────────────────────
+// Pseudo-promiscuous listen (2-byte preamble-match, CRC off) hopping the common HID span to recover a
+// nearby device's 5-byte address into addr[5] + its channel into *channel. Best-effort recon-for-attack;
+// HW-tuning pending. Returns ESP_OK on a candidate, ESP_ERR_TIMEOUT, or ESP_ERR_INVALID_STATE. Receive only.
+esp_err_t lxveos_nrf24_sniff(uint8_t addr[5], uint8_t *channel, uint32_t timeout_ms);
+
+// MouseJack keystroke injection: type `text` at the target `addr`/`channel` as unencrypted Logitech-Unifying
+// keyboard frames (the classic Bastille MouseJack). OFFENSIVE TX — gated on the arm framework
+// (lxveos_arm_can_emit()). Returns ESP_ERR_NOT_ALLOWED if not armed, ESP_ERR_INVALID_STATE if not begun,
+// ESP_ERR_INVALID_ARG for bad args, else ESP_OK. Targeted injection (not a flood); frame format + timing are
+// HW-tuning pending (vendor-specific).
+esp_err_t lxveos_nrf24_inject_text(const uint8_t addr[5], uint8_t channel, const char *text);
+
 #ifdef __cplusplus
 }
 #endif

