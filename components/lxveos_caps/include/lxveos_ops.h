@@ -21,7 +21,7 @@ extern "C" {
 
 // Broad grouping for the operation, so the UI / operator can see intent at a glance. ATTACK ops are the
 // labelled offensive features (retained + clearly flagged, never hidden and never silently enabled);
-// LxveOS still authors no jammer/deauth transmit frames — these rows are roadmap metadata only.
+// LxveOS still authors no jammer/DoS-flood/deauth-injection transmit frames — these rows are roadmap metadata only.
 typedef enum {
     LXVEOS_OPCAT_RECON = 0,   // passive/active discovery (scans, sniffing, capture)
     LXVEOS_OPCAT_ATTACK,      // offensive (labelled lab-only; no frames authored here)

@@ -324,7 +324,7 @@ static int cmd_features(int argc, char **argv)
     size_t ready = 0, planned = 0, unavailable = 0;
     lxveos_ops_tally(&ready, &planned, &unavailable);
     printf("summary: %u ready / %u planned / %u unavailable  "
-           "(LxveOS authors no jammer/deauth frames)\n",
+           "(LxveOS authors no jammer/DoS-flood frames)\n",
            (unsigned)ready, (unsigned)planned, (unsigned)unavailable);
     return 0;
 }

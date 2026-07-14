@@ -16,13 +16,30 @@ static const lxveos_op_t OPS[] = {
     {"wifi_sta_scan",  "Wi-Fi station scan",    LXVEOS_OPCAT_RECON,   LXVEOS_CAP_WIFI,    "Marauder", true},
     {"wifi_sniff",     "Wi-Fi packet monitor",  LXVEOS_OPCAT_RECON,   LXVEOS_CAP_WIFI,    "Marauder", true},
     {"wifi_probe_scan", "Probe-request SSID log", LXVEOS_OPCAT_RECON,  LXVEOS_CAP_WIFI,    "Marauder", true},
+    {"wifi_5ghz_scan", "Wi-Fi 5 GHz AP scan",   LXVEOS_OPCAT_RECON,   LXVEOS_CAP_WIFI,    "custom",   false},
     {"eapol_capture",  "EAPOL/PMKID capture",   LXVEOS_OPCAT_RECON,   LXVEOS_CAP_WIFI,    "Marauder", true},
     {"ble_scan",       "BLE device scan",       LXVEOS_OPCAT_RECON,   LXVEOS_CAP_BLE,     "Marauder", true},
     {"subghz_scan",    "Sub-GHz scan",          LXVEOS_OPCAT_RECON,   LXVEOS_CAP_SUBGHZ,  "Flipper",  false},
     {"nfc_read",       "NFC tag read",          LXVEOS_OPCAT_RECON,   LXVEOS_CAP_NFC,     "Flipper",  false},
-    // ── Attack (labelled lab-only; no frames authored here) ───────────────────────────────────────
+    {"ir_recv",        "IR receive/decode",     LXVEOS_OPCAT_RECON,   LXVEOS_CAP_IR,      "Flipper",  false},
+    // ── Attack ────────────────────────────────────────────────────────────────────────────────────
+    // Hub-built offensive: protocol-level attacks (NOT jammers/floods), authorized-lab. Each row flips
+    // to "ready" as its driver lands; the TX these author is protocol traffic (portal/PIN/replay/HID/
+    // NFC), never a jammer or a mass-DoS flood.
+    {"evil_portal",    "Evil-portal captive portal", LXVEOS_OPCAT_ATTACK, LXVEOS_CAP_WIFI, "Marauder", false},
+    {"wps_attack",     "WPS-PIN attack",        LXVEOS_OPCAT_ATTACK,  LXVEOS_CAP_WIFI,    "Bruce",    false},
+    {"karma_ap",       "Karma / probe-response AP", LXVEOS_OPCAT_ATTACK, LXVEOS_CAP_WIFI, "Pineapple", false},
+    {"ble_hid_inject", "BLE HID injection",     LXVEOS_OPCAT_ATTACK,  LXVEOS_CAP_BLE,     "Bruce",    false},
+    {"subghz_replay",  "Sub-GHz capture+replay", LXVEOS_OPCAT_ATTACK, LXVEOS_CAP_SUBGHZ,  "Flipper",  false},
+    {"subghz_brute",   "Sub-GHz de Bruijn brute", LXVEOS_OPCAT_ATTACK, LXVEOS_CAP_SUBGHZ, "Flipper",  false},
+    {"nrf24_mousejack", "nRF24 Mousejack inject", LXVEOS_OPCAT_ATTACK, LXVEOS_CAP_NRF24,  "Bastille", false},
+    {"nfc_clone",      "NFC clone",             LXVEOS_OPCAT_ATTACK,  LXVEOS_CAP_NFC,     "Flipper",  false},
+    {"nfc_emulate",    "NFC emulate",           LXVEOS_OPCAT_ATTACK,  LXVEOS_CAP_NFC,     "Flipper",  false},
+    // Jammer / DoS-flood / deauth-injection class: catalogued + control-surfaced ONLY. The hub does not
+    // author these TX payloads (pure denial-of-service); the emitter is owner/upstream-supplied.
     {"beacon_flood",   "Beacon flood",          LXVEOS_OPCAT_ATTACK,  LXVEOS_CAP_WIFI,    "Marauder", false},
-    {"deauth_burst",   "Deauth burst",          LXVEOS_OPCAT_ATTACK,  LXVEOS_CAP_WIFI,    "Marauder", false},
+    {"deauth_burst",   "Deauth/disassoc burst", LXVEOS_OPCAT_ATTACK,  LXVEOS_CAP_WIFI,    "Marauder", false},
+    {"handshake_force", "Active handshake force (deauth)", LXVEOS_OPCAT_ATTACK, LXVEOS_CAP_WIFI, "Marauder", false},
     {"ble_spam",       "BLE advertise spam",    LXVEOS_OPCAT_ATTACK,  LXVEOS_CAP_BLE,     "multi",    false},
     // ── Defense ───────────────────────────────────────────────────────────────────────────────────
     {"deauth_detect",  "Deauth/pwn detector",   LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_WIFI,    "Marauder", true},
