@@ -6,9 +6,13 @@
 // until the discovery-complete event fires; the GAP event callback — which runs on the NimBLE host task —
 // fills the caller's device table in the meantime. The host stays up between scans (lazy, like Wi-Fi).
 //
-// STRICTLY PASSIVE: passive=1 means the controller never emits a SCAN_REQ, and the broadcaster/peripheral
-// roles are compiled out entirely (sdkconfig.defaults), so this code cannot transmit even if it tried.
+// The SCAN path is PASSIVE: passive=1 means the controller never emits a SCAN_REQ, so a scan puts nothing
+// on-air. This file also owns the single NimBLE host for the whole component; the arm-gated HID injection
+// op (lxveos_ble_hid.c) registers its GATT services through the seam below and shares this host. The
+// connectable PERIPHERAL role is compiled in for that op; the non-connectable BROADCASTER role (BLE
+// advert-spam) is not (sdkconfig.defaults). Nothing advertises until an operator arms + starts injection.
 #include "lxveos_ble.h"
+#include "lxveos_ble_hid_internal.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -324,6 +328,13 @@ static esp_err_t ensure_host_up(void)
     ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
     ble_store_config_init();
 
+    // Register the HID-over-GATT services before the host task starts (the host stands its GATT server up
+    // at sync). This only defines the services; nothing advertises until an arm-gated injection begins.
+    int hrc = lxveos_ble_hid_services_register();
+    if (hrc != 0) {
+        ESP_LOGW(TAG, "HID GATT register rc=%d (injection op unavailable)", hrc);
+    }
+
     nimble_port_freertos_init(nimble_host_task);
 
     if (xSemaphoreTake(s_sync_sem, pdMS_TO_TICKS(5000)) != pdTRUE) {
@@ -331,6 +342,25 @@ static esp_err_t ensure_host_up(void)
         return ESP_ERR_TIMEOUT;
     }
     s_host_up = true;
+    return ESP_OK;
+}
+
+// Host seam for the HID injection op (lxveos_ble_hid.c): bring the shared NimBLE host up and resolve our
+// own address type. Keeps the host bring-up in this one file.
+esp_err_t lxveos_ble_hid_host_ready(uint8_t *own_addr_type)
+{
+    if (own_addr_type == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    esp_err_t err = ensure_host_up();
+    if (err != ESP_OK) {
+        return err;
+    }
+    int rc = ble_hs_id_infer_auto(0, own_addr_type);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "ble_hs_id_infer_auto rc=%d", rc);
+        return ESP_FAIL;
+    }
     return ESP_OK;
 }
 

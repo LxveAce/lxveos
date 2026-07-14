@@ -844,8 +844,10 @@ static int cmd_apaudit(int argc, char **argv)
 
 // `blescan [seconds]` — passive BLE device scan (the `ble_scan` catalog operation). Runs a NimBLE GAP
 // discovery in PASSIVE mode (the controller never sends a SCAN_REQ) and lists nearby advertisers with
-// address, address type, RSSI, GAP flags and local name. Listen only — LxveOS compiles the BLE broadcaster
-// and peripheral roles out, so this build cannot advertise. Gated on the BLE capability.
+// address, address type, RSSI, GAP flags and local name. This scan is passive (never advertises, never
+// sends a SCAN_REQ). The non-connectable BLE broadcaster role is compiled out, so the build cannot emit a
+// broadcast advert flood; a connectable keyboard advert exists only under the arm-gated `badble` op. Gated
+// on the BLE capability.
 static int cmd_blescan(int argc, char **argv)
 {
     if (locked()) {
@@ -1268,6 +1270,68 @@ static int cmd_evilportal(int argc, char **argv)
     return 0;
 }
 
+// badble — arm-gated BLE HID keystroke injection ("BadBLE"). Advertises as a keyboard; on pairing, plays a
+// DuckyScript-lite script into the target host. `badble stop` / `badble status`, else the args form the
+// script (commands separated by ';'). esp_console splits on spaces, so argv[1..] is rejoined with spaces —
+// quote the whole script to preserve exact spacing (badble "GUI r;DELAY 400;STRING notepad;ENTER").
+static int cmd_badble(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_BLE)) {
+        printf("ble capability is not active on this build — cannot run HID injection\n");
+        return 0;
+    }
+    if (argc >= 2 && strcmp(argv[1], "stop") == 0) {
+        lxveos_ble_hid_stop();
+        printf("badble stopped\n");
+        return 0;
+    }
+    if (argc >= 2 && strcmp(argv[1], "status") == 0) {
+        printf("badble: %s%s\n", lxveos_ble_hid_running() ? "active" : "idle",
+               lxveos_ble_hid_connected() ? ", host connected" : "");
+        return 0;
+    }
+    if (argc < 2) {
+        printf("usage: badble <script>   e.g. badble \"GUI r;DELAY 400;STRING notepad;ENTER\"\n");
+        printf("       commands (';'-separated): STRING <text> | DELAY <ms> | ENTER/TAB/ESC/SPACE/UP/DOWN/... |\n");
+        printf("       GUI/CTRL/ALT/SHIFT/CTRL-ALT <key>. Requires 'arm' first (offensive-TX op).\n");
+        return 0;
+    }
+    if (lxveos_ble_hid_running()) {
+        printf("badble already running — 'badble stop' first\n");
+        return 0;
+    }
+    if (!lxveos_arm_can_emit()) {
+        printf("offensive TX not permitted — run 'arm' first (this is an offensive-TX op).\n");
+        return 0;
+    }
+    // Rejoin argv[1..] into one script string (single-space separated).
+    char script[256];
+    size_t off = 0;
+    for (int i = 1; i < argc; i++) {
+        int w = snprintf(script + off, sizeof(script) - off, "%s%s", i > 1 ? " " : "", argv[i]);
+        if (w < 0 || (size_t)w >= sizeof(script) - off) {
+            off = sizeof(script) - 1;
+            break;
+        }
+        off += (size_t)w;
+    }
+    script[off] = '\0';
+
+    esp_err_t e = lxveos_ble_hid_inject(script);
+    if (e == ESP_OK) {
+        printf("badble: advertising as BLE keyboard \"LxveOS-KB\" — pair a target within 60s to inject (armed)\n");
+        printf("script: %s\n", script);
+    } else if (e == ESP_ERR_NOT_ALLOWED) {
+        printf("offensive TX not permitted — run 'arm' first.\n");
+    } else {
+        printf("badble start failed: %s\n", esp_err_to_name(e));
+    }
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -1292,6 +1356,7 @@ static void register_commands(void)
         {.command = "arm", .help = "Two-factor enable for offensive-TX ops: arm (request), then arm <token> (confirm)", .func = &cmd_arm},
         {.command = "disarm", .help = "Hard-disarm: return to SAFE (offensive TX not permitted)", .func = &cmd_disarm},
         {.command = "evilportal", .help = "Rogue AP + captive portal (needs arm): evilportal [ssid|karma|template <id>|templates|creds|stop]", .func = &cmd_evilportal},
+        {.command = "badble", .help = "BLE HID keystroke injection (needs arm): badble \"<duckyscript>\" | stop | status", .func = &cmd_badble},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
         {.command = "reboot", .help = "Restart the unit", .func = &cmd_reboot},
         {.command = "nvs", .help = "Persistent settings: nvs get <key> | nvs set <key> <value>", .func = &cmd_nvs},

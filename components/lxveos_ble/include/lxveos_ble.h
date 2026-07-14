@@ -1,8 +1,11 @@
-// LxveOS BLE recon (M1). A passive NimBLE GAP "observer": it listens for BLE advertisements and reports
-// what is already in the air. It is LISTEN-ONLY by construction — the broadcaster/peripheral (advertise/
-// connectable) NimBLE roles are compiled OUT (see sdkconfig.defaults), so an LxveOS image is physically
-// incapable of transmitting a BLE packet. The scan itself uses passive discovery (never sends the active
-// SCAN_REQ that would prompt a scan response), so nothing leaves the antenna.
+// LxveOS BLE (M1). The recon side is a passive NimBLE GAP "observer": it listens for BLE advertisements
+// and reports what is already in the air, using passive discovery (never sends the active SCAN_REQ that
+// would prompt a scan response), so a scan puts nothing on-air.
+//
+// The component also hosts ONE offensive-TX op — arm-gated BLE HID keystroke injection (the `ble_hid_inject`
+// / "BadBLE" op, see the lxveos_ble_hid_* API below). For that the connectable NimBLE PERIPHERAL role is
+// compiled in; the non-connectable BROADCASTER role (what BLE advert-spam floods use) stays compiled out.
+// Nothing transmits until an operator arms the unit and starts an injection — a plain scan never advertises.
 #pragma once
 
 #include <stdbool.h>
@@ -103,6 +106,30 @@ const char *lxveos_ble_tracker_str(uint8_t tracker);
 // categories (Phone/Watch/Computer/Audio/Heart-Rate/…) are named, HID (cat 15) resolves its keyboard/mouse
 // subcategory, and anything not in the known set falls through to "appr:0x<hex>" — never mis-labelled.
 void lxveos_ble_appearance_str(uint16_t appearance, char *buf, size_t buflen);
+
+// ── BLE HID keystroke injection (the `ble_hid_inject` op, "BadBLE") — OFFENSIVE TX, arm-gated ─────────
+// LxveOS advertises as a standard BLE HID keyboard ("LxveOS-KB"); when a target host pairs and subscribes
+// to the input report, it plays `script` as keystrokes — a Rubber-Ducky primitive over BLE, for authorized
+// lab testing. Targeted injection into the one host that connects; NOT a jammer or advert-spam flood.
+//
+// `script` is a DuckyScript-lite string, commands separated by ';':
+//   STRING <text>  type literal text        DELAY <ms>   pause
+//   ENTER TAB ESC SPACE BACKSPACE DELETE UP DOWN LEFT RIGHT HOME END   named keys
+//   GUI <k> · CTRL <k> · ALT <k> · SHIFT <k> · CTRL-ALT <k> · GUI      modifier + key (key optional)
+// e.g. "GUI r;DELAY 400;STRING notepad;ENTER".
+//
+// Requires the unit to be ARMED (lxveos_arm_can_emit()). Returns ESP_ERR_NOT_ALLOWED if not armed / TX
+// compiled out, ESP_ERR_INVALID_STATE if already running, ESP_ERR_INVALID_ARG for an empty script, or an
+// esp_err_t on BLE bring-up failure. On success it advertises and waits up to 60 s for a target; the script
+// plays once the target subscribes, then it auto-stops.
+esp_err_t lxveos_ble_hid_inject(const char *script);
+
+// Stop advertising / disconnect / end any in-flight injection. Safe to call when idle (returns ESP_OK).
+esp_err_t lxveos_ble_hid_stop(void);
+
+// True while advertising as a keyboard or injecting. / True once a host has connected.
+bool lxveos_ble_hid_running(void);
+bool lxveos_ble_hid_connected(void);
 
 #ifdef __cplusplus
 }

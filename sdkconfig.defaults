@@ -17,10 +17,13 @@ CONFIG_ESP_WIFI_RX_IRAM_OPT=y
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 
 # Bluetooth LE via NimBLE (all boards declare a BLE capability). NimBLE, not Bluedroid — far smaller for a
-# BLE-only use case. LxveOS only OBSERVES: the broadcaster + peripheral (advertise/connectable) roles are
-# compiled OUT, so the image is physically incapable of transmitting a BLE packet — the "listen only" gate
-# enforced in Kconfig, not just in code. The per-chip controller mode lives in sdkconfig.defaults.<target>.
+# BLE-only use case. Recon (scan/observe) is passive. The connectable PERIPHERAL role is compiled IN for the
+# one BLE transmit op — arm-gated HID keystroke injection (the `ble_hid_inject` / "BadBLE" op) — which
+# advertises as a keyboard and talks to the single host that connects. The non-connectable BROADCASTER role
+# stays compiled OUT: that is the role BLE advert-spam / popup-flood attacks use, and LxveOS does not build
+# a spam emitter. So the image can advertise as a HID keyboard (targeted, arm-gated) but is Kconfig-incapable
+# of a broadcast advert flood. The per-chip controller mode lives in sdkconfig.defaults.<target>.
 CONFIG_BT_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
 CONFIG_BT_NIMBLE_ROLE_BROADCASTER=n
-CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=n
+CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y

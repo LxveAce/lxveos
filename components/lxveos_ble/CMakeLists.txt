@@ -1,8 +1,9 @@
-# lxveos_ble — passive BLE recon (M1). A NimBLE GAP observer; the host is brought up lazily on first scan.
-# REQUIRES the Bluetooth component (NimBLE host + controller); BT is enabled for every board in the common
-# sdkconfig.defaults, so `bt` is always present. LISTEN-ONLY — advertising roles are compiled out.
+# lxveos_ble — BLE recon (passive NimBLE GAP observer) + the arm-gated HID keystroke-injection op
+# (lxveos_ble_hid.c, "BadBLE"). One NimBLE host, owned by lxveos_ble.c and shared by both. REQUIRES the
+# Bluetooth component (NimBLE host + controller; `bt` is enabled for every board in sdkconfig.defaults) and
+# lxveos_arm for the transmit gate the injection op checks before advertising.
 idf_component_register(
-    SRCS "src/lxveos_ble.c"
+    SRCS "src/lxveos_ble.c" "src/lxveos_ble_hid.c"
     INCLUDE_DIRS "include"
-    REQUIRES bt
+    REQUIRES bt lxveos_arm
 )
