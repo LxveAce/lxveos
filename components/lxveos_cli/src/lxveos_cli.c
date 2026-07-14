@@ -23,6 +23,7 @@
 #include "sdkconfig.h"
 
 #include "bsp/display.h"
+#include "lxveos_arm.h"
 #include "lxveos_ble.h"
 #include "lxveos_board.h"
 #include "lxveos_caps.h"
@@ -1124,6 +1125,54 @@ static int cmd_wardrive(int argc, char **argv)
     return 0;
 }
 
+// `arm [token]` — two-factor enable for offensive-TX ops. `arm` (no token) starts a request and prints a
+// one-time confirm code; `arm <token>` confirms it within 30s. Offensive TX is compiled OUT of released
+// images (LXVEOS_TX_ENABLE unset), so on a normal build this reports that and arms nothing — recon/defense
+// ops never need it. The gate itself lives in lxveos_arm; each offensive op checks lxveos_arm_can_emit().
+static int cmd_arm(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_arm_tx_compiled()) {
+        printf("offensive TX is compiled OUT of this build (LXVEOS_TX_ENABLE unset) — nothing to arm.\n");
+        printf("recon/defense ops need no arming; they run as usual.\n");
+        return 0;
+    }
+    if (argc >= 2) {
+        uint32_t token = (uint32_t)strtoul(argv[1], NULL, 10);
+        esp_err_t e = lxveos_arm_confirm(token);
+        if (e == ESP_OK) {
+            printf("ARMED — offensive-TX ops permitted until 'disarm' or inactivity timeout.\n");
+        } else {
+            printf("arm confirm failed (%s) — state now %s. Re-run 'arm' to start over.\n",
+                   esp_err_to_name(e), lxveos_arm_state_name(lxveos_arm_state()));
+        }
+        return 0;
+    }
+    uint32_t token = 0;
+    esp_err_t e = lxveos_arm_request(&token);
+    if (e != ESP_OK) {
+        printf("arm request failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    printf("arm requested. Confirm within 30s:  arm %u\n", (unsigned)token);
+    return 0;
+}
+
+// `disarm` — hard kill: return to SAFE immediately. Always available.
+static int cmd_disarm(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    if (locked()) {
+        return 0;
+    }
+    lxveos_arm_disarm();
+    printf("disarmed — state SAFE. Offensive TX not permitted.\n");
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -1145,6 +1194,8 @@ static void register_commands(void)
         {.command = "btracker", .help = "Passive BLE item-tracker/stalking detector (AirTag/Tile/SmartTag/Chipolo/PebbleBee/GoogleFMN): btracker [seconds]", .func = &cmd_btracker},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
+        {.command = "arm", .help = "Two-factor enable for offensive-TX ops: arm (request), then arm <token> (confirm)", .func = &cmd_arm},
+        {.command = "disarm", .help = "Hard-disarm: return to SAFE (offensive TX not permitted)", .func = &cmd_disarm},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
         {.command = "reboot", .help = "Restart the unit", .func = &cmd_reboot},
         {.command = "nvs", .help = "Persistent settings: nvs get <key> | nvs set <key> <value>", .func = &cmd_nvs},
