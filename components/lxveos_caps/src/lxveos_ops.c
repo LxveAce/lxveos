@@ -27,9 +27,9 @@ static const lxveos_op_t OPS[] = {
     // Hub-built offensive: protocol-level attacks (NOT jammers/floods), authorized-lab. Each row flips
     // to "ready" as its driver lands; the TX these author is protocol traffic (portal/PIN/replay/HID/
     // NFC), never a jammer or a mass-DoS flood.
-    {"evil_portal",    "Evil-portal captive portal", LXVEOS_OPCAT_ATTACK, LXVEOS_CAP_WIFI, "Marauder", false},
+    {"evil_portal",    "Evil-portal captive portal", LXVEOS_OPCAT_ATTACK, LXVEOS_CAP_WIFI, "Marauder", true},
     {"wps_attack",     "WPS-PIN attack",        LXVEOS_OPCAT_ATTACK,  LXVEOS_CAP_WIFI,    "Bruce",    false},
-    {"karma_ap",       "Karma / probe-response AP", LXVEOS_OPCAT_ATTACK, LXVEOS_CAP_WIFI, "Pineapple", false},
+    {"karma_ap",       "Karma / probe-response AP", LXVEOS_OPCAT_ATTACK, LXVEOS_CAP_WIFI, "Pineapple", true},
     {"ble_hid_inject", "BLE HID injection",     LXVEOS_OPCAT_ATTACK,  LXVEOS_CAP_BLE,     "Bruce",    false},
     {"subghz_replay",  "Sub-GHz capture+replay", LXVEOS_OPCAT_ATTACK, LXVEOS_CAP_SUBGHZ,  "Flipper",  false},
     {"subghz_brute",   "Sub-GHz de Bruijn brute", LXVEOS_OPCAT_ATTACK, LXVEOS_CAP_SUBGHZ, "Flipper",  false},
