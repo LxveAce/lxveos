@@ -28,6 +28,7 @@
 #include "lxveos_ir.h"
 #include "lxveos_subghz.h"
 #include "lxveos_nrf24.h"
+#include "lxveos_nfc.h"
 #include "lxveos_board.h"
 #include "lxveos_caps.h"
 #include "lxveos_evilportal.h"
@@ -1498,6 +1499,61 @@ static int cmd_nrf24(int argc, char **argv)
     return 0;
 }
 
+// nfc — PN532 NFC reader (nfc_read recon op, increment 1). `nfc begin <sda> <scl>` brings up I2C + identifies
+// the reader; `nfc read [seconds]` polls for one ISO-14443A card and prints its UID/SAK/ATQA; `nfc end`
+// releases. Add-on on operator-supplied I2C pins; not cap-gated. Read only (no write/emulate) this increment.
+static int cmd_nfc(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (argc >= 4 && strcmp(argv[1], "begin") == 0) {
+        esp_err_t e = lxveos_nfc_begin(atoi(argv[2]), atoi(argv[3]));
+        if (e == ESP_OK) {
+            printf("PN532 begin: %s (IC=0x%02X ver=0x%02X)\n",
+                   lxveos_nfc_present() ? "reader detected" : "NO response (check wiring)",
+                   lxveos_nfc_ic(), lxveos_nfc_version());
+        } else if (e == ESP_ERR_INVALID_STATE) {
+            printf("nfc already begun — 'nfc end' first\n");
+        } else {
+            printf("nfc begin failed: %s\n", esp_err_to_name(e));
+        }
+        return 0;
+    }
+    if (argc >= 2 && strcmp(argv[1], "read") == 0) {
+        uint32_t secs = (argc >= 3) ? (uint32_t)atoi(argv[2]) : 0;
+        printf("NFC: present a 13.56 MHz card (up to %us)...\n", secs ? (unsigned)secs : 5u);
+        uint8_t uid[10];
+        size_t ulen = 0;
+        uint8_t sak = 0;
+        uint16_t atqa = 0;
+        esp_err_t e = lxveos_nfc_read_uid(secs * 1000, uid, sizeof(uid), &ulen, &sak, &atqa);
+        if (e == ESP_OK) {
+            printf("card UID (%u bytes): ", (unsigned)ulen);
+            for (size_t i = 0; i < ulen; i++) {
+                printf("%02X", uid[i]);
+            }
+            printf("  ATQA=0x%04X SAK=0x%02X\n", atqa, sak);
+        } else if (e == ESP_ERR_TIMEOUT) {
+            printf("no card detected\n");
+        } else if (e == ESP_ERR_INVALID_STATE) {
+            printf("not begun — 'nfc begin <sda> <scl>' first\n");
+        } else {
+            printf("nfc read failed: %s\n", esp_err_to_name(e));
+        }
+        return 0;
+    }
+    if (argc >= 2 && strcmp(argv[1], "end") == 0) {
+        lxveos_nfc_end();
+        printf("nfc link released\n");
+        return 0;
+    }
+    printf("usage: nfc begin <sda> <scl> | nfc read [seconds] | nfc end\n");
+    printf("       PN532 add-on on I2C. Increment 1: identify + read one ISO-14443A card UID (read only).\n");
+    printf("       Clone/emulate is a later increment.\n");
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -1526,6 +1582,7 @@ static void register_commands(void)
         {.command = "ir", .help = "IR capture + replay (universal remote): ir recv <rx_gpio> [s] | send <tx_gpio> | show", .func = &cmd_ir},
         {.command = "subghz", .help = "Sub-GHz CC1101 (recv): subghz begin <sclk> <miso> <mosi> <cs> | rssi <mhz> | end", .func = &cmd_subghz},
         {.command = "nrf24", .help = "nRF24 2.4GHz scan (recv): nrf24 begin <sck> <miso> <mosi> <csn> <ce> | scan [sweeps] | end", .func = &cmd_nrf24},
+        {.command = "nfc", .help = "NFC PN532 reader (recv): nfc begin <sda> <scl> | read [seconds] | end", .func = &cmd_nfc},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
         {.command = "reboot", .help = "Restart the unit", .func = &cmd_reboot},
         {.command = "nvs", .help = "Persistent settings: nvs get <key> | nvs set <key> <value>", .func = &cmd_nvs},
