@@ -1554,6 +1554,54 @@ static int cmd_nfc(int argc, char **argv)
     return 0;
 }
 
+// blehid — DEFENSE: passive scan flagging nearby BLE HID devices (keyboards/mice). A rogue BLE keyboard is
+// the signature of a keystroke-injection attack (BadBLE / our own `badble`) or a covert BLE keylogger, so
+// surfacing them is a defensive recon signal. Reuses the passive BLE scan; a device qualifies if its GAP
+// appearance is in the HID category (value >> 6 == 15) or it advertises the HID service UUID 0x1812. Listen
+// only. BLE-capability gated.
+static int cmd_blehid(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_BLE)) {
+        printf("ble capability is not active on this build\n");
+        return 0;
+    }
+    uint32_t secs = (argc >= 2) ? (uint32_t)atoi(argv[1]) : 6;
+    static lxveos_ble_dev_t devs[32];
+    size_t found = 0;
+    printf("scanning %us for BLE HID devices (keyboards/mice = potential injectors/keyloggers)...\n",
+           (unsigned)secs);
+    esp_err_t e = lxveos_ble_scan(secs, devs, sizeof(devs) / sizeof(devs[0]), &found);
+    if (e != ESP_OK) {
+        printf("ble scan failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    int hits = 0;
+    for (size_t i = 0; i < found; i++) {
+        bool is_hid = devs[i].appearance_present && (devs[i].appearance >> 6) == 15;
+        for (uint8_t u = 0; !is_hid && u < devs[i].svc_uuid_count; u++) {
+            if (devs[i].svc_uuids[u] == 0x1812) {   // HID service
+                is_hid = true;
+            }
+        }
+        if (!is_hid) {
+            continue;
+        }
+        hits++;
+        char appr[24];
+        lxveos_ble_appearance_str(devs[i].appearance, appr, sizeof(appr));
+        printf("  [HID] %02X:%02X:%02X:%02X:%02X:%02X  %ddBm  %-10s  %s\n",
+               devs[i].addr[5], devs[i].addr[4], devs[i].addr[3],
+               devs[i].addr[2], devs[i].addr[1], devs[i].addr[0],
+               devs[i].rssi, appr, devs[i].name_len ? devs[i].name : "(no name)");
+    }
+    printf("%d BLE HID device(s) flagged of %u advertisers seen.%s\n", hits, (unsigned)found,
+           hits ? " Verify each is an expected keyboard/mouse." : "");
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -1583,6 +1631,7 @@ static void register_commands(void)
         {.command = "subghz", .help = "Sub-GHz CC1101 (recv): subghz begin <sclk> <miso> <mosi> <cs> | rssi <mhz> | end", .func = &cmd_subghz},
         {.command = "nrf24", .help = "nRF24 2.4GHz scan (recv): nrf24 begin <sck> <miso> <mosi> <csn> <ce> | scan [sweeps] | end", .func = &cmd_nrf24},
         {.command = "nfc", .help = "NFC PN532 reader (recv): nfc begin <sda> <scl> | read [seconds] | end", .func = &cmd_nfc},
+        {.command = "blehid", .help = "DEFENSE: flag nearby BLE HID devices (rogue keyboards/injectors): blehid [seconds]", .func = &cmd_blehid},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
         {.command = "reboot", .help = "Restart the unit", .func = &cmd_reboot},
         {.command = "nvs", .help = "Persistent settings: nvs get <key> | nvs set <key> <value>", .func = &cmd_nvs},
