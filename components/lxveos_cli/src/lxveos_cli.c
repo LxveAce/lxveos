@@ -1625,14 +1625,51 @@ static int cmd_nfc(int argc, char **argv)
         }
         return 0;
     }
+    if (argc >= 3 && strcmp(argv[1], "clone") == 0) {
+        // Parse 8 hex chars -> a 4-byte UID.
+        const char *h = argv[2];
+        if (strlen(h) != 8) {
+            printf("clone needs a 4-byte UID as 8 hex chars, e.g. 'nfc clone DEADBEEF'\n");
+            return 0;
+        }
+        uint8_t uid[4];
+        bool ok = true;
+        for (int i = 0; i < 4 && ok; i++) {
+            char b[3] = { h[i * 2], h[i * 2 + 1], 0 };
+            char *end = NULL;
+            long v = strtol(b, &end, 16);
+            if (end == b || *end != '\0') {
+                ok = false;
+            }
+            uid[i] = (uint8_t)v;
+        }
+        if (!ok) {
+            printf("invalid hex UID '%s'\n", h);
+            return 0;
+        }
+        printf("NFC clone: present a writable/magic Mifare card to write UID %s ...\n", h);
+        esp_err_t e = lxveos_nfc_clone_write(uid, sizeof(uid));
+        if (e == ESP_OK) {
+            printf("wrote UID %s to block 0\n", h);
+        } else if (e == ESP_ERR_TIMEOUT) {
+            printf("no card presented\n");
+        } else if (e == ESP_ERR_INVALID_STATE) {
+            printf("not begun — 'nfc begin <sda> <scl>' first\n");
+        } else if (e == ESP_FAIL) {
+            printf("auth/write refused — not a Gen2 magic card, or wrong key (HW/card-type pending)\n");
+        } else {
+            printf("nfc clone failed: %s\n", esp_err_to_name(e));
+        }
+        return 0;
+    }
     if (argc >= 2 && strcmp(argv[1], "end") == 0) {
         lxveos_nfc_end();
         printf("nfc link released\n");
         return 0;
     }
-    printf("usage: nfc begin <sda> <scl> | nfc read [seconds] | nfc end\n");
-    printf("       PN532 add-on on I2C. Increment 1: identify + read one ISO-14443A card UID (read only).\n");
-    printf("       Clone/emulate is a later increment.\n");
+    printf("usage: nfc begin <sda> <scl> | nfc read [seconds] | nfc clone <8hexUID> | nfc end\n");
+    printf("       PN532 add-on on I2C. read = identify + read one ISO-14443A UID; clone = write a 4-byte\n");
+    printf("       UID to a magic Mifare card's block 0. Emulate is a later increment.\n");
     return 0;
 }
 
@@ -1712,7 +1749,7 @@ static void register_commands(void)
         {.command = "ir", .help = "IR capture + replay (universal remote): ir recv <rx_gpio> [s] | send <tx_gpio> | show", .func = &cmd_ir},
         {.command = "subghz", .help = "Sub-GHz CC1101 (recv): subghz begin <sclk> <miso> <mosi> <cs> | rssi <mhz> | end", .func = &cmd_subghz},
         {.command = "nrf24", .help = "nRF24 2.4GHz: begin <sck> <miso> <mosi> <csn> <ce> | scan | sniff | mousejack <text> (arm) | end", .func = &cmd_nrf24},
-        {.command = "nfc", .help = "NFC PN532 reader (recv): nfc begin <sda> <scl> | read [seconds] | end", .func = &cmd_nfc},
+        {.command = "nfc", .help = "NFC PN532: nfc begin <sda> <scl> | read [seconds] | clone <8hexUID> | end", .func = &cmd_nfc},
         {.command = "blehid", .help = "DEFENSE: flag nearby BLE HID devices (rogue keyboards/injectors): blehid [seconds]", .func = &cmd_blehid},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
         {.command = "reboot", .help = "Restart the unit", .func = &cmd_reboot},

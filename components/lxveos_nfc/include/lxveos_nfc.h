@@ -37,6 +37,17 @@ bool lxveos_nfc_present(void);
 esp_err_t lxveos_nfc_read_uid(uint32_t timeout_ms, uint8_t *uid, size_t uid_cap, size_t *uid_len,
                               uint8_t *sak, uint16_t *atqa);
 
+// ── Increment 2: UID clone (the nfc_clone op) ─────────────────────────────────────────────────────────
+// Write a 4-byte `uid` into block 0 of a presented writable/"magic" Mifare Classic card (the common access-
+// badge clone). Selects the card, authenticates block 0 with the default key A (FF FF FF FF FF FF), and
+// writes block 0 = UID(4) + BCC + SAK 0x08 + ATQA 0x0004 + manufacturer bytes. Returns ESP_OK on a write,
+// ESP_ERR_TIMEOUT if no card was presented, ESP_ERR_INVALID_STATE if not begun, ESP_ERR_INVALID_ARG for a
+// non-4-byte UID, or ESP_FAIL if auth/write was refused (not a magic card / wrong key).
+//
+// HW + magic-card-type pending: this is the standard Gen2/CUID direct-write sequence; Gen1a cards need the
+// backdoor unlock commands (a further increment). Structurally correct + CI-green; extra validates on HW.
+esp_err_t lxveos_nfc_clone_write(const uint8_t *uid, size_t uid_len);
+
 #ifdef __cplusplus
 }
 #endif

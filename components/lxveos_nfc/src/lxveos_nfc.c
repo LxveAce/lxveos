@@ -241,3 +241,45 @@ esp_err_t lxveos_nfc_read_uid(uint32_t timeout_ms, uint8_t *uid, size_t uid_cap,
     }
     return ESP_OK;
 }
+
+esp_err_t lxveos_nfc_clone_write(const uint8_t *uid, size_t uid_len)
+{
+    if (!s_begun) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (uid == NULL || uid_len != 4) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    // 1) Select the presented (magic) card and learn its current UID (needed for the auth step).
+    uint8_t cur[10];
+    size_t cur_len = 0;
+    esp_err_t e = lxveos_nfc_read_uid(3000, cur, sizeof(cur), &cur_len, NULL, NULL);
+    if (e != ESP_OK) {
+        return e;                          // no card presented
+    }
+    if (cur_len < 4) {
+        return ESP_FAIL;
+    }
+
+    uint8_t rsp[16];
+    // 2) InDataExchange: MifareAuthenticate block 0 with default key A + the card's current UID.
+    uint8_t auth[14] = {0x40, 0x01, 0x60, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    memcpy(&auth[10], cur, 4);
+    int n = pn532_transact(auth, sizeof(auth), rsp, sizeof(rsp), 500);
+    if (n < 1 || rsp[0] != 0x00) {
+        return ESP_FAIL;                   // auth refused (wrong key / not writable)
+    }
+
+    // 3) Build block 0 = UID(4) + BCC + SAK(0x08) + ATQA(0x0004) + manufacturer(8), and write it.
+    uint8_t bcc = (uint8_t)(uid[0] ^ uid[1] ^ uid[2] ^ uid[3]);
+    uint8_t wr[20] = {0x40, 0x01, 0xA0, 0x00,
+                      uid[0], uid[1], uid[2], uid[3], bcc, 0x08, 0x04, 0x00,
+                      0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69};
+    n = pn532_transact(wr, sizeof(wr), rsp, sizeof(rsp), 500);
+    if (n < 1 || rsp[0] != 0x00) {
+        return ESP_FAIL;                   // write refused (not a Gen2 magic card)
+    }
+    ESP_LOGI(TAG, "cloned UID %02X%02X%02X%02X to block 0", uid[0], uid[1], uid[2], uid[3]);
+    return ESP_OK;
+}
