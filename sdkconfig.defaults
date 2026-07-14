@@ -35,3 +35,13 @@ CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y
 # optimization for extra headroom on the small boards (a minor RX-throughput trade, fine for this tool).
 CONFIG_SPI_MASTER_ISR_IN_IRAM=n
 CONFIG_ESP_WIFI_RX_IRAM_OPT=n
+
+# LVGL (managed component, pulled by lxveos_gui) memory model. LVGL's builtin allocator reserves a ~64 KB
+# static .bss pool (LV_MEM), which is linked into EVERY board image — that overflowed dram0 by ~40 KB on
+# the no-PSRAM classic ESP32 boards. Select the C-library allocator instead: LVGL then allocates from the
+# ESP-IDF heap at runtime, and only on display boards that actually call lvgl_port_init(). String + sprintf
+# likewise use libc (smaller code). Each is its own Kconfig choice; selecting the CLIB member deselects
+# BUILTIN. (Later: gate the lvgl dependency to display boards so headless doesn't link it at all.)
+CONFIG_LV_USE_CLIB_MALLOC=y
+CONFIG_LV_USE_CLIB_STRING=y
+CONFIG_LV_USE_CLIB_SPRINTF=y
