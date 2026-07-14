@@ -8,6 +8,7 @@
 #include "lxveos_board.h"
 #include "lxveos_caps.h"
 #include "lxveos_cli.h"  // provides LXVEOS_VERSION
+#include "lxveos_gui.h"
 
 static const char *TAG = "lxveos";
 
@@ -29,7 +30,7 @@ void app_main(void)
     init_nvs();
     ESP_ERROR_CHECK(lxveos_board_init());  // resolves + caches the CYD panel identity via NVS
     lxveos_caps_probe();  // compile-time HAS_* -> runtime-active CAP_* set (M0); logs what's live
+    ESP_ERROR_CHECK(lxveos_gui_start());   // LVGL launcher on display boards; no-op on headless
     ESP_ERROR_CHECK(lxveos_cli_start());
-    // TODO(M1): if ui_profile != headless, start esp_lvgl_port UI; else stay in the serial loop.
     // TODO(M1): lxveos_caps_probe() gains bus/eFuse add-on detection (CC1101/nRF24/PN532).
 }

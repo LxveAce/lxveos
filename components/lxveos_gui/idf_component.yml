@@ -1,0 +1,8 @@
+## Managed dependencies for the on-device GUI (fetched by the ESP-IDF Component Manager at build time).
+##
+## esp_lvgl_port: Espressif's LVGL<->esp_lcd glue (port init, display/indev registration, thread lock).
+## lvgl: the UI toolkit itself, pinned to the v9 API this component is written against. esp_lvgl_port
+## also depends on lvgl, but we pin the major explicitly so a v8 resolution can't slip in.
+dependencies:
+  espressif/esp_lvgl_port: "^2"
+  lvgl/lvgl: "^9"
