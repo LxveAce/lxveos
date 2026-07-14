@@ -1,9 +1,9 @@
 // LxveOS arm / safety framework (see lxveos_arm.h). The transmit gate for offensive ops.
 //
-// Released images are built WITHOUT LXVEOS_TX_ENABLE, so lxveos_arm_tx_compiled() is false, the arm path
-// refuses to arm, and lxveos_arm_can_emit() is a hard false — the offensive emitter simply is not present.
-// The two-factor arm + inactivity timeout below only matter in a TX-enabled bench build; they exist so that
-// even there, a single stray command cannot put energy on-air and a walked-away-from unit disarms itself.
+// LxveOS is a licensed-lab tool, so offensive TX is compiled IN by default; the runtime two-factor arm +
+// inactivity timeout below are the working safety — a single stray command cannot put energy on-air, and a
+// walked-away-from unit disarms itself. A conservative / public build can define LXVEOS_TX_DISABLE to strip
+// the offensive emitter out entirely, making lxveos_arm_can_emit() a hard false regardless of arm state.
 #include "lxveos_arm.h"
 
 #include "esp_log.h"
@@ -21,10 +21,10 @@ static int64_t  s_armed_us;     // last activity while armed (drives the inactiv
 
 bool lxveos_arm_tx_compiled(void)
 {
-#if defined(LXVEOS_TX_ENABLE)
-    return true;
+#if defined(LXVEOS_TX_DISABLE)
+    return false;  // conservative / public build: offensive emitter stripped out
 #else
-    return false;
+    return true;   // default (licensed-lab tool): offensive TX built in, gated by the runtime arm
 #endif
 }
 

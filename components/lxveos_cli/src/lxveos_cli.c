@@ -1126,16 +1126,16 @@ static int cmd_wardrive(int argc, char **argv)
 }
 
 // `arm [token]` — two-factor enable for offensive-TX ops. `arm` (no token) starts a request and prints a
-// one-time confirm code; `arm <token>` confirms it within 30s. Offensive TX is compiled OUT of released
-// images (LXVEOS_TX_ENABLE unset), so on a normal build this reports that and arms nothing — recon/defense
-// ops never need it. The gate itself lives in lxveos_arm; each offensive op checks lxveos_arm_can_emit().
+// one-time confirm code; `arm <token>` confirms it within 30s. Offensive TX is compiled in by default; only
+// a conservative LXVEOS_TX_DISABLE build has nothing to arm. Recon/defense ops never need arming. The gate
+// itself lives in lxveos_arm; each offensive op checks lxveos_arm_can_emit() immediately before it transmits.
 static int cmd_arm(int argc, char **argv)
 {
     if (locked()) {
         return 0;
     }
     if (!lxveos_arm_tx_compiled()) {
-        printf("offensive TX is compiled OUT of this build (LXVEOS_TX_ENABLE unset) — nothing to arm.\n");
+        printf("offensive TX is compiled OUT of this build (LXVEOS_TX_DISABLE set) — nothing to arm.\n");
         printf("recon/defense ops need no arming; they run as usual.\n");
         return 0;
     }

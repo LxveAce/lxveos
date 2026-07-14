@@ -2,10 +2,9 @@
 // LxveOS arm / safety framework — the gate for any offensive-TX operation.
 //
 // Two independent layers protect the transmit path:
-//  1. COMPILE-TIME: the offensive-TX path is compiled out unless the image is built with LXVEOS_TX_ENABLE.
-//     No committed board config sets it, so a released unit has no offensive emitter at all and
-//     lxveos_arm_can_emit() is a hard false — arming is a no-op there. The owner sets the flag and drives
-//     emission only on the licensed, RF-shielded bench.
+//  1. COMPILE-TIME: offensive TX is compiled IN by default (LxveOS is a licensed-lab tool). A conservative
+//     or public build can define LXVEOS_TX_DISABLE to strip the offensive emitter entirely, making
+//     lxveos_arm_can_emit() a hard false regardless of arm state.
 //  2. RUNTIME: even in a TX-enabled build, an op may transmit only after a two-factor arm (request ->
 //     confirm with a one-time token) and only until an explicit disarm or an inactivity timeout.
 //
@@ -26,7 +25,7 @@ typedef enum {
     LXVEOS_ARM_ARMED       // armed; offensive-TX ops may run until disarm / timeout
 } lxveos_arm_state_t;
 
-// True iff this image was BUILT with offensive TX compiled in (LXVEOS_TX_ENABLE). Released images: false.
+// True iff this image has offensive TX compiled in (the default; false only in a LXVEOS_TX_DISABLE build).
 bool lxveos_arm_tx_compiled(void);
 
 lxveos_arm_state_t lxveos_arm_state(void);
