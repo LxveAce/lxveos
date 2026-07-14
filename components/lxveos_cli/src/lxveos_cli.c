@@ -26,6 +26,7 @@
 #include "lxveos_arm.h"
 #include "lxveos_ble.h"
 #include "lxveos_ir.h"
+#include "lxveos_subghz.h"
 #include "lxveos_board.h"
 #include "lxveos_caps.h"
 #include "lxveos_evilportal.h"
@@ -1390,6 +1391,54 @@ static int cmd_ir(int argc, char **argv)
     return 0;
 }
 
+// subghz — CC1101 sub-GHz radio (subghz_scan recon op, increment 1). `subghz begin <sclk> <miso> <mosi>
+// <cs>` brings the SPI link up + identifies the chip; `subghz rssi <mhz>` senses signal strength at a
+// frequency; `subghz end` releases the bus. Add-on module on operator-supplied SPI3/VSPI pins; not
+// cap-gated. Receive only in this increment (no TX yet, so no arm gate).
+static int cmd_subghz(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (argc >= 6 && strcmp(argv[1], "begin") == 0) {
+        esp_err_t e = lxveos_subghz_begin(atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), atoi(argv[5]));
+        if (e == ESP_OK) {
+            printf("CC1101 begin: PARTNUM=0x%02X VERSION=0x%02X — %s\n",
+                   lxveos_subghz_partnum(), lxveos_subghz_version(),
+                   lxveos_subghz_present() ? "module detected" : "NO valid chip (check wiring)");
+        } else if (e == ESP_ERR_INVALID_STATE) {
+            printf("subghz already begun — 'subghz end' first\n");
+        } else {
+            printf("subghz begin failed: %s\n", esp_err_to_name(e));
+        }
+        return 0;
+    }
+    if (argc >= 3 && strcmp(argv[1], "rssi") == 0) {
+        float mhz = strtof(argv[2], NULL);
+        int8_t dbm = 0;
+        esp_err_t e = lxveos_subghz_rssi(mhz, &dbm);
+        if (e == ESP_OK) {
+            printf("RSSI @ %.2f MHz: %d dBm\n", (double)mhz, (int)dbm);
+        } else if (e == ESP_ERR_INVALID_STATE) {
+            printf("not begun — 'subghz begin <sclk> <miso> <mosi> <cs>' first\n");
+        } else if (e == ESP_ERR_INVALID_ARG) {
+            printf("frequency out of range (300-928 MHz)\n");
+        } else {
+            printf("subghz rssi failed: %s\n", esp_err_to_name(e));
+        }
+        return 0;
+    }
+    if (argc >= 2 && strcmp(argv[1], "end") == 0) {
+        lxveos_subghz_end();
+        printf("subghz link released\n");
+        return 0;
+    }
+    printf("usage: subghz begin <sclk> <miso> <mosi> <cs> | subghz rssi <mhz> | subghz end\n");
+    printf("       CC1101 add-on on SPI3/VSPI (keep off the display's SPI2). Increment 1: identify + RSSI\n");
+    printf("       sense (receive only). Capture/replay is a later increment.\n");
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -1416,6 +1465,7 @@ static void register_commands(void)
         {.command = "evilportal", .help = "Rogue AP + captive portal (needs arm): evilportal [ssid|karma|template <id>|templates|creds|stop]", .func = &cmd_evilportal},
         {.command = "badble", .help = "BLE HID keystroke injection (needs arm): badble \"<duckyscript>\" | stop | status", .func = &cmd_badble},
         {.command = "ir", .help = "IR capture + replay (universal remote): ir recv <rx_gpio> [s] | send <tx_gpio> | show", .func = &cmd_ir},
+        {.command = "subghz", .help = "Sub-GHz CC1101 (recv): subghz begin <sclk> <miso> <mosi> <cs> | rssi <mhz> | end", .func = &cmd_subghz},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
         {.command = "reboot", .help = "Restart the unit", .func = &cmd_reboot},
         {.command = "nvs", .help = "Persistent settings: nvs get <key> | nvs set <key> <value>", .func = &cmd_nvs},

@@ -1,0 +1,219 @@
+// LxveOS sub-GHz CC1101 driver — see lxveos_subghz.h. Increment 1: SPI bring-up, chip identify, RSSI sense.
+//
+// The CC1101 speaks SPI mode 0, MSB-first. Every access starts with a header byte: address in the low 6
+// bits, bit6 = burst, bit7 = read. Status registers (0x30-0x3D) alias the command strobes, so reading them
+// requires the burst bit set (addr | 0xC0). Command strobes (SRES/SRX/SIDLE/…) are single header bytes.
+//
+// Register values below come from the widely-used community CC1101 base configuration (SmartRC/ELECHOUSE
+// lineage) for 433.92 MHz ASK/OOK receive. UNVERIFIED on hardware — this compiles and is structurally
+// correct; extra confirms the identity read + RSSI behaviour on a real module (that is why the catalog row
+// stays planned until HW-validated).
+#include "lxveos_subghz.h"
+
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/spi_master.h"
+
+static const char *TAG = "lxveos_subghz";
+
+// CC1101 command strobes
+#define CC1101_SRES   0x30
+#define CC1101_SRX    0x34
+#define CC1101_SIDLE  0x36
+#define CC1101_SFRX   0x3A
+// Status registers (read with the burst bit, addr|0xC0)
+#define CC1101_PARTNUM 0x30
+#define CC1101_VERSION 0x31
+#define CC1101_RSSI    0x34
+#define CC1101_MARCSTATE 0x35
+// Config registers used here
+#define CC1101_FREQ2  0x0D
+#define CC1101_FREQ1  0x0E
+#define CC1101_FREQ0  0x0F
+
+#define CC1101_WRITE_BURST 0x40
+#define CC1101_READ_SINGLE 0x80
+#define CC1101_READ_BURST  0xC0
+
+#define CC1101_XOSC_HZ 26000000.0f   // 26 MHz crystal (standard on CC1101 modules)
+
+static spi_device_handle_t s_dev;
+static bool    s_begun;
+static uint8_t s_partnum;
+static uint8_t s_version;
+
+// One SPI transfer: send header (+optional data), return the byte clocked back on the last octet.
+static uint8_t spi_xfer(uint8_t addr, uint8_t data, uint8_t *status_out)
+{
+    uint8_t tx[2] = {addr, data};
+    uint8_t rx[2] = {0, 0};
+    spi_transaction_t t = {
+        .length = 16,
+        .tx_buffer = tx,
+        .rx_buffer = rx,
+    };
+    if (spi_device_polling_transmit(s_dev, &t) != ESP_OK) {
+        if (status_out) *status_out = 0xFF;
+        return 0;
+    }
+    if (status_out) *status_out = rx[0];   // chip status byte returned on the header
+    return rx[1];
+}
+
+static void cc1101_strobe(uint8_t cmd)
+{
+    uint8_t tx = cmd, rx = 0;
+    spi_transaction_t t = { .length = 8, .tx_buffer = &tx, .rx_buffer = &rx };
+    spi_device_polling_transmit(s_dev, &t);
+}
+
+static void cc1101_write_reg(uint8_t addr, uint8_t value)
+{
+    spi_xfer(addr, value, NULL);
+}
+
+static uint8_t cc1101_read_reg(uint8_t addr, bool status_reg)
+{
+    uint8_t hdr = addr | (status_reg ? CC1101_READ_BURST : CC1101_READ_SINGLE);
+    return spi_xfer(hdr, 0x00, NULL);
+}
+
+// Base 433.92 MHz ASK/OOK receive configuration (community CC1101 profile). Only the registers needed for
+// a stable RX + RSSI reading are set; frequency is (re)programmed per scan in lxveos_subghz_rssi().
+static void cc1101_load_base_config(void)
+{
+    static const uint8_t cfg[][2] = {
+        {0x00, 0x2E}, // IOCFG2  - GDO2 high-Z
+        {0x02, 0x06}, // IOCFG0  - assert on sync/EOP
+        {0x03, 0x47}, // FIFOTHR
+        {0x08, 0x05}, // PKTCTRL0 - RX, variable length, no CRC
+        {0x0B, 0x06}, // FSCTRL1
+        {0x0D, 0x10}, // FREQ2  (~433.92 MHz; overwritten per scan)
+        {0x0E, 0xB0}, // FREQ1
+        {0x0F, 0x71}, // FREQ0
+        {0x10, 0x56}, // MDMCFG4 - RX bandwidth
+        {0x11, 0x4C}, // MDMCFG3 - data rate
+        {0x12, 0x30}, // MDMCFG2 - ASK/OOK, no preamble/sync
+        {0x13, 0x22}, // MDMCFG1
+        {0x14, 0xF8}, // MDMCFG0
+        {0x15, 0x15}, // DEVIATN
+        {0x18, 0x18}, // MCSM0 - auto-calibrate on IDLE->RX
+        {0x19, 0x16}, // FOCCFG
+        {0x1B, 0x43}, // AGCCTRL2
+        {0x1C, 0x40}, // AGCCTRL1
+        {0x1D, 0x91}, // AGCCTRL0
+        {0x21, 0x56}, // FREND1
+        {0x22, 0x11}, // FREND0
+        {0x23, 0xE9}, // FSCAL3
+        {0x24, 0x2A}, // FSCAL2
+        {0x25, 0x00}, // FSCAL1
+        {0x26, 0x1F}, // FSCAL0
+        {0x2C, 0x81}, // TEST2
+        {0x2D, 0x35}, // TEST1
+        {0x2E, 0x09}, // TEST0
+    };
+    for (size_t i = 0; i < sizeof(cfg) / sizeof(cfg[0]); i++) {
+        cc1101_write_reg(cfg[i][0], cfg[i][1]);
+    }
+}
+
+esp_err_t lxveos_subghz_begin(int sclk, int miso, int mosi, int cs)
+{
+    if (s_begun) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (sclk < 0 || miso < 0 || mosi < 0 || cs < 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    spi_bus_config_t bus = {
+        .mosi_io_num = mosi,
+        .miso_io_num = miso,
+        .sclk_io_num = sclk,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = 64,
+    };
+    esp_err_t err = spi_bus_initialize(SPI3_HOST, &bus, SPI_DMA_DISABLED);
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {  // INVALID_STATE = bus already up; reuse it
+        ESP_LOGE(TAG, "spi_bus_initialize failed: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    spi_device_interface_config_t devcfg = {
+        .clock_speed_hz = 1000000,   // 1 MHz — conservative, well within CC1101 limits
+        .mode = 0,
+        .spics_io_num = cs,
+        .queue_size = 1,
+    };
+    err = spi_bus_add_device(SPI3_HOST, &devcfg, &s_dev);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "spi_bus_add_device failed: %s", esp_err_to_name(err));
+        spi_bus_free(SPI3_HOST);
+        return err;
+    }
+    s_begun = true;
+
+    // Reset sequence + base config, then read identity.
+    cc1101_strobe(CC1101_SRES);
+    vTaskDelay(pdMS_TO_TICKS(5));
+    cc1101_load_base_config();
+    s_partnum = cc1101_read_reg(CC1101_PARTNUM, true);
+    s_version = cc1101_read_reg(CC1101_VERSION, true);
+    ESP_LOGI(TAG, "CC1101 begin: PARTNUM=0x%02X VERSION=0x%02X", s_partnum, s_version);
+    return ESP_OK;
+}
+
+esp_err_t lxveos_subghz_end(void)
+{
+    if (!s_begun) {
+        return ESP_OK;
+    }
+    cc1101_strobe(CC1101_SIDLE);
+    spi_bus_remove_device(s_dev);
+    spi_bus_free(SPI3_HOST);
+    s_dev = NULL;
+    s_begun = false;
+    return ESP_OK;
+}
+
+bool lxveos_subghz_present(void)
+{
+    // CC1101 VERSION is 0x14 (some batches 0x04/0x17); reject the all-ones / all-zero bus-float readings.
+    return s_begun && s_version != 0x00 && s_version != 0xFF;
+}
+
+uint8_t lxveos_subghz_partnum(void) { return s_partnum; }
+uint8_t lxveos_subghz_version(void) { return s_version; }
+
+esp_err_t lxveos_subghz_rssi(float mhz, int8_t *rssi_dbm)
+{
+    if (!s_begun) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (mhz < 300.0f || mhz > 928.0f) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    // FREQ = f / (fXOSC / 2^16). Program FREQ2/1/0.
+    uint32_t freq_word = (uint32_t)((mhz * 1000000.0f) * 65536.0f / CC1101_XOSC_HZ);
+    cc1101_strobe(CC1101_SIDLE);
+    cc1101_write_reg(CC1101_FREQ2, (freq_word >> 16) & 0xFF);
+    cc1101_write_reg(CC1101_FREQ1, (freq_word >> 8) & 0xFF);
+    cc1101_write_reg(CC1101_FREQ0, freq_word & 0xFF);
+    cc1101_strobe(CC1101_SRX);
+    vTaskDelay(pdMS_TO_TICKS(5));   // let AGC settle
+
+    uint8_t raw = cc1101_read_reg(CC1101_RSSI, true);
+    // TI conversion: rssi_dBm = (raw>=128 ? (raw-256) : raw)/2 - 74 (RSSI_offset for 433 MHz).
+    int rssi_dec = (raw >= 128) ? (raw - 256) : raw;
+    int dbm = rssi_dec / 2 - 74;
+    if (dbm < -128) dbm = -128;
+    if (dbm > 127) dbm = 127;
+    if (rssi_dbm) {
+        *rssi_dbm = (int8_t)dbm;
+    }
+    cc1101_strobe(CC1101_SIDLE);
+    return ESP_OK;
+}
