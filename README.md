@@ -98,10 +98,12 @@ boot counter.
 [Cyber Controller](https://github.com/LxveAce/cyber-controller) host can read to identify a unit — a stable versioned
 prefix plus space-separated `key=value` fields (safe slugs / hex capability mask / decimal, no embedded spaces):
 ```
-LXVEOS/1 status board=<id> chip=<esp32|esp32s3> ui=<profile> fw=<version> panel=<driver|none> caps=0x<hex> ops=<ready>/<planned>/<unavailable> heap=<bytes> arm=<safe|pending|armed>
+LXVEOS/1 status board=<id> chip=<esp32|esp32s3> ui=<profile> fw=<version> panel=<driver|none> caps=0x<hex> ops=<ready>/<planned>/<unavailable> heap=<bytes> arm=<safe|pending|armed> tx=<0|1>
 ```
-The `arm=` field lets the host see whether a unit currently has offensive TX armed. Fields are appended over time; a host
-parser keys on field names, so older hosts ignore any field they don't know.
+The `arm=` field lets the host see whether a unit currently has offensive TX armed; `tx=` reports whether offensive TX is
+compiled into the build at all (`tx=0` on a `LXVEOS_TX_DISABLE` image), so the host can tell a TX-capable-but-safe unit from
+one that can never arm. Fields are appended over time; a host parser keys on field names, so older hosts ignore any field
+they don't know.
 
 ## Build (once you have ESP-IDF v6.0.x)
 ```sh

@@ -34,7 +34,7 @@ static size_t            s_count;
 
 static bool valid_gpio(int gpio)
 {
-    return gpio >= 0 && gpio < 48;   // covers ESP32 / S3 GPIO ranges; RMT itself rejects an unroutable pin
+    return gpio >= 0 && gpio <= 48;   // matches the CLI's 0-48 range (GPIO48 exists on S3); RMT rejects an unroutable pin
 }
 
 // ISR-context RX-done callback: forward the event data to the waiting task via a queue.

@@ -127,9 +127,11 @@ def test_cli_numeric_args_use_validated_parsing_not_atoi():
 
 
 def test_status_bridge_line_exposes_arm_state():
-    """The CC bridge status line + its README doc must surface arm state (label, never hide)."""
+    """The CC bridge status line + its README doc must surface arm state + tx-compiled (label, never hide)."""
     assert 'arm=%s' in CLI_C, "cmd_status no longer emits the arm= field"
     assert 'arm=<safe|pending|armed>' in README, "README bridge-line doc missing the arm= field"
+    assert 'tx=%d' in CLI_C, "cmd_status no longer emits the tx= (offensive-TX-compiled) field"
+    assert 'tx=<0|1>' in README, "README bridge-line doc missing the tx= field"
 
 
 # ── CLI command <-> op-catalog coverage ────────────────────────────────────────────────────────────

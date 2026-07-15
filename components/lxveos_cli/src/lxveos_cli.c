@@ -186,12 +186,15 @@ static int cmd_status(int argc, char **argv)
     size_t ops_ready = 0, ops_planned = 0, ops_unavail = 0;
     lxveos_ops_tally(&ops_ready, &ops_planned, &ops_unavail);
     const char *panel = bsp_display_panel();
-    printf("LXVEOS/1 status board=%s chip=%s ui=%s fw=%s panel=%s caps=0x%03x ops=%u/%u/%u heap=%u arm=%s\n",
+    // tx= reports whether offensive-TX is COMPILED IN (a LXVEOS_TX_DISABLE build reports tx=0), so the CC
+    // host can tell a TX-capable-but-SAFE unit from one that can never arm — both otherwise show arm=safe.
+    printf("LXVEOS/1 status board=%s chip=%s ui=%s fw=%s panel=%s caps=0x%03x ops=%u/%u/%u heap=%u arm=%s tx=%d\n",
            lxveos_board_id(), lxveos_board_chip(), lxveos_ui_profile(), LXVEOS_VERSION,
            (panel && panel[0]) ? panel : "none",
            (unsigned)lxveos_caps_active(),
            (unsigned)ops_ready, (unsigned)ops_planned, (unsigned)ops_unavail,
-           (unsigned)esp_get_free_heap_size(), lxveos_arm_state_name(lxveos_arm_state()));
+           (unsigned)esp_get_free_heap_size(), lxveos_arm_state_name(lxveos_arm_state()),
+           lxveos_arm_tx_compiled() ? 1 : 0);
     return 0;
 }
 
