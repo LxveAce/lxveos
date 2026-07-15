@@ -8,6 +8,7 @@
 #include "lxveos_nrf24.h"
 #include "lxveos_arm.h"
 #include "lxveos_radiomath.h"
+#include "lxveos_spibus.h"
 
 #include "esp_log.h"
 #include "esp_rom_sys.h"
@@ -74,17 +75,10 @@ esp_err_t lxveos_nrf24_begin(int sck, int miso, int mosi, int csn, int ce_gpio)
         return ESP_ERR_INVALID_ARG;
     }
 
-    spi_bus_config_t bus = {
-        .mosi_io_num = mosi,
-        .miso_io_num = miso,
-        .sclk_io_num = sck,
-        .quadwp_io_num = -1,
-        .quadhd_io_num = -1,
-        .max_transfer_sz = 64,
-    };
-    esp_err_t err = spi_bus_initialize(SPI3_HOST, &bus, SPI_DMA_DISABLED);
-    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {   // INVALID_STATE = bus already up; reuse it
-        ESP_LOGE(TAG, "spi_bus_initialize failed: %s", esp_err_to_name(err));
+    // Shared SPI3 bus (also used by the CC1101 add-on) — refcounted so neither driver frees it under the other.
+    esp_err_t err = lxveos_spibus_acquire(sck, miso, mosi);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "spibus acquire failed: %s", esp_err_to_name(err));
         return err;
     }
 
@@ -97,7 +91,7 @@ esp_err_t lxveos_nrf24_begin(int sck, int miso, int mosi, int csn, int ce_gpio)
     err = spi_bus_add_device(SPI3_HOST, &devcfg, &s_dev);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "spi_bus_add_device failed: %s", esp_err_to_name(err));
-        spi_bus_free(SPI3_HOST);
+        lxveos_spibus_release();
         return err;
     }
 
@@ -139,7 +133,7 @@ esp_err_t lxveos_nrf24_end(void)
     ce(0);
     nrf_write_reg(NRF_REG_CONFIG, 0x00);   // power down
     spi_bus_remove_device(s_dev);
-    spi_bus_free(SPI3_HOST);
+    lxveos_spibus_release();
     if (s_ce >= 0) {
         gpio_reset_pin(s_ce);
     }

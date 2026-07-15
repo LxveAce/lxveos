@@ -4,5 +4,5 @@
 idf_component_register(
     SRCS "src/lxveos_subghz.c"
     INCLUDE_DIRS "include"
-    REQUIRES esp_driver_spi esp_driver_rmt lxveos_arm lxveos_radiomath
+    REQUIRES esp_driver_spi esp_driver_rmt lxveos_arm lxveos_radiomath lxveos_spibus
 )

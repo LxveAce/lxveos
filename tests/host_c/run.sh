@@ -61,4 +61,10 @@ build_arm -DLXVEOS_TX_DISABLE  # conservative build: the emitter is stripped
     "$here/test_ble_labels.c" "$root/components/lxveos_ble/src/lxveos_ble_labels.c" -o "$out"
 "$out"
 
+# --- shared-SPI3 bus refcount policy (acquire/release state machine): esp_err stub, no spi driver ---
+"$CC" -std=gnu11 -O1 -Wall \
+    -I"$root/components/lxveos_spibus/include" -I"$here/stubs" \
+    "$here/test_spibus.c" "$root/components/lxveos_spibus/src/lxveos_spibus_policy.c" -o "$out"
+"$out"
+
 echo "host-c: all tests passed"
