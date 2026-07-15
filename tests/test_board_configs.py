@@ -48,6 +48,30 @@ def test_generated_sdkconfig_is_wellformed():
                ("CONFIG_COMPILER_OPTIMIZATION_SIZE=y" in text), f"{bid}: optimization line"
 
 
+def test_addon_features_emit_addon_config():
+    """A feature marked "addon" (external module on operator pins) emits CONFIG_LXVEOS_ADDON_<CAP>=y and NOT
+    HAS_<CAP>, so the op catalog reports it "attachable" rather than a flat "unavailable"; a True feature
+    emits HAS_ and never ADDON_ (a cap is never both). Guards the generator against silently dropping the
+    addon rows again."""
+    saw_addon = False
+    for bid, b in BOARDS.items():
+        text = g.sdkconfig_lines(bid, b)
+        feats = b.get("features", {})
+        for k in g.ADDON_KEYS:
+            has = f"CONFIG_LXVEOS_HAS_{k.upper()}=y"
+            addon = f"CONFIG_LXVEOS_ADDON_{k.upper()}=y"
+            v = feats.get(k)
+            if v == "addon":
+                assert addon in text, f"{bid}: feature {k}=addon but {addon} not emitted"
+                assert has not in text, f"{bid}: {k}=addon must not also emit {has}"
+                saw_addon = True
+            elif v is True:
+                assert has in text and addon not in text, f"{bid}: {k}=true should emit HAS not ADDON"
+            else:
+                assert addon not in text, f"{bid}: {k}={v!r} should not emit ADDON"
+    assert saw_addon, "no board exercised an addon feature — manifest/test drift"
+
+
 def test_display_boards_emit_driver_defines():
     for bid, b in BOARDS.items():
         h = g.board_info_h(bid, b)

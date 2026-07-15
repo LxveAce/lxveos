@@ -72,6 +72,46 @@ lxveos_cap_mask_t lxveos_caps_builtin(void)
     return builtin_mask();
 }
 
+// The attachable add-ons for this board: one bit per CONFIG_LXVEOS_ADDON_* (a feature marked "addon" in
+// cyd_boards.json — an external module on operator-supplied pins, not compiled/soldered in). Same #ifdef
+// pattern as builtin_mask; a board can't list a cap as both HAS and ADDON (the manifest enforces one value).
+static lxveos_cap_mask_t addon_mask(void)
+{
+    lxveos_cap_mask_t m = 0;
+#ifdef CONFIG_LXVEOS_ADDON_STORAGE
+    m |= CAP_BIT(LXVEOS_CAP_STORAGE);
+#endif
+#ifdef CONFIG_LXVEOS_ADDON_GPS
+    m |= CAP_BIT(LXVEOS_CAP_GPS);
+#endif
+#ifdef CONFIG_LXVEOS_ADDON_IR
+    m |= CAP_BIT(LXVEOS_CAP_IR);
+#endif
+#ifdef CONFIG_LXVEOS_ADDON_SUBGHZ
+    m |= CAP_BIT(LXVEOS_CAP_SUBGHZ);
+#endif
+#ifdef CONFIG_LXVEOS_ADDON_NRF24
+    m |= CAP_BIT(LXVEOS_CAP_NRF24);
+#endif
+#ifdef CONFIG_LXVEOS_ADDON_NFC
+    m |= CAP_BIT(LXVEOS_CAP_NFC);
+#endif
+    return m;
+}
+
+lxveos_cap_mask_t lxveos_caps_addon(void)
+{
+    return addon_mask();
+}
+
+bool lxveos_cap_is_addon(lxveos_cap_t cap)
+{
+    if ((int)cap < 0 || cap >= LXVEOS_CAP_COUNT) {
+        return false;
+    }
+    return (addon_mask() & CAP_BIT(cap)) != 0;
+}
+
 const char *lxveos_cap_name(lxveos_cap_t cap)
 {
     if ((int)cap < 0 || cap >= LXVEOS_CAP_COUNT || CAP_NAMES[cap] == NULL) {

@@ -37,7 +37,8 @@ typedef enum {
 typedef enum {
     LXVEOS_OP_READY = 0,      // required capability active AND the op is implemented
     LXVEOS_OP_PLANNED,        // required capability active, implementation lands in M1+
-    LXVEOS_OP_UNAVAILABLE     // this board lacks the required capability
+    LXVEOS_OP_UNAVAILABLE,    // this board can't do it at all (required capability neither built-in nor add-on)
+    LXVEOS_OP_ATTACHABLE      // not present now, but the required cap is an add-on this board can host (wire it)
 } lxveos_op_status_t;
 
 // Policy class of an op — how it is handled, distinct from what it does. Lets the CLI, the on-device UI,
@@ -79,7 +80,7 @@ lxveos_opclass_t lxveos_op_class(const lxveos_op_t *op);
 const char *lxveos_op_class_name(lxveos_opclass_t k);
 
 // Tally the catalog by runtime status for a one-line summary. Any out-param may be NULL.
-void lxveos_ops_tally(size_t *ready, size_t *planned, size_t *unavailable);
+void lxveos_ops_tally(size_t *ready, size_t *planned, size_t *attachable, size_t *unavailable);
 
 #ifdef __cplusplus
 }

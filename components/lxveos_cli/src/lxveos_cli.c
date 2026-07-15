@@ -186,8 +186,8 @@ static int cmd_status(int argc, char **argv)
     if (locked()) {
         return 0;
     }
-    size_t ops_ready = 0, ops_planned = 0, ops_unavail = 0;
-    lxveos_ops_tally(&ops_ready, &ops_planned, &ops_unavail);
+    size_t ops_ready = 0, ops_planned = 0, ops_attach = 0, ops_unavail = 0;
+    lxveos_ops_tally(&ops_ready, &ops_planned, &ops_attach, &ops_unavail);
     const char *panel = bsp_display_panel();
     // tx= reports whether offensive-TX is COMPILED IN (a LXVEOS_TX_DISABLE build reports tx=0), so the CC
     // host can tell a TX-capable-but-SAFE unit from one that can never arm — both otherwise show arm=safe.
@@ -195,7 +195,9 @@ static int cmd_status(int argc, char **argv)
            lxveos_board_id(), lxveos_board_chip(), lxveos_ui_profile(), LXVEOS_VERSION,
            (panel && panel[0]) ? panel : "none",
            (unsigned)lxveos_caps_active(),
-           (unsigned)ops_ready, (unsigned)ops_planned, (unsigned)ops_unavail,
+           // Machine contract: ops=ready/planned/not-ready. Attachable add-on ops fold into the 3rd field so
+           // the CC bridge sees the same 3-number format (and the same total) as before the attachable split.
+           (unsigned)ops_ready, (unsigned)ops_planned, (unsigned)(ops_attach + ops_unavail),
            (unsigned)esp_get_free_heap_size(), lxveos_arm_state_name(lxveos_arm_state()),
            lxveos_arm_tx_compiled() ? 1 : 0);
     return 0;
@@ -352,11 +354,11 @@ static int cmd_features(int argc, char **argv)
                op->slug, op->title,
                lxveos_cap_name(op->required_cap), op->inspired_by);
     }
-    size_t ready = 0, planned = 0, unavailable = 0;
-    lxveos_ops_tally(&ready, &planned, &unavailable);
-    printf("summary: %u ready / %u planned / %u unavailable  "
-           "(LxveOS authors no jammer/DoS-flood frames)\n",
-           (unsigned)ready, (unsigned)planned, (unsigned)unavailable);
+    size_t ready = 0, planned = 0, attachable = 0, unavailable = 0;
+    lxveos_ops_tally(&ready, &planned, &attachable, &unavailable);
+    printf("summary: %u ready / %u planned / %u attachable / %u unavailable  "
+           "(attachable = wire the add-on module; LxveOS authors no jammer/DoS-flood frames)\n",
+           (unsigned)ready, (unsigned)planned, (unsigned)attachable, (unsigned)unavailable);
     return 0;
 }
 

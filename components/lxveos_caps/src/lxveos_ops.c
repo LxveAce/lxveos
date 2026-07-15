@@ -78,6 +78,7 @@ static const char *const STATUS_NAMES[] = {
     [LXVEOS_OP_READY]       = "ready",
     [LXVEOS_OP_PLANNED]     = "planned",
     [LXVEOS_OP_UNAVAILABLE] = "unavailable",
+    [LXVEOS_OP_ATTACHABLE]  = "attachable",
 };
 
 size_t lxveos_ops_count(void)
@@ -92,10 +93,18 @@ const lxveos_op_t *lxveos_ops_get(size_t i)
 
 lxveos_op_status_t lxveos_op_status(const lxveos_op_t *op)
 {
-    if (op == NULL || !lxveos_cap_active(op->required_cap)) {
+    if (op == NULL) {
         return LXVEOS_OP_UNAVAILABLE;
     }
-    return op->implemented ? LXVEOS_OP_READY : LXVEOS_OP_PLANNED;
+    if (lxveos_cap_active(op->required_cap)) {
+        return op->implemented ? LXVEOS_OP_READY : LXVEOS_OP_PLANNED;
+    }
+    // Cap isn't active. If it's an attachable add-on for this board, say so (wire the module) rather than
+    // reporting a flat "unavailable" — an honest middle state, still not usable until the module is present.
+    if (lxveos_cap_is_addon(op->required_cap)) {
+        return LXVEOS_OP_ATTACHABLE;
+    }
+    return LXVEOS_OP_UNAVAILABLE;
 }
 
 const char *lxveos_opcat_name(lxveos_opcat_t c)
@@ -108,7 +117,7 @@ const char *lxveos_opcat_name(lxveos_opcat_t c)
 
 const char *lxveos_op_status_name(lxveos_op_status_t s)
 {
-    if ((int)s < 0 || s > LXVEOS_OP_UNAVAILABLE) {
+    if ((int)s < 0 || s > LXVEOS_OP_ATTACHABLE) {
         return "?";
     }
     return STATUS_NAMES[s];
@@ -148,13 +157,14 @@ const char *lxveos_op_class_name(lxveos_opclass_t k)
     return OPCLASS_NAMES[k];
 }
 
-void lxveos_ops_tally(size_t *ready, size_t *planned, size_t *unavailable)
+void lxveos_ops_tally(size_t *ready, size_t *planned, size_t *attachable, size_t *unavailable)
 {
-    size_t r = 0, p = 0, u = 0;
+    size_t r = 0, p = 0, a = 0, u = 0;
     for (size_t i = 0; i < OPS_N; i++) {
         switch (lxveos_op_status(&OPS[i])) {
         case LXVEOS_OP_READY:       r++; break;
         case LXVEOS_OP_PLANNED:     p++; break;
+        case LXVEOS_OP_ATTACHABLE:  a++; break;
         case LXVEOS_OP_UNAVAILABLE: u++; break;
         }
     }
@@ -163,6 +173,9 @@ void lxveos_ops_tally(size_t *ready, size_t *planned, size_t *unavailable)
     }
     if (planned) {
         *planned = p;
+    }
+    if (attachable) {
+        *attachable = a;
     }
     if (unavailable) {
         *unavailable = u;

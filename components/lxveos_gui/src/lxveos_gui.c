@@ -52,9 +52,10 @@ static void compose_menu(char *buf, size_t cap)
         }
         const char *g;
         switch (lxveos_op_status(op)) {
-            case LXVEOS_OP_READY:   g = "[+]"; break;
-            case LXVEOS_OP_PLANNED: g = "[.]"; break;
-            default:                g = "[x]"; break;
+            case LXVEOS_OP_READY:      g = "[+]"; break;
+            case LXVEOS_OP_PLANNED:    g = "[.]"; break;
+            case LXVEOS_OP_ATTACHABLE: g = "[~]"; break;
+            default:                   g = "[x]"; break;
         }
         lxveos_opclass_t k = lxveos_op_class(op);
         const char *tag = (k == LXVEOS_OPCLASS_OFFENSIVE)  ? " (arm)"
@@ -106,11 +107,12 @@ esp_err_t lxveos_gui_start(void)
         return ESP_FAIL;
     }
 
-    size_t ready = 0, planned = 0, unavail = 0;
-    lxveos_ops_tally(&ready, &planned, &unavail);
+    size_t ready = 0, planned = 0, attachable = 0, unavail = 0;
+    lxveos_ops_tally(&ready, &planned, &attachable, &unavail);
     char hdr[48];
+    // Header stays 3 numbers for width; attachable folds into the trailing "not-ready" count.
     snprintf(hdr, sizeof(hdr), "%s  ops %u/%u/%u", lxveos_ui_profile(),
-             (unsigned)ready, (unsigned)planned, (unsigned)unavail);
+             (unsigned)ready, (unsigned)planned, (unsigned)(attachable + unavail));
     static char menu[2600];
     compose_menu(menu, sizeof(menu));
 

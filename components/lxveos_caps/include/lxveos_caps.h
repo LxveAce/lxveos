@@ -48,6 +48,16 @@ bool lxveos_cap_active(lxveos_cap_t cap);
 // Stable lowercase slug for a capability ("wifi", "ble", ...); "?" if out of range. For logs / CC bridge.
 const char *lxveos_cap_name(lxveos_cap_t cap);
 
+// The set of capabilities that are attachable ADD-ONs on this board — external modules on operator-supplied
+// pins (CC1101 sub-GHz, nRF24, PN532 NFC, IR, GPS, SD): marked "addon" in cyd_boards.json, compiled from
+// this board's CONFIG_LXVEOS_ADDON_*. Distinct from lxveos_caps_builtin() (soldered/silicon capabilities).
+lxveos_cap_mask_t lxveos_caps_addon(void);
+
+// True if `cap` is an attachable add-on on this board (in the addon mask). Lets feature code report an op the
+// board can't do RIGHT NOW but could once the module is wired — an honest middle state between ready and
+// fundamentally-unavailable. False for out-of-range caps.
+bool lxveos_cap_is_addon(lxveos_cap_t cap);
+
 #ifdef __cplusplus
 }
 #endif

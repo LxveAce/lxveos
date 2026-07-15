@@ -31,6 +31,10 @@ FLASH = {"4MB": "CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y",
 # feature keys whose value is boolean True -> compile the module in (HAS_*). "addon" strings are
 # left out (not compiled by default; unlocked at runtime by the capability probe).
 HAS_KEYS = ("wifi", "ble", "bt_classic", "display", "ir", "gps", "subghz", "nrf24", "nfc", "storage")
+# feature keys that can be an "addon" (external module on operator pins) -> CONFIG_LXVEOS_ADDON_*. The op
+# catalog reports these "attachable" when not built-in. wifi/ble/bt_classic/display are soldered silicon, never
+# add-ons. Must match the CONFIG_LXVEOS_ADDON_* symbols declared in components/lxveos_config/Kconfig.
+ADDON_KEYS = ("storage", "gps", "ir", "subghz", "nrf24", "nfc")
 # ESP32 families LxveOS targets. An idf_target outside this set can't be built by ESP-IDF v6.
 KNOWN_TARGETS = ("esp32", "esp32s2", "esp32s3", "esp32c2", "esp32c3", "esp32c5", "esp32c6", "esp32h2", "esp32p4")
 # Feature-map values allowed by the manifest's honesty rule: compiled-in (True), absent (False),
@@ -135,6 +139,10 @@ def sdkconfig_lines(bid, b):
     for k in HAS_KEYS:
         if feats.get(k) is True:
             out.append(f"CONFIG_LXVEOS_HAS_{k.upper()}=y")
+        elif feats.get(k) == "addon" and k in ADDON_KEYS:
+            # An attachable external module (CC1101/nRF24/PN532/IR/GPS/SD): not compiled in, but the op
+            # catalog reports it "attachable" (vs a flat "unavailable") via CONFIG_LXVEOS_ADDON_*.
+            out.append(f"CONFIG_LXVEOS_ADDON_{k.upper()}=y")
     return "\n".join(out) + "\n"
 
 

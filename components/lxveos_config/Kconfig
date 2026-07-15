@@ -42,6 +42,32 @@ menu "LxveOS"
         bool "NFC/RFID via PN532 add-on (where lawful)"
         default n
 
+    comment "Attachable add-ons — capability present as an external module on operator pins (marked \"addon\" in cyd_boards.json). Not compiled in; ops report 'attachable' until the module is wired + detected."
+
+    config LXVEOS_ADDON_STORAGE
+        bool "SD / storage is an attachable add-on on this board"
+        default n
+
+    config LXVEOS_ADDON_GPS
+        bool "GPS is an attachable add-on on this board"
+        default n
+
+    config LXVEOS_ADDON_IR
+        bool "IR is an attachable add-on on this board"
+        default n
+
+    config LXVEOS_ADDON_SUBGHZ
+        bool "Sub-GHz (CC1101) is an attachable add-on on this board"
+        default n
+
+    config LXVEOS_ADDON_NRF24
+        bool "nRF24 is an attachable add-on on this board"
+        default n
+
+    config LXVEOS_ADDON_NFC
+        bool "NFC (PN532) is an attachable add-on on this board"
+        default n
+
     comment "No jammer feature exists in any configuration. Deauth ships as detection. See RESPONSIBLE-USE.md."
 
 endmenu

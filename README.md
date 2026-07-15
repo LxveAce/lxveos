@@ -56,7 +56,7 @@ authorized-use terms; the acceptance is stored in NVS, so it's a one-time gate p
 | `agree` | accept the authorized-use terms and unlock the console |
 | `info` | firmware version, board id, chip, UI profile |
 | `caps` | capability registry — which subsystems (wifi / ble / storage / …) are active |
-| `features` | operation catalog — the security ops (Wi-Fi scan/monitor/capture, BLE, sub-GHz, …) this unit can run or has planned, each gated by capability |
+| `features` | operation catalog — the security ops (Wi-Fi scan/monitor/capture, BLE, sub-GHz, …) this unit can run, has planned, or can host once an add-on is wired, each gated by capability. Each op reads `ready` / `planned` / `attachable` (capability is an add-on module — e.g. a CC1101 — not yet present) / `unavailable` |
 | `scan` | passive Wi-Fi AP scan — listen for beacons and list APs in range (SSID / RSSI / channel / auth / BSSID); transmits nothing |
 | `sniff [seconds] [channel]` | passive Wi-Fi packet monitor — promiscuous, tally frames by 802.11 type + channel (counts only, no payloads); channel-hops by default, or pass a channel `1-13` to lock/dwell on one; transmits nothing |
 | `stations [seconds] [channel]` | passive client-station scan — infer client↔AP links from data-frame addresses, list clients with ESSID / frames / RSSI; channel-hops by default, or pass a channel `1-13` to dwell on a known AP's channel; transmits nothing |
