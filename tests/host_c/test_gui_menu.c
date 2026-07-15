@@ -64,9 +64,14 @@ static void test_menu_content(void)
     // All four status glyphs appear on this fixture: Wi-Fi ops ready [+] and planned [.], sub-GHz add-on
     // ops attachable [~], and the caps this board can't host (BLE/NFC/IR/...) unavailable [x].
     assert(has(menu, "[+]"));   // wifi_ap_scan is implemented + WIFI active
-    assert(has(menu, "[.]"));   // wifi_5ghz_scan planned (WIFI active, not implemented)
+    assert(has(menu, "[.]"));   // wps_attack planned (WIFI active, not implemented)
     assert(has(menu, "[~]"));   // subghz_* attachable add-on
     assert(has(menu, "[x]"));   // ble_scan etc. unavailable
+
+    // Honesty regression: 5 GHz scan is physically impossible on 2.4 GHz-only ESP32/S3 silicon, so it must
+    // report "unavailable" [x] (this board can't) — NOT "planned" [.] (coming soon). Its required cap is the
+    // never-active LXVEOS_CAP_WIFI_5GHZ. Before the fix this rendered "[.] wifi_5ghz_scan".
+    assert(has(menu, "[x] wifi_5ghz_scan"));
 
     // A ready Wi-Fi op sits on the same line as the [+] glyph and slug.
     assert(has(menu, "[+] wifi_ap_scan"));

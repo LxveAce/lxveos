@@ -7,7 +7,8 @@ is reused directly. The full per-project map is in [`THIRD-PARTY-LICENSES.md`](T
 ## Direct code reuse (MIT — vendored with notice)
 - **ESP32 Marauder** — Just Call Me Koko (MIT) — Wi-Fi scan/monitor, wardrive WiGLE CSV, Evil Portal, serial protocol.
 - **ESP32-DIV** — CiferTech (MIT) — recon/scan/GPS/SD paths (jammer code excluded, by policy).
-- **risinek/esp32-wifi-penetration-tool** (MIT) — the ESP-IDF PMKID/handshake → PCAP → HCCAPX capture core.
+- **risinek/esp32-wifi-penetration-tool** (MIT) — ESP-IDF PMKID / EAPOL-handshake capture approach (LxveOS emits
+  hashcat-22000 `WPA*01`/`WPA*02` lines directly; PCAP/HCCAPX export is not shipped).
 - **Evil-M5Project** (MIT) — master/slave swarm coordination + detectors.
 - **WiFi Nugget** — Alex Lynd / HakCat (MIT) — HAL + onboarding UX ideas.
 

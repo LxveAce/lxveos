@@ -37,7 +37,8 @@ support (see [Core decisions](#core-decisions) below). The rest of the map, all 
 - **One codebase, board support as data:** each board is a row in `cyd_boards.json`; `scripts/gen_board_configs.py`
   turns it into the per-board build inputs under `boards/`. Adding a board = one JSON edit.
 - **Flagship:** the ILI9341(1-USB) vs ST7789(2-USB) CYD panels are electrically identical → chip/features/partitions
-  are compile-time, **panel identity is resolved at boot** (probe) and cached to NVS.
+  are compile-time, and the **panel driver is chosen at boot by probing the panel ID register**. (Persisting the
+  probed result to NVS so later boots skip the probe is planned; M0 caches the build-time default.)
 
 ## M0 Tier-1 boards
 `cyd_2432S028_classic` (runtime ILI9341/ST7789 probe) · `bare_esp32_headless` · `m5stickc_plus2` ·

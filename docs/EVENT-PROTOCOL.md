@@ -1,7 +1,7 @@
 # LxveOS event protocol — the machine-readable serial stream for Cyber Controller
 
 **Producer:** the firmware (`lxveos`). **Consumer:** CC's `src/protocols/lxveos.py`.
-**Status:** extends `LXVEOS-CC-CONTROL-SPEC.md` §3 (the `status` line) to recon/defense/capture/arm output.
+**Status:** extends the `status` line (the dashboard poll) to recon/defense/capture/arm output.
 
 ## Framing
 Every machine line reuses the `status`-line framing so CC parses them with one tokenizer:
@@ -28,11 +28,10 @@ Event emission is **off by default** (keeps the interactive console clean). CC t
 | `bridge off` | Disable it. Emits `LXVEOS/1 bridge state=off`. |
 | `bridge` / `bridge status` | Print current state (`LXVEOS/1 bridge state=on|off`). |
 
-The `status` line (LXVEOS-CC-CONTROL-SPEC §3) is **always** available regardless of `bridge` state — it is the
-dashboard poll, not an event.
+The `status` line is **always** available regardless of `bridge` state — it is the dashboard poll, not an event.
 
 ## Event catalog
-`hex` = hex-encoded (arbitrary bytes). Sources are the CLI commands in LXVEOS-CC-CONTROL-SPEC §5.
+`hex` = hex-encoded (arbitrary bytes). Sources are the CLI commands (see the command table in the README / CLI `help`).
 
 | type | fields | source | notes |
 |---|---|---|---|

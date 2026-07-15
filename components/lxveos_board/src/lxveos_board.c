@@ -66,7 +66,7 @@ static void resolve_panel(void)
         nvs_commit(h);
     }
     nvs_close(h);
-    ESP_LOGI(TAG, "panel: %s (probed -> cached%s)", s_panel, w == ESP_OK ? "" : ", cache write failed");
+    ESP_LOGI(TAG, "panel: %s (build default -> cached%s)", s_panel, w == ESP_OK ? "" : ", cache write failed");
 #else
     snprintf(s_panel, sizeof(s_panel), "%s", LXVEOS_DISP_DRIVER);
     ESP_LOGI(TAG, "panel: %s (fixed)", s_panel);

@@ -26,6 +26,10 @@ typedef enum {
     LXVEOS_CAP_SUBGHZ,
     LXVEOS_CAP_NRF24,
     LXVEOS_CAP_NFC,
+    // 5 GHz Wi-Fi is a distinct radio capability: the M0 fleet is ESP32/ESP32-S3 (2.4 GHz-only), so no board
+    // sets CONFIG_LXVEOS_HAS_WIFI_5GHZ and this bit is never active — a 5 GHz op honestly reports "unavailable"
+    // (this silicon can't) rather than "planned" (coming soon). A future dual-band board (ESP32-C5/C6) declares it.
+    LXVEOS_CAP_WIFI_5GHZ,
     LXVEOS_CAP_COUNT
 } lxveos_cap_t;
 

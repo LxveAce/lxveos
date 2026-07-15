@@ -23,6 +23,7 @@ static const char *const CAP_NAMES[LXVEOS_CAP_COUNT] = {
     [LXVEOS_CAP_SUBGHZ]     = "subghz",
     [LXVEOS_CAP_NRF24]      = "nrf24",
     [LXVEOS_CAP_NFC]        = "nfc",
+    [LXVEOS_CAP_WIFI_5GHZ]  = "wifi_5ghz",
 };
 
 #define CAP_BIT(c) ((lxveos_cap_mask_t)1u << (c))
