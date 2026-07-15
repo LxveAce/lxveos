@@ -3,8 +3,9 @@ name: build-matrix
 # host-side `validate` job (no ESP-IDF) gates the matrix: it validates the manifest and runs the
 # board-config unit tests, so a manifest typo fails in seconds instead of after five parallel toolchain
 # builds. Each board's build produces a single-file flashable image (merge-bin) uploaded as an artifact,
-# so any machine can flash a device without an ESP-IDF toolchain. TODO: scripts/size_report.py flash/IRAM
-# gate + Unity/pytest-embedded on-device tests.
+# so any machine can flash a device without an ESP-IDF toolchain. The validate job also runs a host-C unit
+# test of the arm-gate safety state machine (no ESP-IDF needed). TODO: scripts/size_report.py flash/IRAM gate
+# + on-device (Unity/pytest-embedded) tests once hardware bring-up lands.
 on:
   push:
   pull_request:
@@ -28,6 +29,8 @@ jobs:
         run: |
           python3 -m pip install --quiet pytest
           python3 -m pytest tests/ -q
+      - name: Host C tests (arm-gate safety state machine)
+        run: sh tests/host_c/run.sh
       # Ensure the single rolling "ci-latest" prerelease exists BEFORE the matrix builds upload to it, so
       # the parallel build jobs never race to create it (they only ever `upload --clobber` to an existing
       # release). Release-asset storage is SEPARATE from the Actions-artifact quota, so this channel keeps

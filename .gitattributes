@@ -1,0 +1,3 @@
+# Keep shell scripts LF-only so they run on the Linux CI runners regardless of the author's platform
+# (a CRLF in `tests/host_c/run.sh` would break `sh` on Ubuntu).
+*.sh text eol=lf
