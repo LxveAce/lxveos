@@ -57,6 +57,7 @@ jobs:
         include:
           - { board: bare_esp32_headless,   target: esp32 }
           - { board: cyd_2432S028_classic,  target: esp32 }
+          - { board: cyd_3248S035_r,        target: esp32 }
           - { board: m5stickc_plus2,        target: esp32 }
           - { board: m5cardputer_v1,        target: esp32s3 }
           - { board: jc3248w535_s3_qspi,    target: esp32s3 }

@@ -186,6 +186,10 @@ def board_info_h(bid, b):
     if present:
         lines += [
             f'#define LXVEOS_DISP_DRIVER       {s(d.get("driver"))}',
+            # Compile-time driver selector for the SPI create_panel path. The classic CYD is a runtime probe
+            # (ILI9341 vs ST7789); a fixed-driver panel (the 3.5" CYD is ST7796) can't be #if'd on the driver
+            # STRING, so emit a numeric flag per fixed driver. Add more IS_<DRIVER> flags as fixed panels land.
+            f'#define LXVEOS_DISP_DRIVER_IS_ST7796 {1 if (d.get("driver") or "") == "ST7796" else 0}',
             f'#define LXVEOS_DISP_RUNTIME_PROBE {1 if d.get("runtime_probe") else 0}',
             f'#define LXVEOS_DISP_W            {d.get("native_w", 0)}',
             f'#define LXVEOS_DISP_H            {d.get("native_h", 0)}',
@@ -239,8 +243,16 @@ def board_info_h(bid, b):
     tit, tpins = _touch_with_pins(inputs)
     lines.append(f'#define LXVEOS_TOUCH_HAS_PINS    {1 if tpins is not None else 0}')
     if tit is not None and tpins is not None:
+        # Does touch share the display's SPI bus? On the classic CYD touch is on its OWN pins (a separate
+        # host), but the 3.5" CYD (ESP32-3248S035R) wires the XPT2046 onto the DISPLAY bus (same sclk/mosi/miso,
+        # only cs/irq are its own). When shared, the BSP must attach touch to the already-initialised display
+        # host, NOT init a second bus (double-init panic). Compare the three bus pins to the display's.
+        dpins = d.get("pins") if isinstance(d.get("pins"), dict) else {}
+        shares_bus = (isinstance(dpins.get("sclk"), int)
+                      and all(tpins.get(k) == dpins.get(k) for k in ("sclk", "mosi", "miso")))
         lines += [
             f'#define LXVEOS_TOUCH_CONTROLLER  {s(tit.get("controller"))}',
+            f'#define LXVEOS_TOUCH_SHARES_DISPLAY_BUS {1 if shares_bus else 0}',
             f'#define LXVEOS_TOUCH_PIN_SCLK    {tpins.get("sclk", -1)}',
             f'#define LXVEOS_TOUCH_PIN_MOSI    {tpins.get("mosi", -1)}',
             f'#define LXVEOS_TOUCH_PIN_MISO    {tpins.get("miso", -1)}',

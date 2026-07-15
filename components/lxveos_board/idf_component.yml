@@ -5,6 +5,10 @@
 ## them at boot from the RDID4 (0xD3) probe. Requires ESP-IDF >= 4.4 (we build on v6.0.2).
 dependencies:
   espressif/esp_lcd_ili9341: "^2.0"
+  # esp_lcd_st7796: the 3.5" Cheap-Yellow-Display's panel driver (ESP32-3248S035R, ST7796 320x480 SPI).
+  # create_panel() instantiates it for boards whose driver is fixed to ST7796 (LXVEOS_DISP_DRIVER_IS_ST7796).
+  # Only registry transitive dep is espressif/cmake_utilities (already pinned). Requires ESP-IDF >= 4.4.
+  espressif/esp_lcd_st7796: "^1.4"
   # XPT2046 resistive touch (the CYD's touch controller, on its own SPI bus). The XPT2046 esp_lcd_touch
   # driver is the community `atanisoft` port (Espressif's namespace has esp_lcd_touch + other controllers,
   # not XPT2046) — same one the ESP-IDF spi_lcd_touch example uses. Pulls espressif/esp_lcd_touch (>=1.0.4)

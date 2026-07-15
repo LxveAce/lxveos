@@ -153,6 +153,34 @@ def test_cyd_touch_pins_emitted():
         assert line in h, f"CYD touch pinout drift: missing `{line}`"
 
 
+def test_cyd_35_st7796_and_shared_bus_touch():
+    """The 3.5" CYD (ESP32-3248S035R) is a FIXED ST7796 panel (no runtime probe) whose XPT2046 touch SHARES the
+    display's SPI bus — both are compile-time flags the BSP branches on (create_panel picks ST7796; create_touch
+    attaches to the display host instead of init-ing a 2nd bus). Regression for the board-add."""
+    h = g.board_info_h("cyd_3248S035_r", BOARDS["cyd_3248S035_r"])
+    for line in ('#define LXVEOS_DISP_DRIVER       "ST7796"',
+                 "#define LXVEOS_DISP_DRIVER_IS_ST7796 1",
+                 "#define LXVEOS_DISP_RUNTIME_PROBE 0",
+                 "#define LXVEOS_DISP_W            320",
+                 "#define LXVEOS_DISP_H            480",
+                 "#define LXVEOS_DISP_PIN_BL       27",
+                 "#define LXVEOS_TOUCH_SHARES_DISPLAY_BUS 1",
+                 "#define LXVEOS_TOUCH_PIN_CS      33",
+                 "#define LXVEOS_TOUCH_PIN_IRQ     36"):
+        assert line in h, f"cyd_3248S035_r config drift: missing `{line}`"
+    # Shared-bus means the touch's SCLK/MOSI/MISO equal the display's (only cs/irq differ).
+    assert "#define LXVEOS_TOUCH_PIN_SCLK    14" in h and "#define LXVEOS_DISP_PIN_SCLK     14" in h
+
+
+def test_classic_cyd_unaffected_by_st7796_addition():
+    """Backward-compat: the classic 2.8" CYD stays a runtime-probe board with its OWN touch bus — the new
+    ST7796 / shared-bus flags are both 0, so adding the 3.5" board didn't change the classic's bring-up."""
+    h = g.board_info_h("cyd_2432S028_classic", BOARDS["cyd_2432S028_classic"])
+    assert "#define LXVEOS_DISP_DRIVER_IS_ST7796 0" in h
+    assert "#define LXVEOS_TOUCH_SHARES_DISPLAY_BUS 0" in h
+    assert "#define LXVEOS_DISP_RUNTIME_PROBE 1" in h
+
+
 def test_touch_block_absent_without_verified_pins():
     """A board with no touch controller (or a pin-less touch entry) emits LXVEOS_TOUCH_HAS_PINS 0 and no touch
     pin defines (honesty rule — the generator never invents a touch pinout)."""

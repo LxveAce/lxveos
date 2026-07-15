@@ -19,6 +19,9 @@
 #include "esp_lcd_panel_vendor.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_ili9341.h"
+#if LXVEOS_DISP_DRIVER_IS_ST7796
+#include "esp_lcd_st7796.h"
+#endif
 #if LXVEOS_TOUCH_HAS_PINS
 #include "esp_lcd_touch.h"
 #include "esp_lcd_touch_xpt2046.h"
@@ -195,22 +198,33 @@ static esp_err_t bring_up_panel_io(void)
 // UNVERIFIED on hardware; extra confirms which variant + tunes byte order/rotation on real glass.
 static esp_err_t create_panel(void)
 {
-    const bool is_ili9341 = (s_probe_d3[0] == 0x00 && s_probe_d3[1] == 0x93 && s_probe_d3[2] == 0x41);
     esp_lcd_panel_dev_config_t pcfg = {
         .reset_gpio_num = LXVEOS_DISP_PIN_RST,        // -1 == RST tied to EN (no dedicated reset line)
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,   // CYD panels are BGR
         .bits_per_pixel = 16,
     };
+#if LXVEOS_DISP_DRIVER_IS_ST7796
+    // Fixed-driver board (3.5" CYD ESP32-3248S035R): ST7796 320x480, no runtime probe. Like the ILI9341 (and
+    // unlike the ST7789) it does not need colour inversion.
+    ESP_RETURN_ON_ERROR(esp_lcd_new_panel_st7796(s_panel_io, &pcfg, &s_panel_handle), TAG, "new st7796");
+    const bool invert = false;
+    const char *panel_name = "ST7796";
+#else
+    // Classic CYD: the RDID4 (0xD3) probe distinguishes a 1-USB ILI9341 (reads 00 93 41) from a 2-USB ST7789.
+    const bool is_ili9341 = (s_probe_d3[0] == 0x00 && s_probe_d3[1] == 0x93 && s_probe_d3[2] == 0x41);
     if (is_ili9341) {
         ESP_RETURN_ON_ERROR(esp_lcd_new_panel_ili9341(s_panel_io, &pcfg, &s_panel_handle), TAG, "new ili9341");
     } else {
         ESP_RETURN_ON_ERROR(esp_lcd_new_panel_st7789(s_panel_io, &pcfg, &s_panel_handle), TAG, "new st7789");
     }
+    const bool invert = !is_ili9341;   // ST7789 needs inversion; ILI9341 does not
+    const char *panel_name = is_ili9341 ? "ILI9341" : "ST7789";
+#endif
     ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(s_panel_handle), TAG, "panel reset");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_init(s_panel_handle), TAG, "panel init");
     // Visible-window origin offset (0/0 on the CYD; non-zero for shifted panel cuts, from the manifest).
     esp_lcd_panel_set_gap(s_panel_handle, LXVEOS_DISP_GAP_X, LXVEOS_DISP_GAP_Y);
-    esp_lcd_panel_invert_color(s_panel_handle, !is_ili9341);   // ST7789 needs inversion; ILI9341 does not
+    esp_lcd_panel_invert_color(s_panel_handle, invert);
     esp_lcd_panel_disp_on_off(s_panel_handle, true);
 
     // Proof-of-life: paint the panel LxveAce green in DRAM-friendly 16-line horizontal bands (no full
@@ -226,7 +240,7 @@ static esp_err_t create_panel(void)
         esp_lcd_panel_draw_bitmap(s_panel_handle, 0, y, LXVEOS_DISP_W, y + h, band);
     }
     ESP_LOGI(TAG, "panel up: %s %dx%d initialised + filled (proof-of-life)",
-             is_ili9341 ? "ILI9341" : "ST7789", LXVEOS_DISP_W, LXVEOS_DISP_H);
+             panel_name, LXVEOS_DISP_W, LXVEOS_DISP_H);
     return ESP_OK;
 }
 
@@ -241,6 +255,15 @@ static esp_lcd_touch_handle_t s_touch;   // valid after create_touch()
 
 static esp_err_t create_touch(void)
 {
+#if LXVEOS_TOUCH_SHARES_DISPLAY_BUS
+    // 3.5" CYD (ESP32-3248S035R): the XPT2046 rides the display's ALREADY-initialised SPI bus (its sclk/mosi/miso
+    // ARE the display's; only cs/irq are its own). Attach as a second device on that host — do NOT re-init the bus
+    // (a second spi_bus_initialize on the live pins panics). bsp_display_start() runs before bsp_input_start().
+    const spi_host_device_t touch_host = LXVEOS_LCD_SPI_HOST;
+#else
+    // Classic CYD: touch is on its OWN pins, so bring up a dedicated host (SPI3/VSPI — free here; the add-on-radio
+    // SPI3 users, lxveos_spibus, are absent). See the header note for a future SPI3-radio-alongside-touch board.
+    const spi_host_device_t touch_host = LXVEOS_TOUCH_SPI_HOST;
     const spi_bus_config_t tbus = {
         .sclk_io_num = LXVEOS_TOUCH_PIN_SCLK,
         .mosi_io_num = LXVEOS_TOUCH_PIN_MOSI,
@@ -248,11 +271,12 @@ static esp_err_t create_touch(void)
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
     };
-    ESP_RETURN_ON_ERROR(spi_bus_initialize(LXVEOS_TOUCH_SPI_HOST, &tbus, SPI_DMA_CH_AUTO), TAG, "touch spi bus");
+    ESP_RETURN_ON_ERROR(spi_bus_initialize(touch_host, &tbus, SPI_DMA_CH_AUTO), TAG, "touch spi bus");
+#endif
 
     esp_lcd_panel_io_handle_t tio;
     const esp_lcd_panel_io_spi_config_t tio_cfg = ESP_LCD_TOUCH_IO_SPI_XPT2046_CONFIG(LXVEOS_TOUCH_PIN_CS);
-    ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LXVEOS_TOUCH_SPI_HOST, &tio_cfg,
+    ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)touch_host, &tio_cfg,
                         &tio), TAG, "touch panel-IO");
 
     const esp_lcd_touch_config_t tcfg = {
@@ -263,8 +287,8 @@ static esp_err_t create_touch(void)
         .flags = { .swap_xy = 0, .mirror_x = 0, .mirror_y = 0 },
     };
     ESP_RETURN_ON_ERROR(esp_lcd_touch_new_spi_xpt2046(tio, &tcfg, &s_touch), TAG, "xpt2046");
-    ESP_LOGI(TAG, "touch: XPT2046 on SPI3 sclk=%d mosi=%d miso=%d cs=%d irq=%d", LXVEOS_TOUCH_PIN_SCLK,
-             LXVEOS_TOUCH_PIN_MOSI, LXVEOS_TOUCH_PIN_MISO, LXVEOS_TOUCH_PIN_CS, LXVEOS_TOUCH_PIN_IRQ);
+    ESP_LOGI(TAG, "touch: XPT2046 cs=%d irq=%d on host %d (%s)", LXVEOS_TOUCH_PIN_CS, LXVEOS_TOUCH_PIN_IRQ,
+             (int)touch_host, LXVEOS_TOUCH_SHARES_DISPLAY_BUS ? "shared display bus" : "own bus");
     return ESP_OK;
 }
 #endif  // LXVEOS_TOUCH_HAS_PINS

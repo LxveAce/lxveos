@@ -18,6 +18,7 @@
 atanisoft/esp_lcd_touch_xpt2046 1.0.6
 espressif/cmake_utilities 0.5.3
 espressif/esp_lcd_ili9341 2.0.2
+espressif/esp_lcd_st7796 1.4.0
 espressif/esp_lcd_touch 1.2.1
 espressif/esp_lvgl_port 2.8.0~1
 lvgl/lvgl 9.5.0

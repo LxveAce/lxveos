@@ -33,6 +33,11 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 2.0.2
+  espressif/esp_lcd_st7796:
+    component_hash: 5577eeccbb00
+    source:
+      type: service
+    version: 1.4.0
   espressif/esp_lcd_touch:
     component_hash: beef4444
     source:
@@ -68,6 +73,7 @@ def test_parse_lock_deps():
         "atanisoft/esp_lcd_touch_xpt2046": "1.0.6",
         "espressif/cmake_utilities": "0.5.3",
         "espressif/esp_lcd_ili9341": "2.0.2",
+        "espressif/esp_lcd_st7796": "1.4.0",
         "espressif/esp_lcd_touch": "1.2.1",
         "espressif/esp_lvgl_port": "2.8.0~1",
         "idf": "6.0.2",
@@ -94,6 +100,7 @@ def test_evaluate_all_match():
         "atanisoft/esp_lcd_touch_xpt2046": "1.0.6",
         "espressif/cmake_utilities": "0.5.3",
         "espressif/esp_lcd_ili9341": "2.0.2",
+        "espressif/esp_lcd_st7796": "1.4.0",
         "espressif/esp_lcd_touch": "1.2.1",
         "espressif/esp_lvgl_port": "2.8.0~1",
         "lvgl/lvgl": "9.5.0",
@@ -128,13 +135,16 @@ def test_evaluate_drift_missing_unexpected():
 
 
 def test_committed_expected_deps_is_consistent():
-    # The shipped pin file parses and pins exactly the three managed deps declared in the idf_component.yml
-    # files (guards against a stray edit / a new dep added to a manifest without a pin here).
+    # The shipped pin file parses and pins exactly the managed deps declared across the idf_component.yml
+    # files, direct + transitive (guards against a stray edit / a new dep added to a manifest without a pin
+    # here). esp_lcd_st7796 is the 3.5" CYD panel driver (its only registry transitive is cmake_utilities,
+    # already pinned).
     expected = c.parse_expected((ROOT / "scripts" / "expected_deps.txt").read_text(encoding="utf-8"))
     assert set(expected) == {
         "atanisoft/esp_lcd_touch_xpt2046",
         "espressif/cmake_utilities",
         "espressif/esp_lcd_ili9341",
+        "espressif/esp_lcd_st7796",
         "espressif/esp_lcd_touch",
         "espressif/esp_lvgl_port",
         "lvgl/lvgl",

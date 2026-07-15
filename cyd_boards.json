@@ -36,6 +36,48 @@
       "provenance": "datasheet-community",
       "_note": "FLAGSHIP: 1-USB=ILI9341 vs 2-USB=ST7789 are electrically identical -> BOTH panel drivers compiled in; boot probe (0xD3->0x9341/0x7796, ST7789 heuristic) resolves it and caches to NVS."
     },
+    "cyd_3248S035_r": {
+      "chip": "esp32",
+      "psram": false,
+      "flash_size": "4MB",
+      "display": {
+        "present": true,
+        "driver": "ST7796",
+        "runtime_probe": false,
+        "native_w": 320,
+        "native_h": 480,
+        "bus": "spi",
+        "hal_backend": "esp_lcd",
+        "color_format": "rgb565",
+        "default_rotation": null,
+        "color_invert": null,
+        "rgb_order": "bgr",
+        "col_offset": 0,
+        "row_offset": 0,
+        "backlight": { "pin": 27, "pwm": true, "active_level": 1 },
+        "pins": {
+          "sclk": 14, "mosi": 13, "miso": 12, "cs": 15, "dc": 2, "rst": -1,
+          "_note": "ST7796 320x480 BGR on SPI2. Community-sourced (rzeldent sunton esp32-3248S035R.json) + corroborated by CC display-type correction 538665c. Backlight GPIO27 active-HIGH. UNVERIFIED on hardware. The XPT2046 touch SHARES this SPI2 bus (only cs33/irq36 are its own), unlike the 2.8-inch which uses a separate VSPI."
+        }
+      },
+      "input": [
+        {
+          "class": "touch",
+          "controller": "XPT2046",
+          "bus": "spi",
+          "addr_or_cs": 33,
+          "pins": { "sclk": 14, "mosi": 13, "miso": 12, "cs": 33, "irq": 36 },
+          "maps_to_lvgl": "pointer",
+          "_note": "Resistive XPT2046 sharing the DISPLAY SPI2 bus (sclk14/mosi13/miso12), own cs33/irq36. Community-sourced (rzeldent sunton esp32-3248S035R.json). UNVERIFIED on hardware. BSP attaches touch to the already-initialised display host (shares_display_bus), not a 2nd bus init."
+        }
+      ],
+      "ui_profile": "touch_gui",
+      "features": { "wifi": true, "ble": true, "bt_classic": true, "display": true, "gps": "addon" },
+      "build": { "idf_target": "esp32", "partition_csv": "partitions/partitions_4mb_single.csv", "optimize": "size" },
+      "firmware_variant_map": { "lxveos": "cyd_3248S035_r", "marauder": "cyd_3248S035" },
+      "provenance": "datasheet-community",
+      "_note": "CYD 3.5-inch resistive (ESP32-3248S035R / -2432S035R). ST7796 320x480, no PSRAM, 4MB. Touch shares the display SPI2 bus. The C (GT911 capacitive) variant is a future sibling (I2C touch, needs esp_lcd_touch_gt911)."
+    },
     "m5stickc_plus2": {
       "chip": "esp32", "psram": true, "psram_size": "2MB", "flash_size": "8MB",
       "display": {
