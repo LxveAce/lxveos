@@ -1293,20 +1293,14 @@ static int cmd_wardrive(int argc, char **argv)
     // comma/quote in a network name can't break the row. GPS-less by design — the host supplies coordinates.
     printf("bssid,ssid,channel,rssi,auth,hidden\n");
     for (size_t i = 0; i < found; i++) {
-        printf("%02x:%02x:%02x:%02x:%02x:%02x,\"", aps[i].bssid[0], aps[i].bssid[1], aps[i].bssid[2],
-               aps[i].bssid[3], aps[i].bssid[4], aps[i].bssid[5]);
-        for (const char *s = aps[i].ssid; *s; s++) {
-            unsigned char c = (unsigned char)*s;
-            if (c < 0x20) {
-                putchar('.');  // sanitize control bytes so they can't break the CSV line
-                continue;
-            }
-            if (c == '"') {
-                putchar('"');  // RFC4180: double an embedded quote
-            }
-            putchar((int)c);
-        }
-        printf("\",%u,%d,%s,%d\n", aps[i].channel, aps[i].rssi,
+        // The SSID is the only field that can contain a comma/quote/control byte; csv_quote_field emits a
+        // safe RFC4180 double-quoted field (embedded quotes doubled, control bytes -> '.'). Worst case is a
+        // 32-char SSID of all quotes -> 64 + 2 quotes + NUL, so 80 is always enough.
+        char q[80];
+        csv_quote_field(q, sizeof(q), aps[i].ssid);
+        printf("%02x:%02x:%02x:%02x:%02x:%02x,%s,%u,%d,%s,%d\n",
+               aps[i].bssid[0], aps[i].bssid[1], aps[i].bssid[2], aps[i].bssid[3], aps[i].bssid[4],
+               aps[i].bssid[5], q, aps[i].channel, aps[i].rssi,
                lxveos_wifi_authmode_str(aps[i].authmode), aps[i].ssid[0] ? 0 : 1);
     }
     printf("# %u AP(s) exported (GPS-less — host adds coordinates)\n", (unsigned)found);

@@ -56,10 +56,41 @@ static void test_sanitize_copy(void)
     sanitize_copy(NULL, 16, "zzz");
 }
 
+static void test_csv_quote_field(void)
+{
+    char buf[32];
+    // a comma is preserved INSIDE the quotes (that's the whole point — it can't split the row)
+    csv_quote_field(buf, sizeof(buf), "a,b");
+    assert(strcmp(buf, "\"a,b\"") == 0);
+    // an embedded quote is doubled (RFC4180)
+    csv_quote_field(buf, sizeof(buf), "a\"b");
+    assert(strcmp(buf, "\"a\"\"b\"") == 0);
+    // control bytes (newline here) -> '.', so a crafted SSID can't inject a new CSV line
+    csv_quote_field(buf, sizeof(buf), "x\ny");
+    assert(strcmp(buf, "\"x.y\"") == 0);
+    // empty field is a bare pair of quotes
+    csv_quote_field(buf, sizeof(buf), "");
+    assert(strcmp(buf, "\"\"") == 0);
+    // truncation: content is cut but the field stays valid — closing quote + NUL always present
+    char small[6];
+    small[5] = 'Z';
+    csv_quote_field(small, sizeof(small), "abcdef");
+    assert(small[0] == '"' && small[strlen(small) - 1] == '"' && small[5] == '\0');
+    assert(strlen(small) <= 5);
+    // degenerate caps -> empty string, no overflow
+    char tiny[2];
+    tiny[1] = 'Z';
+    csv_quote_field(tiny, sizeof(tiny), "x");
+    assert(tiny[0] == '\0');
+    csv_quote_field(buf, 0, "x");  // no-op, no crash
+    csv_quote_field(NULL, 8, "x");
+}
+
 int main(void)
 {
     test_parse_int_arg();
     test_sanitize_copy();
+    test_csv_quote_field();
     printf("test_cliutil: all assertions passed\n");
     return 0;
 }

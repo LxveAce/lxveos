@@ -21,6 +21,12 @@ bool parse_int_arg(const char *s, long lo, long hi, long *out);
 // dst are no-ops; a NULL src yields an empty string.
 void sanitize_copy(char *dst, size_t cap, const char *src);
 
+// Format `src` as one RFC4180 CSV field into `dst`: a double-quoted field with any embedded '"' doubled and
+// control bytes (< 0x20 or 0x7f) replaced by '.', so a comma / quote / newline in a device-supplied name
+// can't break the CSV row or inject a new one. `dst` always includes the closing quote and a NUL (content is
+// truncated first if `cap` is tight); a cap < 3 (no room for `""`) yields an empty string.
+void csv_quote_field(char *dst, size_t cap, const char *src);
+
 #ifdef __cplusplus
 }
 #endif
