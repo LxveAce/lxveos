@@ -49,4 +49,10 @@ build_arm -DLXVEOS_TX_DISABLE  # conservative build: the emitter is stripped
     "$here/test_radiomath.c" "$root/components/lxveos_radiomath/src/lxveos_radiomath.c" -o "$out"
 "$out"
 
+# --- Wi-Fi authmode label + security-grade helpers: needs the wifi_auth_mode_t enum stub ---
+"$CC" -std=gnu11 -O1 -Wall \
+    -I"$root/components/lxveos_wifi/include" -I"$here/stubs" \
+    "$here/test_wifi_labels.c" "$root/components/lxveos_wifi/src/lxveos_wifi_labels.c" -o "$out"
+"$out"
+
 echo "host-c: all tests passed"
