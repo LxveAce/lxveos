@@ -31,4 +31,10 @@ build_arm -DLXVEOS_TX_DISABLE  # conservative build: the emitter is stripped
     "$here/test_evt.c" "$root/components/lxveos_evt/src/lxveos_evt.c" -o "$out"
 "$out"
 
+# --- CLI helpers (validated int-arg parse + console-escape sanitize): dependency-free, no stubs needed ---
+"$CC" -std=gnu11 -O1 -Wall \
+    -I"$root/components/lxveos_cliutil/include" \
+    "$here/test_cliutil.c" "$root/components/lxveos_cliutil/src/lxveos_cliutil.c" -o "$out"
+"$out"
+
 echo "host-c: all tests passed"

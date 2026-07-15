@@ -31,6 +31,7 @@
 #include "lxveos_nfc.h"
 #include "lxveos_board.h"
 #include "lxveos_caps.h"
+#include "lxveos_cliutil.h"
 #include "lxveos_evilportal.h"
 #include "lxveos_evt.h"
 #include "lxveos_ops.h"
@@ -103,25 +104,6 @@ static bool locked(void)
     }
     printf("locked — type 'agree' to accept the authorized-use terms (see RESPONSIBLE-USE.md) first.\n");
     return true;
-}
-
-// Copy `src` into `dst` (at most cap-1 bytes) with control/non-printable bytes replaced by '.', so a
-// DEVICE-SUPPLIED string (a Wi-Fi SSID, a BLE local name) can't emit terminal escapes that garble or spoof
-// the operator's console — a crafted name carrying ESC[2J / cursor moves would otherwise reach the terminal
-// verbatim through a raw %s. `dst` is always NUL-terminated. The machine LXVEOS/1 event lines hex-encode
-// these same fields, so this is purely for the human-readable output. (`probes`/`apaudit`/`wardrive`
-// sanitize inline where they also pad or CSV-quote; this is the shared helper for the plain-print sites.)
-static void sanitize_copy(char *dst, size_t cap, const char *src)
-{
-    if (cap == 0) {
-        return;
-    }
-    size_t i = 0;
-    for (; src != NULL && src[i] != '\0' && i < cap - 1; i++) {
-        unsigned char c = (unsigned char)src[i];
-        dst[i] = (c < 0x20 || c == 0x7f) ? '.' : (char)c;
-    }
-    dst[i] = '\0';
 }
 
 // `agree` — accept the authorized-use terms; persisted so later boots start unlocked.
@@ -1564,22 +1546,6 @@ static int cmd_badble(int argc, char **argv)
         printf("badble start failed: %s\n", esp_err_to_name(e));
     }
     return 0;
-}
-
-// Parse a base-10 integer CLI argument in [lo, hi] into *out. Returns false for a non-numeric token (no digits
-// consumed) or one out of range, so a bad GPIO / seconds arg errors with a usage hint instead of silently
-// becoming 0 the way atoi() does. Drivers still enforce their own semantic ranges; this just rejects garbage at
-// the CLI. endptr is only used to detect "no digits" — a trailing-garbage token like "8x" parses as 8, matching
-// the convention the Wi-Fi ops already use.
-static bool parse_int_arg(const char *s, long lo, long hi, long *out)
-{
-    char *end = NULL;
-    long v = strtol(s, &end, 10);
-    if (end == s || v < lo || v > hi) {
-        return false;
-    }
-    *out = v;
-    return true;
 }
 
 // ir — IR capture + replay (the ir_recv / ir_send ops), a universal remote via the RMT peripheral. Pins

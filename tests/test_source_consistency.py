@@ -132,9 +132,10 @@ def test_device_supplied_names_are_console_sanitized():
     plain-print sites (eviltwin / blescan / btracker / blehid) route the name through sanitize_copy()
     (control bytes -> '.'); probes / apaudit / wardrive sanitize inline where they also pad or CSV-quote.
     This guard fails if one of the hardened sites regresses to printing the raw device string."""
-    assert "static void sanitize_copy(" in CLI_C, "the shared console sanitizer sanitize_copy() was removed"
-    # 1 definition + >= 4 call sites (blescan, eviltwin, btracker, blehid)
-    assert CLI_C.count("sanitize_copy(") >= 5, "a device-name print site lost its sanitize_copy() call"
+    # sanitize_copy() lives in the lxveos_cliutil component (host-tested); the CLI includes it and calls it
+    # at each plain-print device-name site.
+    assert '#include "lxveos_cliutil.h"' in CLI_C, "the CLI no longer includes the console sanitizer"
+    assert CLI_C.count("sanitize_copy(") >= 4, "a device-name print site lost its sanitize_copy() call"
     # the specific raw-name-into-printf patterns that were hardened must stay gone
     raw_patterns = {
         "blescan ident": '"%s [%s]", d->name',
