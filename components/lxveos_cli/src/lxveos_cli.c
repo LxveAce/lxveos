@@ -1622,6 +1622,77 @@ static int cmd_skimmer(int argc, char **argv)
     return 0;
 }
 
+// `flock [seconds]` — passive Flock Safety camera heuristic (the `flock_detect` catalog op). One passive BLE
+// scan, flags advertisers carrying Flock's XUNTONG manufacturer ID (0x09C8), tiered LIKELY (a confirming Flock
+// name pattern) / POSSIBLE (nameless XUNTONG advert). Ported from ESP32 Marauder "Flock Sniff" (see CREDITS.md).
+// EXPERIMENTAL — LxveOS carries only the specific XUNTONG signal, not Marauder's FP-prone broad-OUI + Wi-Fi
+// SSID-substring paths, so it never asserts a confident Flock ID. Listen only — advertises nothing.
+static int cmd_flock(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_BLE)) {
+        printf("ble capability is not active on this build — cannot scan\n");
+        return 0;
+    }
+    uint32_t secs = 6;
+    if (argc >= 2) {
+        long v = strtol(argv[1], NULL, 10);
+        if (v >= 1 && v <= 60) {
+            secs = (uint32_t)v;
+        } else {
+            printf("usage: flock [seconds 1-60]  (default 6)\n");
+            return 0;
+        }
+    }
+    printf("passive Flock-camera scan for %us (GAP observe — advertises nothing)...\n", (unsigned)secs);
+    lxveos_ble_dev_t *devs = s_ble_scan;   // shared buffer (single-threaded CLI) — keeps DRAM small
+    size_t found = 0;
+    esp_err_t e = lxveos_ble_scan(secs, devs, LXVEOS_BLE_SCAN_MAX, &found);
+    if (e != ESP_OK) {
+        printf("ble scan failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    unsigned likely = 0;
+    unsigned possible = 0;
+    for (size_t i = 0; i < found; i++) {
+        const lxveos_ble_dev_t *d = &devs[i];
+        uint8_t conf = lxveos_ble_flock_confidence(d);
+        const char *tier = lxveos_ble_flock_str(conf);
+        if (tier == NULL) {
+            continue;
+        }
+        if (conf == LXVEOS_BLE_FLOCK_LIKELY) {
+            likely++;
+        } else {
+            possible++;
+        }
+        char nm[32];
+        sanitize_copy(nm, sizeof(nm), d->name);   // device-supplied name -> console-safe
+        printf("  flock(%s) %02x:%02x:%02x:%02x:%02x:%02x  rssi %ddBm  %s\n",
+               tier, d->addr[5], d->addr[4], d->addr[3], d->addr[2], d->addr[1], d->addr[0], d->rssi, nm);
+    }
+    unsigned hits = likely + possible;
+    if (hits) {
+        // Deliberately hedged: XUNTONG is Flock's OEM chipset but not exclusively theirs, so this is a lead to
+        // verify in person, never a confident camera ID. LIKELY has a confirming name; POSSIBLE is nameless.
+        printf("verdict: ⚠ %u possible Flock device(s) — %u likely / %u possible, verify in person "
+               "(%u device(s) scanned)\n", hits, likely, possible, (unsigned)found);
+    } else {
+        printf("verdict: clear — no Flock (XUNTONG) advertiser seen (%u device(s) scanned)\n", (unsigned)found);
+    }
+    if (lxveos_evt_enabled() && hits > 0) {
+        char line[128];
+        size_t n = lxveos_evt_begin(line, sizeof(line), "alert");
+        n = lxveos_evt_kv(line, sizeof(line), n, "kind", "flock");
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "count", hits);
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "likely", likely);
+        printf("%s\n", line);
+    }
+    return 0;
+}
+
 // `arm [token]` — two-factor enable for offensive-TX ops. `arm` (no token) starts a request and prints a
 // one-time confirm code; `arm <token>` confirms it within 30s. Offensive TX is compiled in by default; only
 // a conservative LXVEOS_TX_DISABLE build has nothing to arm. Recon/defense ops never need arming. The gate
@@ -2630,6 +2701,7 @@ static void register_commands(void)
         {.command = "flipper", .help = "Passive Flipper Zero detector (BLE service-UUID match): flipper [seconds] (listen only)", .func = &cmd_flipper},
         {.command = "meta", .help = "Passive Meta/Ray-Ban glasses + Oculus detector (BLE mfg/service-ID match): meta [seconds] (listen only)", .func = &cmd_meta},
         {.command = "skimmer", .help = "Passive card-skimmer heuristic — flag default-named HC-0x BT-serial modules: skimmer [seconds] (listen only)", .func = &cmd_skimmer},
+        {.command = "flock", .help = "Passive Flock Safety camera heuristic (BLE XUNTONG mfg + name): flock [seconds] — experimental, listen only", .func = &cmd_flock},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
         {.command = "bridge", .help = "Toggle machine-readable LXVEOS/1 event emission for the CC bridge: bridge on|off|status", .func = &cmd_bridge},

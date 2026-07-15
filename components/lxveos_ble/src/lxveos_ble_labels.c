@@ -230,3 +230,64 @@ bool lxveos_ble_is_skimmer(const lxveos_ble_dev_t *d)
     }
     return false;
 }
+
+// Does `name` (NUL-terminated, name_len bytes) match one of Flock's confirming name patterns? (See
+// lxveos_ble_internal.h.) All three come from Marauder's isFlockCamera(): the legacy exact name, the
+// "Penguin-" + 10-digit serial, and the newer bare 10-all-digit serial. Pure over the name bytes.
+static bool flock_name_match(const char *name, uint8_t name_len)
+{
+    // Legacy exact name.
+    if (name_len == 14 && strcmp(name, "FS Ext Battery") == 0) {
+        return true;
+    }
+    // "Penguin-" (8 chars) + exactly 10 digits => total length 18.
+    if (name_len == 18 && strncmp(name, "Penguin-", 8) == 0) {
+        for (int i = 8; i < 18; i++) {
+            if (name[i] < '0' || name[i] > '9') {
+                return false;
+            }
+        }
+        return true;
+    }
+    // Newer firmware: the name is the bare serial — exactly 10 characters, all digits.
+    if (name_len == 10) {
+        for (int i = 0; i < 10; i++) {
+            if (name[i] < '0' || name[i] > '9') {
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+uint8_t lxveos_ble_flock_confidence(const lxveos_ble_dev_t *d)
+{
+    if (d == NULL) {
+        return LXVEOS_BLE_FLOCK_NONE;
+    }
+    // The XUNTONG manufacturer ID is the only Flock signal LxveOS trusts (the broad-OUI + SSID-substring paths
+    // are too FP-prone to carry). Not XUNTONG => not Flock, full stop.
+    if (!d->has_mfg || d->company_id != LXVEOS_BLE_CID_XUNTONG) {
+        return LXVEOS_BLE_FLOCK_NONE;
+    }
+    // XUNTONG present. A confirming Flock name => LIKELY; a nameless XUNTONG advert => POSSIBLE; a XUNTONG device
+    // carrying some OTHER name is not flagged (mirrors Marauder's "Penguin-name OR nameless" gate — avoids
+    // flagging unrelated XUNTONG-chipset gear that advertises its own product name).
+    if (flock_name_match(d->name, d->name_len)) {
+        return LXVEOS_BLE_FLOCK_LIKELY;
+    }
+    if (d->name_len == 0) {
+        return LXVEOS_BLE_FLOCK_POSSIBLE;
+    }
+    return LXVEOS_BLE_FLOCK_NONE;
+}
+
+const char *lxveos_ble_flock_str(uint8_t confidence)
+{
+    switch (confidence) {
+    case LXVEOS_BLE_FLOCK_LIKELY:   return "likely";
+    case LXVEOS_BLE_FLOCK_POSSIBLE: return "possible";
+    default:                        return NULL;
+    }
+}

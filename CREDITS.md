@@ -8,8 +8,9 @@ is reused directly. The full per-project map is in [`THIRD-PARTY-LICENSES.md`](T
 - **ESP32 Marauder** — Just Call Me Koko (MIT), *Copyright (c) 2020 Just Call Me Koko* — Wi-Fi scan/monitor,
   wardrive WiGLE CSV, Evil Portal, serial protocol, a BLE wardrive CSV export, and the passive detectors ported
   from its menus: Pwnagotchi-presence ("Detect Pwnagotchi"), Flipper-Zero ("Flipper Sniff"), Meta / Ray-Ban Meta
-  glasses ("Meta Detect"), and the card-skimmer default-name heuristic ("Detect Card Skimmers"). Full MIT license
-  text retained in `THIRD-PARTY-LICENSES.md`.
+  glasses ("Meta Detect"), the card-skimmer default-name heuristic ("Detect Card Skimmers"), and the Flock Safety
+  camera heuristic ("Flock Sniff" — LxveOS carries only the specific XUNTONG-mfg BLE signal, not the broad-OUI /
+  SSID-substring paths). Full MIT license text retained in `THIRD-PARTY-LICENSES.md`.
 - **ESP32-DIV** — CiferTech (MIT) — recon/scan/GPS/SD paths (jammer code excluded, by policy).
 - **risinek/esp32-wifi-penetration-tool** (MIT) — ESP-IDF PMKID / EAPOL-handshake capture approach (LxveOS emits
   hashcat-22000 `WPA*01`/`WPA*02` lines directly; PCAP/HCCAPX export is not shipped).

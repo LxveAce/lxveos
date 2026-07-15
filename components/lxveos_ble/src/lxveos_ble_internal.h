@@ -42,3 +42,10 @@
 // Deny-list (checked first). 0xFD5A/0x004C/0x0006 already exist above as SVC_SMARTTAG / CID_APPLE / CID_MICROSOFT.
 #define LXVEOS_BLE_META_BLOCK_SAMSUNG2 0xFD69u  // Samsung
 #define LXVEOS_BLE_META_BLOCK_PHONE    0xFEF3u  // phone popup payload
+
+// Flock Safety "Penguin" battery/camera (ESP32 Marauder "Flock Sniff" / isFlockCamera()). LxveOS ships only the
+// SPECIFIC BLE signal: the XUNTONG manufacturer ID that Flock's hardware advertises, gated by a confirming Flock
+// name pattern. Marauder's broad 27-entry OUI list (incl. the CC:CC:CC placeholder) and its generic Wi-Fi SSID
+// substrings ("flock"/"penguin"/"pigvision") are DELIBERATELY NOT carried — too false-positive-prone to ever call
+// a confident Flock ID. Value from WiFiScan.cpp isFlockCamera() (~1558-1640). Name patterns handled in labels.c.
+#define LXVEOS_BLE_CID_XUNTONG 0x09C8u  // Flock "Penguin" battery/camera mfg company ID (the strongest BLE signal)

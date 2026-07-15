@@ -173,6 +173,69 @@ static void test_skimmer(void)
     assert(lxveos_ble_is_skimmer(NULL) == false);
 }
 
+static void test_flock(void)
+{
+    // XUNTONG mfg + a confirming Flock name => LIKELY.
+    lxveos_ble_dev_t p = {0};
+    p.has_mfg = true;
+    p.company_id = 0x09C8;   // XUNTONG
+    strcpy(p.name, "Penguin-0123456789");
+    p.name_len = 18;
+    assert(lxveos_ble_flock_confidence(&p) == LXVEOS_BLE_FLOCK_LIKELY);
+    assert(strcmp(lxveos_ble_flock_str(lxveos_ble_flock_confidence(&p)), "likely") == 0);
+
+    // Legacy exact name.
+    strcpy(p.name, "FS Ext Battery");
+    p.name_len = 14;
+    assert(lxveos_ble_flock_confidence(&p) == LXVEOS_BLE_FLOCK_LIKELY);
+
+    // Newer firmware: bare 10-digit serial name.
+    strcpy(p.name, "1234567890");
+    p.name_len = 10;
+    assert(lxveos_ble_flock_confidence(&p) == LXVEOS_BLE_FLOCK_LIKELY);
+
+    // XUNTONG but nameless => POSSIBLE (weaker).
+    lxveos_ble_dev_t q = {0};
+    q.has_mfg = true;
+    q.company_id = 0x09C8;
+    q.name_len = 0;
+    assert(lxveos_ble_flock_confidence(&q) == LXVEOS_BLE_FLOCK_POSSIBLE);
+    assert(strcmp(lxveos_ble_flock_str(lxveos_ble_flock_confidence(&q)), "possible") == 0);
+
+    // XUNTONG with some OTHER (non-Flock) name is NOT flagged (name-or-nameless gate).
+    lxveos_ble_dev_t r = {0};
+    r.has_mfg = true;
+    r.company_id = 0x09C8;
+    strcpy(r.name, "MyThermostat");
+    r.name_len = 12;
+    assert(lxveos_ble_flock_confidence(&r) == LXVEOS_BLE_FLOCK_NONE);
+
+    // "Penguin-" with a non-digit in the serial does NOT match (exact pattern).
+    strcpy(r.name, "Penguin-01234X6789");
+    r.name_len = 18;
+    assert(lxveos_ble_flock_confidence(&r) == LXVEOS_BLE_FLOCK_NONE);
+
+    // A Flock-looking NAME without the XUNTONG mfg ID is NOT flagged — the mfg ID is the required signal
+    // (we don't carry the FP-prone name-only / OUI heuristics).
+    lxveos_ble_dev_t n = {0};
+    n.has_mfg = false;
+    strcpy(n.name, "Penguin-0123456789");
+    n.name_len = 18;
+    assert(lxveos_ble_flock_confidence(&n) == LXVEOS_BLE_FLOCK_NONE);
+
+    // A different mfg ID with a Flock name is not flagged either.
+    lxveos_ble_dev_t m = {0};
+    m.has_mfg = true;
+    m.company_id = 0x004C;   // Apple, not XUNTONG
+    strcpy(m.name, "FS Ext Battery");
+    m.name_len = 14;
+    assert(lxveos_ble_flock_confidence(&m) == LXVEOS_BLE_FLOCK_NONE);
+
+    // NONE has no label; NULL is safe.
+    assert(lxveos_ble_flock_str(LXVEOS_BLE_FLOCK_NONE) == NULL);
+    assert(lxveos_ble_flock_confidence(NULL) == LXVEOS_BLE_FLOCK_NONE);
+}
+
 int main(void)
 {
     test_company_name();
@@ -182,6 +245,7 @@ int main(void)
     test_flipper_color();
     test_meta();
     test_skimmer();
+    test_flock();
     printf("test_ble_labels: all tests passed\n");
     return 0;
 }

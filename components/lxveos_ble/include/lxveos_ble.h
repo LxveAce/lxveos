@@ -123,6 +123,20 @@ bool lxveos_ble_is_meta(const lxveos_ble_dev_t *d);
 // Skimmers". Host-tested.
 bool lxveos_ble_is_skimmer(const lxveos_ble_dev_t *d);
 
+// Flock Safety "Penguin" camera/battery confidence for `d`. LxveOS matches only the specific BLE signal —
+// Flock's XUNTONG manufacturer ID (0x09C8) — tiered by name: LIKELY when a confirming Flock name pattern is
+// present, POSSIBLE for a nameless XUNTONG advert, NONE otherwise (a XUNTONG device with some other name is
+// not flagged, mirroring Marauder's name-or-nameless gate). Marauder's FP-prone broad-OUI + Wi-Fi SSID-substring
+// paths are intentionally NOT carried, so LxveOS never asserts a confident Flock ID. Ported from ESP32 Marauder
+// "Flock Sniff" (see CREDITS.md). Host-tested.
+#define LXVEOS_BLE_FLOCK_NONE     0
+#define LXVEOS_BLE_FLOCK_POSSIBLE 1  // XUNTONG mfg present but no confirming name (nameless advert)
+#define LXVEOS_BLE_FLOCK_LIKELY   2  // XUNTONG mfg AND a Flock name pattern (Penguin-<10digits> / FS Ext Battery / 10-digit)
+uint8_t lxveos_ble_flock_confidence(const lxveos_ble_dev_t *d);
+
+// Short label for a Flock confidence tier ("likely"/"possible"), or NULL for LXVEOS_BLE_FLOCK_NONE.
+const char *lxveos_ble_flock_str(uint8_t confidence);
+
 // ── BLE HID keystroke injection (the `ble_hid_inject` op, "BadBLE") — OFFENSIVE TX, arm-gated ─────────
 // LxveOS advertises as a standard BLE HID keyboard ("LxveOS-KB"); when a target host pairs and subscribes
 // to the input report, it plays `script` as keystrokes — a Rubber-Ducky primitive over BLE, for authorized
