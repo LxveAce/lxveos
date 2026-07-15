@@ -43,4 +43,10 @@ build_arm -DLXVEOS_TX_DISABLE  # conservative build: the emitter is stripped
     "$here/test_hidmap.c" "$root/components/lxveos_hidmap/src/lxveos_hidmap.c" -o "$out"
 "$out"
 
+# --- external-radio math (CC1101 freq-word/RSSI, PN532 frame/BCC, nRF24 Unifying checksum): libc-only ---
+"$CC" -std=gnu11 -O1 -Wall \
+    -I"$root/components/lxveos_radiomath/include" \
+    "$here/test_radiomath.c" "$root/components/lxveos_radiomath/src/lxveos_radiomath.c" -o "$out"
+"$out"
+
 echo "host-c: all tests passed"

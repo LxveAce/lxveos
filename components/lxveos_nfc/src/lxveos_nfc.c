@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "lxveos_arm.h"
+#include "lxveos_radiomath.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -29,26 +30,16 @@ static bool    s_present;
 static uint8_t s_ic;
 static uint8_t s_version;
 
-// Build + send a command frame (cmd[0]=command byte, cmd[1..]=params).
+// Build + send a command frame (cmd[0]=command byte, cmd[1..]=params). Frame bytes (preamble/LEN/LCS/
+// TFI/DCS/postamble) come from lxveos_radiomath so the on-target path and the host test share one builder.
 static esp_err_t pn532_send(const uint8_t *cmd, uint8_t clen)
 {
     uint8_t f[48];
-    uint8_t len = (uint8_t)(clen + 1);   // + TFI
-    uint8_t i = 0;
-    f[i++] = 0x00;
-    f[i++] = 0x00;
-    f[i++] = 0xFF;
-    f[i++] = len;
-    f[i++] = (uint8_t)(~len + 1);        // LCS
-    f[i++] = PN532_TFI_HOST;
-    uint8_t sum = PN532_TFI_HOST;
-    for (uint8_t k = 0; k < clen && i < sizeof(f) - 2; k++) {
-        f[i++] = cmd[k];
-        sum += cmd[k];
+    size_t n = lxveos_pn532_build_frame(PN532_TFI_HOST, cmd, clen, f, sizeof(f));
+    if (n == 0) {
+        return ESP_ERR_INVALID_SIZE;   // command too long for the frame buffer
     }
-    f[i++] = (uint8_t)(~sum + 1);        // DCS
-    f[i++] = 0x00;
-    return i2c_master_transmit(s_dev, f, i, 100);
+    return i2c_master_transmit(s_dev, f, n, 100);
 }
 
 // Poll the 1-byte ready status until bit0 is set or the timeout lapses.
@@ -278,7 +269,7 @@ esp_err_t lxveos_nfc_clone_write(const uint8_t *uid, size_t uid_len)
     }
 
     // 3) Build block 0 = UID(4) + BCC + SAK(0x08) + ATQA(0x0004) + manufacturer(8), and write it.
-    uint8_t bcc = (uint8_t)(uid[0] ^ uid[1] ^ uid[2] ^ uid[3]);
+    uint8_t bcc = lxveos_mifare_bcc4(uid);
     uint8_t wr[20] = {0x40, 0x01, 0xA0, 0x00,
                       uid[0], uid[1], uid[2], uid[3], bcc, 0x08, 0x04, 0x00,
                       0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69};

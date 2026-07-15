@@ -7,6 +7,7 @@
 // 2.4 GHz activity map. UNVERIFIED on hardware; extra confirms the identity read + scan on a real module.
 #include "lxveos_nrf24.h"
 #include "lxveos_arm.h"
+#include "lxveos_radiomath.h"
 
 #include "esp_log.h"
 #include "esp_rom_sys.h"
@@ -339,11 +340,7 @@ esp_err_t lxveos_nrf24_inject_text(const uint8_t addr[5], uint8_t channel, const
         for (int phase = 0; phase < 2; phase++) {
             uint8_t f[10] = {0x00, 0xC1, (uint8_t)(phase == 0 ? mod : 0),
                              (uint8_t)(phase == 0 ? key : 0), 0, 0, 0, 0, 0, 0};
-            uint8_t sum = 0;
-            for (int i = 0; i < 9; i++) {
-                sum += f[i];
-            }
-            f[9] = (uint8_t)(0 - sum);
+            f[9] = lxveos_unifying_checksum(f, sizeof(f));
             nrf_cmd(NRF_CMD_FLUSH_TX);
             nrf_cmd_buf(NRF_CMD_W_TX_PAYLOAD, f, sizeof(f));
             ce(1);

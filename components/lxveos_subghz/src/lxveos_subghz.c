@@ -10,6 +10,7 @@
 // stays planned until HW-validated).
 #include "lxveos_subghz.h"
 #include "lxveos_arm.h"
+#include "lxveos_radiomath.h"
 
 #include <string.h>
 
@@ -47,8 +48,6 @@ static const char *TAG = "lxveos_subghz";
 #define CC1101_WRITE_BURST 0x40
 #define CC1101_READ_SINGLE 0x80
 #define CC1101_READ_BURST  0xC0
-
-#define CC1101_XOSC_HZ 26000000.0f   // 26 MHz crystal (standard on CC1101 modules)
 
 static spi_device_handle_t s_dev;
 static bool    s_begun;
@@ -209,7 +208,7 @@ esp_err_t lxveos_subghz_rssi(float mhz, int8_t *rssi_dbm)
     }
 
     // FREQ = f / (fXOSC / 2^16). Program FREQ2/1/0.
-    uint32_t freq_word = (uint32_t)((mhz * 1000000.0f) * 65536.0f / CC1101_XOSC_HZ);
+    uint32_t freq_word = lxveos_cc1101_freq_to_word(mhz);
     cc1101_strobe(CC1101_SIDLE);
     cc1101_write_reg(CC1101_FREQ2, (freq_word >> 16) & 0xFF);
     cc1101_write_reg(CC1101_FREQ1, (freq_word >> 8) & 0xFF);
@@ -219,12 +218,8 @@ esp_err_t lxveos_subghz_rssi(float mhz, int8_t *rssi_dbm)
 
     uint8_t raw = cc1101_read_reg(CC1101_RSSI, true);
     // TI conversion: rssi_dBm = (raw>=128 ? (raw-256) : raw)/2 - 74 (RSSI_offset for 433 MHz).
-    int rssi_dec = (raw >= 128) ? (raw - 256) : raw;
-    int dbm = rssi_dec / 2 - 74;
-    if (dbm < -128) dbm = -128;
-    if (dbm > 127) dbm = 127;
     if (rssi_dbm) {
-        *rssi_dbm = (int8_t)dbm;
+        *rssi_dbm = lxveos_cc1101_rssi_to_dbm(raw);
     }
     cc1101_strobe(CC1101_SIDLE);
     return ESP_OK;
@@ -241,7 +236,7 @@ static float             s_cap_mhz;
 
 static void cc1101_set_freq(float mhz)
 {
-    uint32_t fw = (uint32_t)((mhz * 1000000.0f) * 65536.0f / CC1101_XOSC_HZ);
+    uint32_t fw = lxveos_cc1101_freq_to_word(mhz);
     cc1101_write_reg(CC1101_FREQ2, (fw >> 16) & 0xFF);
     cc1101_write_reg(CC1101_FREQ1, (fw >> 8) & 0xFF);
     cc1101_write_reg(CC1101_FREQ0, fw & 0xFF);

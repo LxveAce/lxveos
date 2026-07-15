@@ -4,5 +4,5 @@
 idf_component_register(
     SRCS "src/lxveos_nfc.c"
     INCLUDE_DIRS "include"
-    REQUIRES esp_driver_i2c lxveos_arm
+    REQUIRES esp_driver_i2c lxveos_arm lxveos_radiomath
 )
