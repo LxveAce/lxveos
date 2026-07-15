@@ -289,6 +289,13 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg)
                 if (adv_is_fastpair(&fields)) {
                     slot->fastpair = true;
                 }
+                // First 16-bit service-DATA UUID (AD type 0x16), if any — carried so the pure classifiers
+                // (e.g. Meta) can match an identifier advertised as service DATA, not only in the service-class
+                // list. Some vendors put their SIG member UUID here (0xFD5F Meta/Oculus is one). 0 = none.
+                if (fields.svc_data_uuid16 != NULL && fields.svc_data_uuid16_len >= 2) {
+                    slot->svc_data_uuid16 = (uint16_t)(fields.svc_data_uuid16[0] |
+                                                       ((uint16_t)fields.svc_data_uuid16[1] << 8));
+                }
                 if (fields.appearance_is_present) {
                     slot->appearance         = fields.appearance;
                     slot->appearance_present = true;

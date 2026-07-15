@@ -184,13 +184,17 @@ bool lxveos_ble_is_meta(const lxveos_ble_dev_t *d)
     if (d == NULL) {
         return false;
     }
-    // Candidate 16-bit identifiers = manufacturer company ID (if present) + advertised service UUIDs. (Marauder
-    // also checks service-DATA UUIDs; LxveOS doesn't parse those into a general list, so this is the mfg+service
-    // subset — a faithful, slightly narrower match.) Blocked wins: any candidate in the deny-list => not Meta.
-    uint16_t cand[1 + 8];
+    // Candidate 16-bit identifiers = manufacturer company ID (if present) + advertised service-class UUIDs +
+    // the first service-DATA UUID (AD 0x16). Covering all three surfaces matches Marauder and, importantly,
+    // catches Meta's own SIG-verified anchor 0xFD5F, which real devices advertise as service DATA. Blocked
+    // wins: any candidate in the deny-list => not Meta (so a service-data-only 0xFD5A/0xFEF3 also blocks).
+    uint16_t cand[2 + 8];
     size_t nc = 0;
     if (d->has_mfg) {
         cand[nc++] = d->company_id;
+    }
+    if (d->svc_data_uuid16 != 0) {
+        cand[nc++] = d->svc_data_uuid16;
     }
     uint8_t su = d->svc_uuid_count;
     if (su > 8) {
@@ -216,7 +220,7 @@ bool lxveos_ble_is_meta(const lxveos_ble_dev_t *d)
 // many gas-pump/ATM skimmers reuse an HC-0x SPP module with its stock name. NOTE: narrow heuristic — it also
 // flags legit hobby HC-0x modules (present as "possible", never definitive) and, since LxveOS scans BLE only,
 // won't see classic-BT-only modules. Faithful to what Marauder catches.
-static const char *SKIMMER_NAMES[] = {"HC-03", "HC-05", "HC-06"};
+static const char *const SKIMMER_NAMES[] = {"HC-03", "HC-05", "HC-06"};
 
 bool lxveos_ble_is_skimmer(const lxveos_ble_dev_t *d)
 {

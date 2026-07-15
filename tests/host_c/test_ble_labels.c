@@ -139,6 +139,37 @@ static void test_meta(void)
     stale.company_id = 0xFD5F;
     assert(lxveos_ble_is_meta(&stale) == false);
 
+    // Every Meta match ID is recognized on its own (guards against a typo in any one constant).
+    static const uint16_t meta_ids[] = {0xFD5F, 0xFEB7, 0xFEB8, 0x01AB, 0x058E, 0x0D53};
+    for (size_t i = 0; i < sizeof(meta_ids) / sizeof(meta_ids[0]); i++) {
+        lxveos_ble_dev_t x = {0};
+        x.has_mfg = true;
+        x.company_id = meta_ids[i];
+        assert(lxveos_ble_is_meta(&x) == true);
+    }
+    // Every deny ID blocks even a genuine Meta mfg match (guards the deny-list constants + blocked-wins order).
+    static const uint16_t deny_ids[] = {0xFD5A, 0xFD69, 0x004C, 0x0006, 0xFEF3};
+    for (size_t i = 0; i < sizeof(deny_ids) / sizeof(deny_ids[0]); i++) {
+        lxveos_ble_dev_t x = {0};
+        x.has_mfg = true;
+        x.company_id = 0xFD5F;         // a real Meta id...
+        x.svc_uuids[0] = deny_ids[i];  // ...but a deny id is present => blocked
+        x.svc_uuid_count = 1;
+        assert(lxveos_ble_is_meta(&x) == false);
+    }
+
+    // Service-DATA surface: a device advertising the Meta anchor 0xFD5F ONLY as service DATA is caught (the
+    // gap the DEBUG pass found — 0xFD5F is a SIG member UUID real devices carry in service data, not mfg).
+    lxveos_ble_dev_t sd = {0};
+    sd.svc_data_uuid16 = 0xFD5F;
+    assert(lxveos_ble_is_meta(&sd) == true);
+    // ...and a deny id in the service-DATA surface blocks even a genuine mfg Meta match.
+    lxveos_ble_dev_t sdb = {0};
+    sdb.has_mfg = true;
+    sdb.company_id = 0x0D53;        // Meta (Luxottica / Ray-Ban)
+    sdb.svc_data_uuid16 = 0xFEF3;   // phone-popup deny id, in service DATA => blocked
+    assert(lxveos_ble_is_meta(&sdb) == false);
+
     // NULL is safe.
     assert(lxveos_ble_is_meta(NULL) == false);
 }
@@ -215,6 +246,11 @@ static void test_flock(void)
     r.name_len = 18;
     assert(lxveos_ble_flock_confidence(&r) == LXVEOS_BLE_FLOCK_NONE);
 
+    // Bare-10 branch: a 10-char ALL-ALPHA name is not a digit serial => XUNTONG device NOT flagged.
+    strcpy(r.name, "ABCDEFGHIJ");
+    r.name_len = 10;
+    assert(lxveos_ble_flock_confidence(&r) == LXVEOS_BLE_FLOCK_NONE);
+
     // A Flock-looking NAME without the XUNTONG mfg ID is NOT flagged — the mfg ID is the required signal
     // (we don't carry the FP-prone name-only / OUI heuristics).
     lxveos_ble_dev_t n = {0};
@@ -274,6 +310,15 @@ static void test_surveil(void)
     strcpy(sk.name, "HC-05");
     sk.name_len = 5;
     assert(lxveos_ble_surveil_flags(&sk) == LXVEOS_SURVEIL_SKIMMER);
+
+    // Multi-category: a Meta advertiser that ALSO carries a Flipper service UUID sets BOTH bits (verifies the
+    // "can match more than one bit" claim and the cmd_surveil "cat1+cat2" join).
+    lxveos_ble_dev_t mc = {0};
+    mc.has_mfg = true;
+    mc.company_id = 0xFD5F;    // Meta
+    mc.svc_uuids[0] = 0x3082;  // Flipper (White)
+    mc.svc_uuid_count = 1;
+    assert(lxveos_ble_surveil_flags(&mc) == (LXVEOS_SURVEIL_META | LXVEOS_SURVEIL_FLIPPER));
 
     // Category-bit labels (one bit per call), and 0 / unknown -> NULL.
     assert(strcmp(lxveos_ble_surveil_str(LXVEOS_SURVEIL_TRACKER), "tracker") == 0);

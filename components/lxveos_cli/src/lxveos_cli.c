@@ -1545,7 +1545,7 @@ static int cmd_meta(int argc, char **argv)
                d->addr[5], d->addr[4], d->addr[3], d->addr[2], d->addr[1], d->addr[0], d->rssi, nm);
     }
     if (hits) {
-        printf("verdict: ⚠ %u Meta device(s) present (%u device(s) scanned)\n", hits, (unsigned)found);
+        printf("verdict: ⚠ %u Meta/Ray-Ban identifier(s) seen (%u device(s) scanned)\n", hits, (unsigned)found);
     } else {
         printf("verdict: clear — no Meta device seen (%u device(s) scanned)\n", (unsigned)found);
     }

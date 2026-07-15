@@ -34,6 +34,7 @@ typedef struct {
     uint16_t appearance;  // GAP appearance value; valid only if appearance_present
     bool     appearance_present;
     uint16_t svc_uuids[8];   // advertised 16-bit service-class UUIDs (AD type 0x02/0x03)
+    uint16_t svc_data_uuid16; // first 16-bit service-DATA UUID (AD type 0x16), 0 = none advertised
     uint8_t  svc_uuid_count; // entries used in svc_uuids[] (0 if none advertised)
     bool     svc_uuids_partial; // the advert listed more 16-bit UUIDs than svc_uuids[] holds (truncated)
     uint8_t  tracker;        // item-tracker classification (LXVEOS_BLE_TRACKER_*); 0 = not a known tracker
@@ -112,9 +113,10 @@ void lxveos_ble_appearance_str(uint16_t appearance, char *buf, size_t buflen);
 // ESP32 Marauder "Flipper Sniff" (MIT — see CREDITS.md). Pure over the scanned device — host-tested.
 const char *lxveos_ble_flipper_color(const lxveos_ble_dev_t *d);
 
-// True if `d` looks like a Meta / Ray-Ban Meta glasses / Oculus device: its mfg company ID or an advertised
-// service UUID is in the Meta set AND none of its identifiers is in the deny-list (which is checked first, so a
-// Apple/Samsung/Microsoft payload can't false-match). Ported from ESP32 Marauder "Meta Detect". Host-tested.
+// True if `d` looks like a Meta / Ray-Ban Meta glasses / Oculus device: its mfg company ID, an advertised
+// service-class UUID, or its service-DATA UUID is in the Meta set AND none of its identifiers is in the deny-list
+// (checked first, so an Apple/Samsung/Microsoft payload can't false-match). Covering the service-DATA surface is
+// what catches Meta's own anchor 0xFD5F. Ported from ESP32 Marauder "Meta Detect". Host-tested.
 bool lxveos_ble_is_meta(const lxveos_ble_dev_t *d);
 
 // True if `d`'s advertised local name is EXACTLY a default HC-0x BT-serial module name (HC-03/05/06) — the
