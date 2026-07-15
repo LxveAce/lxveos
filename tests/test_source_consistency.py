@@ -83,7 +83,7 @@ _MUST_STAY_UNVALIDATED = {
 _MUST_BE_IMPLEMENTED = {
     "wifi_ap_scan", "wifi_sta_scan", "wifi_sniff", "wifi_probe_scan", "eapol_capture",
     "deauth_detect", "pwnagotchi_detect", "evil_twin_detect", "wifi_security_audit", "wifi_wardrive",
-    "ble_scan", "ble_flood_detect", "ble_tracker_detect", "ble_hid_detect", "evil_portal", "karma_ap",
+    "ble_scan", "ble_wardrive", "ble_flood_detect", "ble_tracker_detect", "ble_hid_detect", "evil_portal", "karma_ap",
 }
 
 # The interference-emitter class (RF jammer / deauth-flood / beacon-flood / BLE advert-spam) is a FIXED
@@ -178,6 +178,7 @@ _CLI_TO_SLUGS = {
     "airspace": {"airspace_summary"},
     "watch": {"target_watch"},
     "wardrive": {"wifi_wardrive"},
+    "blewardrive": {"ble_wardrive"},
     "blescan": {"ble_scan"},
     "defend": {"deauth_detect"},
     "pwnwatch": {"pwnagotchi_detect"},

@@ -58,6 +58,7 @@ static const lxveos_op_t OPS[] = {
     {"target_watch",   "Target-address watchlist", LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_WIFI, "custom", true},
     // ── Logging ───────────────────────────────────────────────────────────────────────────────────
     {"wifi_wardrive",  "Wi-Fi wardrive CSV",    LXVEOS_OPCAT_LOGGING, LXVEOS_CAP_WIFI,    "Marauder", true},
+    {"ble_wardrive",   "BLE wardrive CSV",      LXVEOS_OPCAT_LOGGING, LXVEOS_CAP_BLE,     "Marauder", true},
     {"pcap_log",       "PCAP capture to SD",    LXVEOS_OPCAT_LOGGING, LXVEOS_CAP_STORAGE, "Marauder", false},
     {"wardrive_log",   "GPS wardrive log",      LXVEOS_OPCAT_LOGGING, LXVEOS_CAP_GPS,     "Marauder", false},
     // ── Misc ──────────────────────────────────────────────────────────────────────────────────────
