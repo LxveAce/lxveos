@@ -765,6 +765,16 @@ static int cmd_defend(int argc, char **argv)
                ? "⚠ elevated deauth/disassoc — possible attack or aggressive AP"
                : "some deauth/disassoc seen (normal at low rates; watch the busiest source)");
     }
+    if (lxveos_evt_enabled() && hits > 0) {
+        char line[128];
+        size_t n = lxveos_evt_begin(line, sizeof(line), "alert");
+        n = lxveos_evt_kv(line, sizeof(line), n, "kind", "deauth");
+        n = lxveos_evt_kv_mac(line, sizeof(line), n, "bssid", st.top_bssid);
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "count", hits);
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "deauth", st.deauth);
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "disassoc", st.disassoc);
+        printf("%s\n", line);
+    }
     return 0;
 }
 
@@ -827,6 +837,17 @@ static int cmd_eviltwin(int argc, char **argv)
                            aps[j].bssid[3], aps[j].bssid[4], aps[j].bssid[5],
                            aps[j].channel, lxveos_wifi_authmode_str(aps[j].authmode), aps[j].rssi);
                 }
+            }
+            if (lxveos_evt_enabled()) {
+                char line[160];
+                size_t n = lxveos_evt_begin(line, sizeof(line), "alert");
+                n = lxveos_evt_kv(line, sizeof(line), n, "kind", "eviltwin");
+                n = lxveos_evt_kv_hex(line, sizeof(line), n, "ssid",
+                                      (const uint8_t *)aps[i].ssid, strlen(aps[i].ssid));
+                n = lxveos_evt_kv_int(line, sizeof(line), n, "bssids", nbssid);
+                n = lxveos_evt_kv_int(line, sizeof(line), n, "open", nopen);
+                n = lxveos_evt_kv_int(line, sizeof(line), n, "enc", nenc);
+                printf("%s\n", line);
             }
         }
     }
@@ -907,6 +928,19 @@ static int cmd_apaudit(int argc, char **argv)
                 printf("WPS enabled on %s — WPS-PIN attack surface", note);
             }
             printf("\n");
+            if (lxveos_evt_enabled()) {
+                char line[160];
+                size_t n = lxveos_evt_begin(line, sizeof(line), "alert");
+                n = lxveos_evt_kv(line, sizeof(line), n, "kind", weak ? "weak" : "wps");
+                n = lxveos_evt_kv_mac(line, sizeof(line), n, "bssid", aps[i].bssid);
+                n = lxveos_evt_kv_hex(line, sizeof(line), n, "ssid",
+                                      (const uint8_t *)aps[i].ssid, strlen(aps[i].ssid));
+                n = lxveos_evt_kv_int(line, sizeof(line), n, "grade", g);
+                if (aps[i].wps) {
+                    n = lxveos_evt_kv_int(line, sizeof(line), n, "wps", 1);
+                }
+                printf("%s\n", line);
+            }
         }
     }
     printf("%u AP(s) scanned — open %d, WEP %d, WPA %d, WPA2 %d, WPA3 %d, other %d (%d hidden SSID, %d WPS)\n",
@@ -1140,6 +1174,17 @@ static int cmd_bleflood(int argc, char **argv)
     } else {
         printf("verdict: clear — no BLE advertisement flood (advertiser churn normal)\n");
     }
+    if (lxveos_evt_enabled() && flood) {
+        char line[128];
+        size_t n = lxveos_evt_begin(line, sizeof(line), "alert");
+        n = lxveos_evt_kv(line, sizeof(line), n, "kind", "bleflood");
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "rate", per_sec);
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "uniq", st.unique_addrs);
+        if (dom != NULL) {
+            n = lxveos_evt_kv(line, sizeof(line), n, "vendor", dom);
+        }
+        printf("%s\n", line);
+    }
     return 0;
 }
 
@@ -1189,6 +1234,19 @@ static int cmd_btracker(int argc, char **argv)
         printf("  %02x:%02x:%02x:%02x:%02x:%02x %-7s %4ddB %-14s %s\n",
                d->addr[5], d->addr[4], d->addr[3], d->addr[2], d->addr[1], d->addr[0],
                lxveos_ble_addr_type_str(d->addr_type), d->rssi, tn, d->name_len ? d->name : "");
+        if (lxveos_evt_enabled()) {
+            uint8_t a[6] = {d->addr[5], d->addr[4], d->addr[3], d->addr[2], d->addr[1], d->addr[0]};
+            char line[160];
+            size_t n = lxveos_evt_begin(line, sizeof(line), "alert");
+            n = lxveos_evt_kv(line, sizeof(line), n, "kind", "tracker");
+            n = lxveos_evt_kv_mac(line, sizeof(line), n, "addr", a);
+            n = lxveos_evt_kv(line, sizeof(line), n, "vendor", tn);
+            n = lxveos_evt_kv_int(line, sizeof(line), n, "rssi", d->rssi);
+            if (d->name_len) {
+                n = lxveos_evt_kv_hex(line, sizeof(line), n, "name", (const uint8_t *)d->name, d->name_len);
+            }
+            printf("%s\n", line);
+        }
     }
     printf("%d tracker(s) among %u BLE device(s) in range\n", trackers, (unsigned)found);
     if (trackers == 0) {
@@ -1940,6 +1998,20 @@ static int cmd_blehid(int argc, char **argv)
                devs[i].addr[5], devs[i].addr[4], devs[i].addr[3],
                devs[i].addr[2], devs[i].addr[1], devs[i].addr[0],
                devs[i].rssi, appr, devs[i].name_len ? devs[i].name : "(no name)");
+        if (lxveos_evt_enabled()) {
+            uint8_t a[6] = {devs[i].addr[5], devs[i].addr[4], devs[i].addr[3],
+                            devs[i].addr[2], devs[i].addr[1], devs[i].addr[0]};
+            char line[160];
+            size_t n = lxveos_evt_begin(line, sizeof(line), "alert");
+            n = lxveos_evt_kv(line, sizeof(line), n, "kind", "blehid");
+            n = lxveos_evt_kv_mac(line, sizeof(line), n, "addr", a);
+            n = lxveos_evt_kv_int(line, sizeof(line), n, "rssi", devs[i].rssi);
+            if (devs[i].name_len) {
+                n = lxveos_evt_kv_hex(line, sizeof(line), n, "name",
+                                      (const uint8_t *)devs[i].name, devs[i].name_len);
+            }
+            printf("%s\n", line);
+        }
     }
     printf("%d BLE HID device(s) flagged of %u advertisers seen.%s\n", hits, (unsigned)found,
            hits ? " Verify each is an expected keyboard/mouse." : "");

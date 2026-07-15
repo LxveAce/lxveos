@@ -48,12 +48,14 @@ dashboard poll, not an event.
 | `snapshot` | `aps` `stas` `bles` `alerts` | `recon` (custom) | airspace summary counts |
 | `done` | `of=<cmd>` `n=<count>` | any listing cmd | end-of-listing marker so CC knows the batch is complete |
 
-### `alert` kind-specific fields
-- `deauth`: `bssid`(mac) `count`
-- `eviltwin`: `ssid`(hex) `bssids`(count of duplicate BSSIDs)
-- `tracker`: `addr`(mac) `vendor` (AirTag/Tile/SmartTag/Chipolo/PebbleBee/GoogleFMN)
-- `bleflood`: `rate` (adv/s) `vendor`
-- `wps`: `bssid`(mac) `ssid`(hex)
+### `alert` kind-specific fields (the detector that fires it in parentheses)
+- `deauth` (`defend`): `bssid`(mac, busiest source) `count`(total deauth+disassoc) `deauth` `disassoc`. Fired only when count > 0.
+- `eviltwin` (`eviltwin`): `ssid`(hex) `bssids`(count advertising this ESSID) `open`(open BSSIDs) `enc`(encrypted BSSIDs). One per flagged ESSID.
+- `weak` (`apaudit`): `bssid`(mac) `ssid`(hex) `grade`(0=open 1=WEP 2=legacy-WPA) `wps`(=1 if also WPS). One per weak-encryption AP.
+- `wps` (`apaudit`): `bssid`(mac) `ssid`(hex) `grade`(3=WPA2 4=WPA3 …) `wps`(=1). One per WPS-advertising AP that is otherwise adequately encrypted.
+- `tracker` (`btracker`): `addr`(mac) `vendor` (AirTag/Tile/SmartTag/Chipolo/PebbleBee/GoogleFMN)
+- `bleflood` (`bleflood`): `rate` (adv/s) `vendor`
+- `blehid` (`blehid`): `addr`(mac) `name`(hex) — a BLE HID (keyboard/mouse) device, an injection surface
 
 ## Escaping / encoding rules (for the CC parser)
 - `mac` — lowercase `aa:bb:cc:dd:ee:ff`.
