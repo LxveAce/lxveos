@@ -4,7 +4,8 @@ name: build-matrix
 # board-config unit tests, so a manifest typo fails in seconds instead of after five parallel toolchain
 # builds. Each board's build produces a single-file flashable image (merge-bin) uploaded as an artifact,
 # so any machine can flash a device without an ESP-IDF toolchain. The validate job also runs a host-C unit
-# test of the arm-gate safety state machine (no ESP-IDF needed). TODO: scripts/size_report.py flash/IRAM gate
+# test of the arm-gate safety state machine (no ESP-IDF needed). Each built board is then run through
+# scripts/size_report.py (app image vs its partition slot — fails on overflow, warns over the soft budget).
 # + on-device (Unity/pytest-embedded) tests once hardware bring-up lands.
 on:
   push:
@@ -83,6 +84,10 @@ jobs:
             idf.py -B build/${{ matrix.board }}
             -D SDKCONFIG=build/${{ matrix.board }}/sdkconfig
             merge-bin -o ${{ matrix.board }}-merged.bin
+      # Flash-headroom gate: report the app image vs its partition slot and FAIL the board if it overflows
+      # (a clearer, earlier signal than the flash-time failure). Warns above the soft budget without failing.
+      - name: Flash-headroom report ${{ matrix.board }}
+        run: python3 scripts/size_report.py --board ${{ matrix.board }} --build-dir build/${{ matrix.board }}
       # Publish a single-file flashable image per board so a device can be flashed without an ESP-IDF
       # toolchain: `esptool --port <COM> write_flash 0x0 <board>-merged.bin`. flasher_args.json is kept
       # for the per-offset alternative. This is what makes on-hardware bring-up possible from any machine.
