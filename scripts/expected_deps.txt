@@ -13,8 +13,11 @@
 # not pinned here (the check ignores it). If a new transitive dep appears, CI fails "UNEXPECTED": review it,
 # then add its pin here in the same commit.
 #
-# Format: <namespace/component> <exact-version>   (versions verified from CI build 29434291479, IDF v6.0.2)
+# Format: <namespace/component> <exact-version>   (versions verified from CI build 29434291479 + the ESP
+# Component Registry, IDF v6.0.2)
+atanisoft/esp_lcd_touch_xpt2046 1.0.6
 espressif/cmake_utilities 0.5.3
 espressif/esp_lcd_ili9341 2.0.2
+espressif/esp_lcd_touch 1.2.1
 espressif/esp_lvgl_port 2.8.0~1
 lvgl/lvgl 9.5.0
