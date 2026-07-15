@@ -10,11 +10,17 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 import check_deps as c  # noqa: E402
 
-# A realistic ESP-IDF 2.x dependencies.lock: two registry deps (one with a `~1` repackage revision), the
-# `idf` pseudo-dependency, a nested source: block (whose fields must NOT be read as versions), and the lock's
-# own top-level `version:` field (must NOT be read as a dependency version).
+# A realistic ESP-IDF 2.x dependencies.lock: the registry deps LxveOS actually resolves (including the
+# transitive `espressif/cmake_utilities` and the `~1` repackage revision on esp_lvgl_port), the `idf`
+# pseudo-dependency, a nested source: block (whose fields must NOT be read as versions), and the lock's own
+# top-level `version:` field (must NOT be read as a dependency version).
 LOCK = """\
 dependencies:
+  espressif/cmake_utilities:
+    component_hash: 1122aabb
+    source:
+      type: service
+    version: 0.5.3
   espressif/esp_lcd_ili9341:
     component_hash: 4f2a1c0deadbeef
     dependencies: []
@@ -49,6 +55,7 @@ version: 2.0.0
 def test_parse_lock_deps():
     got = c.parse_lock_deps(LOCK)
     assert got == {
+        "espressif/cmake_utilities": "0.5.3",
         "espressif/esp_lcd_ili9341": "2.0.2",
         "espressif/esp_lvgl_port": "2.8.0~1",
         "idf": "6.0.2",
@@ -72,6 +79,7 @@ def test_parse_expected():
 def test_evaluate_all_match():
     locked = c.parse_lock_deps(LOCK)
     expected = {
+        "espressif/cmake_utilities": "0.5.3",
         "espressif/esp_lcd_ili9341": "2.0.2",
         "espressif/esp_lvgl_port": "2.8.0~1",
         "lvgl/lvgl": "9.5.0",
@@ -110,6 +118,7 @@ def test_committed_expected_deps_is_consistent():
     # files (guards against a stray edit / a new dep added to a manifest without a pin here).
     expected = c.parse_expected((ROOT / "scripts" / "expected_deps.txt").read_text(encoding="utf-8"))
     assert set(expected) == {
+        "espressif/cmake_utilities",
         "espressif/esp_lcd_ili9341",
         "espressif/esp_lvgl_port",
         "lvgl/lvgl",

@@ -7,7 +7,14 @@
 # freshly generated lock and fails the build on any drift, so a new upstream minor/patch can't slip into a
 # security-firmware build unreviewed. To adopt an upgrade, bump the version here in the same commit.
 #
-# Format: <namespace/component> <exact-version>   (versions verified from CI build 29432550246, IDF v6.0.2)
+# This lists EVERY registry component in the resolved lock, direct and transitive: cmake_utilities is pulled
+# in transitively (an esp_lcd/esp_lvgl_port build helper), so it is pinned too — a transitive bump is just as
+# much a supply-chain change as a direct one. The `idf` pseudo-dependency is not a registry component and is
+# not pinned here (the check ignores it). If a new transitive dep appears, CI fails "UNEXPECTED": review it,
+# then add its pin here in the same commit.
+#
+# Format: <namespace/component> <exact-version>   (versions verified from CI build 29434291479, IDF v6.0.2)
+espressif/cmake_utilities 0.5.3
 espressif/esp_lcd_ili9341 2.0.2
 espressif/esp_lvgl_port 2.8.0~1
 lvgl/lvgl 9.5.0
