@@ -114,6 +114,42 @@ static void test_unifying_checksum(void)
     assert(!lxveos_unifying_checksum_ok(f, 0));
 }
 
+static void test_ook_decode(void)
+{
+    char bits[64];
+    // Te = 350us. short = 350, long = 1050 (3 Te), sync gap = 10850 (31 Te). Symbol: short-hi+long-lo = '0',
+    // long-hi+short-lo = '1'. Frame = pilot HIGH + sync gap, then the data bits.
+    // "0101" with a leading pilot+sync.
+    const uint16_t f1[] = {350, 10850,  350, 1050,  1050, 350,  350, 1050,  1050, 350};
+    size_t n = lxveos_ook_decode(f1, sizeof(f1) / sizeof(f1[0]), bits, sizeof(bits));
+    assert(n == 4 && memcmp(bits, "0101", 4) == 0);
+
+    // No leading sync — capture starts on data. "110".
+    const uint16_t f2[] = {1050, 350,  1050, 350,  350, 1050};
+    n = lxveos_ook_decode(f2, sizeof(f2) / sizeof(f2[0]), bits, sizeof(bits));
+    assert(n == 3 && memcmp(bits, "110", 3) == 0);
+
+    // A trailing sync gap ends the frame (must NOT be mistaken for a leading sync to skip). "01" then gap.
+    const uint16_t f3[] = {350, 1050,  1050, 350,  350, 10850};
+    n = lxveos_ook_decode(f3, sizeof(f3) / sizeof(f3[0]), bits, sizeof(bits));
+    assert(n == 2 && memcmp(bits, "01", 2) == 0);
+
+    // Ambiguous pair (short-high + short-high fits no PWM symbol) stops decoding rather than emitting noise.
+    const uint16_t f4[] = {350, 350,  350, 1050};
+    assert(lxveos_ook_decode(f4, sizeof(f4) / sizeof(f4[0]), bits, sizeof(bits)) == 0);
+
+    // bits_cap truncates: same "0101" frame but room for only 2 bits.
+    n = lxveos_ook_decode(f1, sizeof(f1) / sizeof(f1[0]), bits, 2);
+    assert(n == 2 && memcmp(bits, "01", 2) == 0);
+
+    // Guards: too short, and an all-noise train (every pulse below the floor -> no Te -> nothing).
+    const uint16_t f5[] = {10, 20, 10, 20};
+    assert(lxveos_ook_decode(f5, sizeof(f5) / sizeof(f5[0]), bits, sizeof(bits)) == 0);
+    assert(lxveos_ook_decode(f1, 1, bits, sizeof(bits)) == 0);
+    assert(lxveos_ook_decode(NULL, 8, bits, sizeof(bits)) == 0);
+    assert(lxveos_ook_decode(f1, 8, bits, 0) == 0);
+}
+
 int main(void)
 {
     test_cc1101_freq_to_word();
@@ -121,6 +157,7 @@ int main(void)
     test_pn532_frame();
     test_mifare_bcc();
     test_unifying_checksum();
+    test_ook_decode();
     printf("test_radiomath: all tests passed\n");
     return 0;
 }

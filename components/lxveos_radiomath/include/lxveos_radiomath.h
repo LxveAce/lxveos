@@ -38,3 +38,13 @@ uint8_t lxveos_mifare_bcc4(const uint8_t uid[4]);
 uint8_t lxveos_unifying_checksum(const uint8_t *frame, size_t n);
 // True when frame[0..n-1] already sums to 0 mod 256 (i.e. the trailing checksum byte is correct).
 bool lxveos_unifying_checksum_ok(const uint8_t *frame, size_t n);
+
+// ── Sub-GHz OOK PWM decode (EV1527 / PT2262 remotes) ──────────────────────────────────────────────────
+// Decode a captured OOK pulse train (durations in microseconds, alternating HIGH,LOW,HIGH,LOW…, the line
+// idling LOW so durations[0] is a HIGH) into '0'/'1' ASCII bits. Uses the PWM scheme those cheap 315/433 MHz
+// remotes share: the base time Te is the shortest pulse; a data bit is a HIGH+LOW pair — short-high+long-low
+// is '0', long-high+short-low is '1' — and frames are separated by a long (~31 Te) LOW sync gap. A leading
+// sync gap is skipped; decoding stops at the next gap, at an ambiguous pair, or when `bits_cap` is reached.
+// Writes up to `bits_cap` chars (no NUL) to `bits` and returns the number of bits decoded (0 if the train is
+// too short / no clean Te / all noise). Pure: no radio, no allocation.
+size_t lxveos_ook_decode(const uint16_t *durations, size_t n, char *bits, size_t bits_cap);

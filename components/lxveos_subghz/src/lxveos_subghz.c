@@ -380,3 +380,21 @@ esp_err_t lxveos_subghz_replay(int gdo0_gpio)
 
 bool lxveos_subghz_have_capture(void) { return s_nsym > 0; }
 uint32_t lxveos_subghz_capture_symbols(void) { return (uint32_t)s_nsym; }
+
+uint32_t lxveos_subghz_capture_durations(uint16_t *out, uint32_t cap)
+{
+    if (out == NULL || cap == 0) {
+        return 0;
+    }
+    // Each RMT symbol is a (duration0@level0, duration1@level1) pair; at 1 MHz resolution the durations are
+    // already in microseconds. Flatten to the alternating HIGH,LOW,… pulse train lxveos_ook_decode expects.
+    uint32_t k = 0;
+    for (size_t i = 0; i < s_nsym && k < cap; i++) {
+        out[k++] = (uint16_t)s_syms[i].duration0;
+        if (k >= cap || s_syms[i].duration1 == 0) {
+            break;   // duration1 == 0 marks the end of the captured frame
+        }
+        out[k++] = (uint16_t)s_syms[i].duration1;
+    }
+    return k;
+}

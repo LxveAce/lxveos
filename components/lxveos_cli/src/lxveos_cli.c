@@ -27,6 +27,7 @@
 #include "lxveos_ble.h"
 #include "lxveos_ir.h"
 #include "lxveos_subghz.h"
+#include "lxveos_radiomath.h"
 #include "lxveos_nrf24.h"
 #include "lxveos_nfc.h"
 #include "lxveos_board.h"
@@ -1614,6 +1615,28 @@ static int cmd_ir(int argc, char **argv)
 // <cs>` brings the SPI link up + identifies the chip; `subghz rssi <mhz>` senses signal strength at a
 // frequency; `subghz end` releases the bus. Add-on module on operator-supplied SPI3/VSPI pins; not
 // cap-gated. Receive only in this increment (no TX yet, so no arm gate).
+// Pull the stored OOK capture, decode it as an EV1527/PT2262 PWM bitstream and print the bits (or why it
+// couldn't). Shared by 'subghz capture' (auto-decode on success) and 'subghz decode'. Receive-side only —
+// reads the stored capture, transmits nothing.
+static void subghz_print_decoded(void)
+{
+    static uint16_t durs[2 * 256];   // SG_MAX_SYMBOLS symbols -> at most two durations each
+    static char bits[257];
+    uint32_t nd = lxveos_subghz_capture_durations(durs, sizeof(durs) / sizeof(durs[0]));
+    if (nd < 2) {
+        printf("  OOK decode: no pulse data captured\n");
+        return;
+    }
+    size_t nb = lxveos_ook_decode(durs, nd, bits, sizeof(bits) - 1);
+    if (nb == 0) {
+        printf("  OOK decode: no clean PWM frame in %u pulses (raw capture kept for replay)\n",
+               (unsigned)nd);
+        return;
+    }
+    bits[nb] = '\0';
+    printf("  OOK decode: %u bits  %s\n", (unsigned)nb, bits);
+}
+
 static int cmd_subghz(int argc, char **argv)
 {
     if (locked()) {
@@ -1669,6 +1692,7 @@ static int cmd_subghz(int argc, char **argv)
         esp_err_t e = lxveos_subghz_capture(gdo0, mhz, secs * 1000, &n);
         if (e == ESP_OK) {
             printf("captured %u symbols — 'subghz replay <gdo0>' to re-emit (needs arm)\n", (unsigned)n);
+            subghz_print_decoded();
         } else if (e == ESP_ERR_TIMEOUT) {
             printf("no signal captured (check GDO0 wiring / frequency)\n");
         } else if (e == ESP_ERR_INVALID_STATE) {
@@ -1698,12 +1722,21 @@ static int cmd_subghz(int argc, char **argv)
         }
         return 0;
     }
+    if (argc >= 2 && strcmp(argv[1], "decode") == 0) {
+        if (!lxveos_subghz_have_capture()) {
+            printf("nothing captured — 'subghz capture <gdo0> <mhz>' first\n");
+            return 0;
+        }
+        printf("decoding stored OOK capture (%u symbols):\n", (unsigned)lxveos_subghz_capture_symbols());
+        subghz_print_decoded();
+        return 0;
+    }
     if (argc >= 2 && strcmp(argv[1], "end") == 0) {
         lxveos_subghz_end();
         printf("subghz link released\n");
         return 0;
     }
-    printf("usage: subghz begin <sclk> <miso> <mosi> <cs> | rssi <mhz> | capture <gdo0> <mhz> [s] |\n");
+    printf("usage: subghz begin <sclk> <miso> <mosi> <cs> | rssi <mhz> | capture <gdo0> <mhz> [s] | decode |\n");
     printf("       replay <gdo0> | end.  CC1101 on SPI3/VSPI (keep off display SPI2); capture/replay use\n");
     printf("       GDO0 async-serial + RMT. Replay is arm-gated (offensive TX). Single-signal, not a brute.\n");
     return 0;
@@ -2286,7 +2319,7 @@ static void register_commands(void)
         {.command = "evilportal", .help = "Rogue AP + captive portal (needs arm): evilportal [ssid|karma|template <id>|templates|creds|stop]", .func = &cmd_evilportal},
         {.command = "badble", .help = "BLE HID keystroke injection (needs arm): badble \"<duckyscript>\" | stop | status", .func = &cmd_badble},
         {.command = "ir", .help = "IR capture + replay (universal remote): ir recv <rx_gpio> [s] | send <tx_gpio> | show", .func = &cmd_ir},
-        {.command = "subghz", .help = "Sub-GHz CC1101: begin <sclk> <miso> <mosi> <cs> | rssi <mhz> | capture <gdo0> <mhz> [s] | replay <gdo0> (arm) | end", .func = &cmd_subghz},
+        {.command = "subghz", .help = "Sub-GHz CC1101: begin <sclk> <miso> <mosi> <cs> | rssi <mhz> | capture <gdo0> <mhz> [s] | decode | replay <gdo0> (arm) | end", .func = &cmd_subghz},
         {.command = "nrf24", .help = "nRF24 2.4GHz: begin <sck> <miso> <mosi> <csn> <ce> | scan | sniff | mousejack <text> (arm) | end", .func = &cmd_nrf24},
         {.command = "nfc", .help = "NFC PN532: nfc begin <sda> <scl> | read [seconds] | clone <8hexUID> (arm) | end", .func = &cmd_nfc},
         {.command = "blehid", .help = "DEFENSE: flag nearby BLE HID devices (rogue keyboards/injectors): blehid [seconds]", .func = &cmd_blehid},

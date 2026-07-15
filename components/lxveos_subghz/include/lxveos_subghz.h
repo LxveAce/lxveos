@@ -57,6 +57,11 @@ esp_err_t lxveos_subghz_replay(int gdo0_gpio);
 bool lxveos_subghz_have_capture(void);
 uint32_t lxveos_subghz_capture_symbols(void);
 
+// Copy the stored OOK capture out as its raw pulse-duration train (microseconds, alternating HIGH,LOW,…)
+// into `out`, up to `cap` entries; returns the number of durations written. For inspection and OOK decode
+// (feed the result to lxveos_ook_decode). Receive-only — reads the stored capture, transmits nothing.
+uint32_t lxveos_subghz_capture_durations(uint16_t *out, uint32_t cap);
+
 #ifdef __cplusplus
 }
 #endif
