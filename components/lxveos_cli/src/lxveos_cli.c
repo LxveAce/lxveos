@@ -1336,6 +1336,22 @@ static int cmd_badble(int argc, char **argv)
     return 0;
 }
 
+// Parse a base-10 integer CLI argument in [lo, hi] into *out. Returns false for a non-numeric token (no digits
+// consumed) or one out of range, so a bad GPIO / seconds arg errors with a usage hint instead of silently
+// becoming 0 the way atoi() does. Drivers still enforce their own semantic ranges; this just rejects garbage at
+// the CLI. endptr is only used to detect "no digits" — a trailing-garbage token like "8x" parses as 8, matching
+// the convention the Wi-Fi ops already use.
+static bool parse_int_arg(const char *s, long lo, long hi, long *out)
+{
+    char *end = NULL;
+    long v = strtol(s, &end, 10);
+    if (end == s || v < lo || v > hi) {
+        return false;
+    }
+    *out = v;
+    return true;
+}
+
 // ir — IR capture + replay (the ir_recv / ir_send ops), a universal remote via the RMT peripheral. Pins
 // are operator-supplied (an IR receiver + an IR LED on any two free GPIOs), so this is not cap-gated: it
 // works on any build once the hardware is wired. `ir recv <rx_gpio> [seconds]` captures one signal; `ir
@@ -1347,8 +1363,14 @@ static int cmd_ir(int argc, char **argv)
         return 0;
     }
     if (argc >= 3 && strcmp(argv[1], "recv") == 0) {
-        int rx = atoi(argv[2]);
-        uint32_t secs = (argc >= 4) ? (uint32_t)atoi(argv[3]) : 0;
+        long rxv = 0, secsv = 0;
+        if (!parse_int_arg(argv[2], 0, 48, &rxv) ||
+            (argc >= 4 && !parse_int_arg(argv[3], 1, 120, &secsv))) {
+            printf("usage: ir recv <rx_gpio 0-48> [seconds 1-120]\n");
+            return 0;
+        }
+        int rx = (int)rxv;
+        uint32_t secs = (uint32_t)secsv;
         printf("IR: listening on GPIO %d for up to %us — press a remote button...\n",
                rx, secs ? (unsigned)secs : 8u);
         lxveos_ir_capture_info_t inf;
@@ -1366,7 +1388,12 @@ static int cmd_ir(int argc, char **argv)
         return 0;
     }
     if (argc >= 3 && strcmp(argv[1], "send") == 0) {
-        int tx = atoi(argv[2]);
+        long txv = 0;
+        if (!parse_int_arg(argv[2], 0, 48, &txv)) {
+            printf("usage: ir send <tx_gpio 0-48>\n");
+            return 0;
+        }
+        int tx = (int)txv;
         esp_err_t e = lxveos_ir_replay(tx);
         if (e == ESP_OK) {
             printf("replayed %u IR symbols on GPIO %d\n", (unsigned)lxveos_ir_capture_symbols(), tx);
@@ -1403,7 +1430,13 @@ static int cmd_subghz(int argc, char **argv)
         return 0;
     }
     if (argc >= 6 && strcmp(argv[1], "begin") == 0) {
-        esp_err_t e = lxveos_subghz_begin(atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), atoi(argv[5]));
+        long sclk = 0, miso = 0, mosi = 0, cs = 0;
+        if (!parse_int_arg(argv[2], 0, 48, &sclk) || !parse_int_arg(argv[3], 0, 48, &miso) ||
+            !parse_int_arg(argv[4], 0, 48, &mosi) || !parse_int_arg(argv[5], 0, 48, &cs)) {
+            printf("usage: subghz begin <sclk> <miso> <mosi> <cs>  (GPIOs 0-48)\n");
+            return 0;
+        }
+        esp_err_t e = lxveos_subghz_begin((int)sclk, (int)miso, (int)mosi, (int)cs);
         if (e == ESP_OK) {
             printf("CC1101 begin: PARTNUM=0x%02X VERSION=0x%02X — %s\n",
                    lxveos_subghz_partnum(), lxveos_subghz_version(),
@@ -1431,9 +1464,15 @@ static int cmd_subghz(int argc, char **argv)
         return 0;
     }
     if (argc >= 4 && strcmp(argv[1], "capture") == 0) {
-        int gdo0 = atoi(argv[2]);
+        long gdo0v = 0, secsv = 0;
+        if (!parse_int_arg(argv[2], 0, 48, &gdo0v) ||
+            (argc >= 5 && !parse_int_arg(argv[4], 1, 120, &secsv))) {
+            printf("usage: subghz capture <gdo0 0-48> <mhz> [seconds 1-120]\n");
+            return 0;
+        }
+        int gdo0 = (int)gdo0v;
         float mhz = strtof(argv[3], NULL);
-        uint32_t secs = (argc >= 5) ? (uint32_t)atoi(argv[4]) : 0;
+        uint32_t secs = (uint32_t)secsv;
         uint32_t n = 0;
         printf("sub-GHz: capturing OOK on GDO0=%d @ %.2f MHz (up to %us)...\n",
                gdo0, (double)mhz, secs ? (unsigned)secs : 8u);
@@ -1450,7 +1489,12 @@ static int cmd_subghz(int argc, char **argv)
         return 0;
     }
     if (argc >= 3 && strcmp(argv[1], "replay") == 0) {
-        int gdo0 = atoi(argv[2]);
+        long gdo0v = 0;
+        if (!parse_int_arg(argv[2], 0, 48, &gdo0v)) {
+            printf("usage: subghz replay <gdo0 0-48>\n");
+            return 0;
+        }
+        int gdo0 = (int)gdo0v;
         esp_err_t e = lxveos_subghz_replay(gdo0);
         if (e == ESP_OK) {
             printf("replayed %u sub-GHz symbols on GDO0=%d (armed)\n",
@@ -1489,8 +1533,14 @@ static int cmd_nrf24(int argc, char **argv)
         return 0;
     }
     if (argc >= 7 && strcmp(argv[1], "begin") == 0) {
-        esp_err_t e = lxveos_nrf24_begin(atoi(argv[2]), atoi(argv[3]), atoi(argv[4]),
-                                         atoi(argv[5]), atoi(argv[6]));
+        long sck = 0, miso = 0, mosi = 0, csn = 0, ce = 0;
+        if (!parse_int_arg(argv[2], 0, 48, &sck) || !parse_int_arg(argv[3], 0, 48, &miso) ||
+            !parse_int_arg(argv[4], 0, 48, &mosi) || !parse_int_arg(argv[5], 0, 48, &csn) ||
+            !parse_int_arg(argv[6], 0, 48, &ce)) {
+            printf("usage: nrf24 begin <sck> <miso> <mosi> <csn> <ce>  (GPIOs 0-48)\n");
+            return 0;
+        }
+        esp_err_t e = lxveos_nrf24_begin((int)sck, (int)miso, (int)mosi, (int)csn, (int)ce);
         if (e == ESP_OK) {
             printf("nRF24 begin: %s\n", lxveos_nrf24_present() ? "module detected (RF_CH read-back OK)"
                                                                : "NO valid chip (check wiring)");
@@ -1502,7 +1552,12 @@ static int cmd_nrf24(int argc, char **argv)
         return 0;
     }
     if (argc >= 2 && strcmp(argv[1], "scan") == 0) {
-        uint16_t sweeps = (argc >= 3) ? (uint16_t)atoi(argv[2]) : 0;
+        long sweepsv = 0;
+        if (argc >= 3 && !parse_int_arg(argv[2], 1, 1000, &sweepsv)) {
+            printf("usage: nrf24 scan [sweeps 1-1000]  (default = driver's built-in sweep count)\n");
+            return 0;
+        }
+        uint16_t sweeps = (uint16_t)sweepsv;
         static uint8_t counts[LXVEOS_NRF24_CHANNELS];
         esp_err_t e = lxveos_nrf24_scan(counts, sweeps);
         if (e == ESP_OK) {
@@ -1527,7 +1582,12 @@ static int cmd_nrf24(int argc, char **argv)
         return 0;
     }
     if (argc >= 2 && strcmp(argv[1], "sniff") == 0) {
-        uint32_t secs = (argc >= 3) ? (uint32_t)atoi(argv[2]) : 0;
+        long secsv = 0;
+        if (argc >= 3 && !parse_int_arg(argv[2], 1, 120, &secsv)) {
+            printf("usage: nrf24 sniff [seconds 1-120]\n");
+            return 0;
+        }
+        uint32_t secs = (uint32_t)secsv;
         printf("nRF24: sniffing for a nearby HID device address (up to %us)...\n", secs ? (unsigned)secs : 8u);
         esp_err_t e = lxveos_nrf24_sniff(s_nrf_target, &s_nrf_ch, secs * 1000);
         if (e == ESP_OK) {
@@ -1591,7 +1651,12 @@ static int cmd_nfc(int argc, char **argv)
         return 0;
     }
     if (argc >= 4 && strcmp(argv[1], "begin") == 0) {
-        esp_err_t e = lxveos_nfc_begin(atoi(argv[2]), atoi(argv[3]));
+        long sda = 0, scl = 0;
+        if (!parse_int_arg(argv[2], 0, 48, &sda) || !parse_int_arg(argv[3], 0, 48, &scl)) {
+            printf("usage: nfc begin <sda> <scl>  (GPIOs 0-48)\n");
+            return 0;
+        }
+        esp_err_t e = lxveos_nfc_begin((int)sda, (int)scl);
         if (e == ESP_OK) {
             printf("PN532 begin: %s (IC=0x%02X ver=0x%02X)\n",
                    lxveos_nfc_present() ? "reader detected" : "NO response (check wiring)",
@@ -1604,7 +1669,12 @@ static int cmd_nfc(int argc, char **argv)
         return 0;
     }
     if (argc >= 2 && strcmp(argv[1], "read") == 0) {
-        uint32_t secs = (argc >= 3) ? (uint32_t)atoi(argv[2]) : 0;
+        long secsv = 0;
+        if (argc >= 3 && !parse_int_arg(argv[2], 1, 120, &secsv)) {
+            printf("usage: nfc read [seconds 1-120]\n");
+            return 0;
+        }
+        uint32_t secs = (uint32_t)secsv;
         printf("NFC: present a 13.56 MHz card (up to %us)...\n", secs ? (unsigned)secs : 5u);
         uint8_t uid[10];
         size_t ulen = 0;
@@ -1690,7 +1760,12 @@ static int cmd_blehid(int argc, char **argv)
         printf("ble capability is not active on this build\n");
         return 0;
     }
-    uint32_t secs = (argc >= 2) ? (uint32_t)atoi(argv[1]) : 6;
+    long secsv = 6;
+    if (argc >= 2 && !parse_int_arg(argv[1], 1, 60, &secsv)) {
+        printf("usage: blehid [seconds 1-60]\n");
+        return 0;
+    }
+    uint32_t secs = (uint32_t)secsv;
     static lxveos_ble_dev_t devs[32];
     size_t found = 0;
     printf("scanning %us for BLE HID devices (keyboards/mice = potential injectors/keyloggers)...\n",

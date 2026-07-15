@@ -119,6 +119,13 @@ def test_interference_emitters_are_never_implemented():
     )
 
 
+def test_cli_numeric_args_use_validated_parsing_not_atoi():
+    """CLI numeric args must go through parse_int_arg (which rejects non-numeric input) — never bare
+    atoi(argv...), which silently coerces bad input to 0 (a wrong GPIO / a 0-second scan)."""
+    calls = re.findall(r"\batoi\s*\(\s*argv", CLI_C)
+    assert not calls, f"{len(calls)} bare atoi(argv...) call(s) remain in the CLI — route them through parse_int_arg"
+
+
 def test_status_bridge_line_exposes_arm_state():
     """The CC bridge status line + its README doc must surface arm state (label, never hide)."""
     assert 'arm=%s' in CLI_C, "cmd_status no longer emits the arm= field"
