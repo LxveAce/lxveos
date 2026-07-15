@@ -3,7 +3,7 @@
 # Bluetooth component (NimBLE host + controller; `bt` is enabled for every board in sdkconfig.defaults) and
 # lxveos_arm for the transmit gate the injection op checks before advertising.
 idf_component_register(
-    SRCS "src/lxveos_ble.c" "src/lxveos_ble_hid.c"
+    SRCS "src/lxveos_ble.c" "src/lxveos_ble_hid.c" "src/lxveos_ble_labels.c"
     INCLUDE_DIRS "include"
     REQUIRES bt lxveos_arm
     PRIV_REQUIRES lxveos_hidmap
