@@ -6,10 +6,12 @@
 //
 // It is deliberately honest: an entry's runtime STATUS is derived from the live capability registry
 // (lxveos_cap_active) plus an `implemented` flag, so this never claims a feature the unit can't do.
-// In M0 nothing is implemented, so every row reads either "planned" (the required radio/peripheral is
-// present, the code lands in M1+) or "unavailable" (this board lacks the capability). No operation
-// here emits anything on-air — the catalog is a roadmap + UI/CC-bridge source of truth, not a driver.
-// As each operation is actually built its row flips `implemented` to true and its status becomes "ready".
+// A row reads "ready" when implemented AND the board has the capability, "planned" when the capability is
+// present but implemented is false, or "unavailable" when the board lacks the capability. VERIFY-NEVER-FAKE:
+// `implemented` is true only for a driver that is HW-validated OR runs on a high-confidence built-in-radio
+// (Wi-Fi SoftAP) path; every external-radio driver (sub-GHz/nRF24/NFC/IR) and ble_hid_inject stay false until
+// real-hardware validation (a green CI build proves compilation, not that the RF works). The catalog is the
+// one UI/CC-bridge source of truth; it authors nothing on-air itself.
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -52,7 +54,7 @@ typedef struct {
     lxveos_opcat_t category;
     lxveos_cap_t required_cap;   // the single capability this op needs to be possible at all
     const char *inspired_by;     // upstream firmware the feature draws from ("Marauder", "Flipper", ...)
-    bool implemented;            // M0: all false; flipped true as each op is really built
+    bool implemented;            // true only when HW-validated OR a high-confidence built-in-radio (SoftAP) path
 } lxveos_op_t;
 
 // Number of operations in the catalog.

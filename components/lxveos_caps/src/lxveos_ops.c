@@ -8,9 +8,13 @@
 #include <stddef.h>
 #include <string.h>
 
-// The catalog. Grouped by category, then by capability. `implemented` is false for every row in M0 —
-// no operation has a live driver yet, so each reads "planned" (capability present) or "unavailable"
-// (capability absent) at runtime. Keep new rows in category order; the CC bridge keys on `slug`.
+// The catalog. Grouped by category, then by capability. VERIFY-NEVER-FAKE rule for `implemented`: set it true
+// ONLY when a real driver exists AND that driver is either HW-validated OR runs on a high-confidence built-in
+// radio path (Wi-Fi SoftAP), where a green CI build is enough to trust. Every EXTERNAL-radio driver
+// (sub-GHz / nRF24 / NFC / IR) and ble_hid_inject stay `implemented=false` until validated on real hardware —
+// CI proves the code compiles, never that the RF actually works. A row reads "ready" when implemented AND the
+// board has the capability, "planned" when the capability is present but implemented is false, "unavailable"
+// when the board lacks the capability. Keep new rows in category order; the CC bridge keys on `slug`.
 static const lxveos_op_t OPS[] = {
     // ── Recon ────────────────────────────────────────────────────────────────────────────────────
     {"wifi_ap_scan",   "Wi-Fi AP scan",         LXVEOS_OPCAT_RECON,   LXVEOS_CAP_WIFI,    "Marauder", true},

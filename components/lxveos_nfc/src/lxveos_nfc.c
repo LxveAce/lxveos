@@ -10,6 +10,7 @@
 
 #include <string.h>
 
+#include "lxveos_arm.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -249,6 +250,11 @@ esp_err_t lxveos_nfc_clone_write(const uint8_t *uid, size_t uid_len)
     }
     if (uid == NULL || uid_len != 4) {
         return ESP_ERR_INVALID_ARG;
+    }
+    // Writing a spoofed UID to a card is an offensive-TX op: gate it on the two-factor arm, exactly like
+    // subghz replay / nrf24 mousejack / badble. A single stray `nfc clone` cannot write a card while SAFE.
+    if (!lxveos_arm_can_emit()) {
+        return ESP_ERR_NOT_ALLOWED;
     }
 
     // 1) Select the presented (magic) card and learn its current UID (needed for the auth step).

@@ -186,12 +186,12 @@ static int cmd_status(int argc, char **argv)
     size_t ops_ready = 0, ops_planned = 0, ops_unavail = 0;
     lxveos_ops_tally(&ops_ready, &ops_planned, &ops_unavail);
     const char *panel = bsp_display_panel();
-    printf("LXVEOS/1 status board=%s chip=%s ui=%s fw=%s panel=%s caps=0x%03x ops=%u/%u/%u heap=%u\n",
+    printf("LXVEOS/1 status board=%s chip=%s ui=%s fw=%s panel=%s caps=0x%03x ops=%u/%u/%u heap=%u arm=%s\n",
            lxveos_board_id(), lxveos_board_chip(), lxveos_ui_profile(), LXVEOS_VERSION,
            (panel && panel[0]) ? panel : "none",
            (unsigned)lxveos_caps_active(),
            (unsigned)ops_ready, (unsigned)ops_planned, (unsigned)ops_unavail,
-           (unsigned)esp_get_free_heap_size());
+           (unsigned)esp_get_free_heap_size(), lxveos_arm_state_name(lxveos_arm_state()));
     return 0;
 }
 
@@ -316,7 +316,7 @@ static int cmd_features(int argc, char **argv)
     if (locked()) {
         return 0;
     }
-    printf("LxveOS operation catalog (M0: drivers land in M1+; attack ops are lab-only)\n");
+    printf("LxveOS operation catalog (CI-green, not yet hardware-validated; attack ops are arm-gated, lab-only)\n");
     for (size_t i = 0; i < lxveos_ops_count(); i++) {
         const lxveos_op_t *op = lxveos_ops_get(i);
         if (op == NULL) {
@@ -1583,7 +1583,8 @@ static int cmd_nrf24(int argc, char **argv)
 
 // nfc — PN532 NFC reader (nfc_read recon op, increment 1). `nfc begin <sda> <scl>` brings up I2C + identifies
 // the reader; `nfc read [seconds]` polls for one ISO-14443A card and prints its UID/SAK/ATQA; `nfc end`
-// releases. Add-on on operator-supplied I2C pins; not cap-gated. Read only (no write/emulate) this increment.
+// releases. `nfc clone <8hexUID>` writes a spoofed UID to a Gen2 magic card — an offensive-TX op, so it is
+// arm-gated (needs `arm` first) exactly like subghz replay / nrf24 mousejack. Add-on I2C pins; not cap-gated.
 static int cmd_nfc(int argc, char **argv)
 {
     if (locked()) {
@@ -1650,7 +1651,9 @@ static int cmd_nfc(int argc, char **argv)
         printf("NFC clone: present a writable/magic Mifare card to write UID %s ...\n", h);
         esp_err_t e = lxveos_nfc_clone_write(uid, sizeof(uid));
         if (e == ESP_OK) {
-            printf("wrote UID %s to block 0\n", h);
+            printf("wrote UID %s to block 0 (armed)\n", h);
+        } else if (e == ESP_ERR_NOT_ALLOWED) {
+            printf("offensive TX not permitted — run 'arm' first (this is an offensive-TX op).\n");
         } else if (e == ESP_ERR_TIMEOUT) {
             printf("no card presented\n");
         } else if (e == ESP_ERR_INVALID_STATE) {
@@ -1747,9 +1750,9 @@ static void register_commands(void)
         {.command = "evilportal", .help = "Rogue AP + captive portal (needs arm): evilportal [ssid|karma|template <id>|templates|creds|stop]", .func = &cmd_evilportal},
         {.command = "badble", .help = "BLE HID keystroke injection (needs arm): badble \"<duckyscript>\" | stop | status", .func = &cmd_badble},
         {.command = "ir", .help = "IR capture + replay (universal remote): ir recv <rx_gpio> [s] | send <tx_gpio> | show", .func = &cmd_ir},
-        {.command = "subghz", .help = "Sub-GHz CC1101 (recv): subghz begin <sclk> <miso> <mosi> <cs> | rssi <mhz> | end", .func = &cmd_subghz},
+        {.command = "subghz", .help = "Sub-GHz CC1101: begin <sclk> <miso> <mosi> <cs> | rssi <mhz> | capture <gdo0> <mhz> [s] | replay <gdo0> (arm) | end", .func = &cmd_subghz},
         {.command = "nrf24", .help = "nRF24 2.4GHz: begin <sck> <miso> <mosi> <csn> <ce> | scan | sniff | mousejack <text> (arm) | end", .func = &cmd_nrf24},
-        {.command = "nfc", .help = "NFC PN532: nfc begin <sda> <scl> | read [seconds] | clone <8hexUID> | end", .func = &cmd_nfc},
+        {.command = "nfc", .help = "NFC PN532: nfc begin <sda> <scl> | read [seconds] | clone <8hexUID> (arm) | end", .func = &cmd_nfc},
         {.command = "blehid", .help = "DEFENSE: flag nearby BLE HID devices (rogue keyboards/injectors): blehid [seconds]", .func = &cmd_blehid},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
         {.command = "reboot", .help = "Restart the unit", .func = &cmd_reboot},

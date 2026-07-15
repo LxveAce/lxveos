@@ -20,5 +20,7 @@ and `THIRD-PARTY-LICENSES.md`.
 - **No endorsement / trademarks:** "Marauder", "GhostESP", "Bruce", "NEMO" etc. are used only for factual
   compatibility identification, never as the LxveOS product name; no affiliation implied.
 - **Clean-room clears copyright, not patents** (e.g. MIFARE Crypto1, FIDO2) — documented where relevant.
-- **No jammer, ever.** Deauth = detection only. nRF24/CC1101 = receive/analyze. See `RESPONSIBLE-USE.md`.
+- **No jammer, ever.** LxveOS authors no RF-jamming / deauth-flood / DoS transmit frames; Wi-Fi deauth ships as
+  detection only. The labelled offensive ops (evil-portal, BLE HID, sub-GHz replay, nRF24 MouseJack, NFC clone) are
+  retained but compiled behind a two-factor `arm` gate, for owned/authorized hardware only. See `RESPONSIBLE-USE.md`.
 - Not legal advice; a lawyer reviews before any commercial or copyleft (GPL/AGPL) distribution.

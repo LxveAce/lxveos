@@ -31,11 +31,11 @@ menu "LxveOS"
         default n
 
     config LXVEOS_HAS_SUBGHZ
-        bool "Sub-GHz via CC1101 add-on (receive/analyze; TX only on owned gear)"
+        bool "Sub-GHz via CC1101 add-on (RX/analyze + arm-gated OOK replay TX; no jammer)"
         default n
 
     config LXVEOS_HAS_NRF24
-        bool "2.4GHz proprietary via nRF24 add-on (recon only — NO jammer)"
+        bool "2.4GHz proprietary via nRF24 add-on (RX/sniff + arm-gated MouseJack inject TX; no jammer)"
         default n
 
     config LXVEOS_HAS_NFC

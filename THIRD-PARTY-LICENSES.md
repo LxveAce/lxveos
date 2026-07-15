@@ -26,6 +26,7 @@ command-center/projects/lxveos/{inspiration-and-reuse.md,CREDITS-DRAFT.md}.
 | ESP-IDF | Apache-2.0 | SDK / build system |
 | LVGL | MIT | UI toolkit |
 | esp_lvgl_port, esp_lcd, esp_lcd_touch | Apache-2.0 | display/input HAL |
+| esp_lcd_ili9341 | Apache-2.0 | ILI9341 SPI panel driver (CYD build) |
 | esp_lcd_axs15231b, esp_lcd_touch_xpt2046 | (community — verify before vendoring) | QSPI panel / resistive touch |
 | esp-bsp / esp_bsp_generic | Apache-2.0 | board support contract |
 | esp-nimble | Apache-2.0 | BLE host |

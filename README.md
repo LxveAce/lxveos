@@ -9,13 +9,19 @@ Bruce and others — with proper credit and **without competing** with them: per
 directly, copyleft work is learned from clean-room (ideas, not code). See [`CREDITS.md`](CREDITS.md).
 
 > ⚠️ **Status: M0 — builds clean in CI, not yet hardware-validated.** All five M0 Tier-1 boards compile against ESP-IDF
-> v6.0.2 in CI (a fast host-side manifest gate, then the full 5-board build matrix). What runs today is the core: board
-> bring-up, a capability registry, the CYD runtime panel-identity resolver, and a serial control console (see below). The
-> firmware has **not** been flashed to or bench-validated on a physical device yet, and on-device display/input/storage
-> bring-up is still pending — that needs each board's verified GPIO pinout, which isn't captured in the manifest yet.
-> Nothing here claims to work on a device until bench-validated.
+> v6.0.2 in CI (a fast host-side manifest gate, then the full 5-board build matrix). **What exists in code today:** the
+> serial control console + the full operation suite — passive Wi-Fi/BLE recon, defensive detectors, wardrive CSV logging,
+> and the **labelled, arm-gated offensive ops** (evil-portal/karma credential capture, BLE HID injection, sub-GHz OOK
+> replay, nRF24 MouseJack, NFC UID clone) — plus a capability registry, the CYD panel-identity probe, an LVGL launcher
+> shell, and ILI9341/ST7789 panel drivers. **What is NOT done:** none of it has been flashed to or bench-validated on a
+> physical device yet, and on-device input/storage bring-up (and per-board display pinouts beyond the CYD) is still
+> pending. Read "exists in code / CI-built" as distinct from "validated on silicon" — nothing here claims to work on a
+> device until bench-validated.
 > **Authorized, lawful security research & education only** — see [`RESPONSIBLE-USE.md`](RESPONSIBLE-USE.md).
-> **No jammer, ever** — deauth ships as detection; nRF24/CC1101 are receive/analyze only.
+> **No jammer, ever** — LxveOS builds and transmits **no** RF-jamming / deauth-flood / DoS frames in any tier; Wi-Fi
+> deauth ships only as *detection*. The offensive ops above (including sub-GHz / nRF24 transmit) are **retained but
+> compiled behind a two-factor `arm` gate** and are for hardware you own or are explicitly authorized to test — see
+> [`RESPONSIBLE-USE.md`](RESPONSIBLE-USE.md).
 
 ## Design (single source of truth)
 The full design lives in `LxveAce/command-center` → `projects/lxveos/`:
@@ -63,11 +69,27 @@ authorized-use terms; the acceptance is stored in NVS, so it's a one-time gate p
 | `blescan [seconds]` | passive BLE device scan — NimBLE GAP observe (passive, never sends a scan request); list nearby advertisers with address / type / RSSI / adv-flags / vendor (from manufacturer/Fast-Pair data) / local name + GAP appearance (Phone / Watch / Earbuds / Keyboard / …), plus a per-device line of any advertised 16-bit service-class UUIDs — named when known (Battery / HeartRate / HID / FastPair / Eddystone / …), else raw `0xNNNN`. This scan is passive (never advertises); the non-connectable broadcaster role stays compiled out (no BLE advert-spam), while a connectable keyboard advert exists only under the arm-gated `badble` op |
 | `bleflood [seconds]` | passive BLE advertisement-flood / spam detector (custom) — measures advertiser churn (BLE-spam attacks rotate through many random addresses) and flags a likely flood; reports total adverts / unique advertisers / busiest source + a per-vendor payload breakdown (Apple / Microsoft / Google / Samsung / Fast-Pair) that attributes a flood to a vendor; listen only |
 | `btracker [seconds]` | passive BLE item-tracker / stalking detector (custom) — flags advertisers matching a known item-tracker signature: Apple Find My / AirTag (Apple mfg type `0x12`), Tile (`0xFEED`), Samsung SmartTag (`0xFD5A`), Chipolo (`0xFE33`), PebbleBee (`0xFA25`), and Google Find My Network (`0xFEAA` service-data frame `0x40`, distinguished from Eddystone) — all verified against the [AirGuard](https://github.com/seemoo-lab/AirGuard) anti-stalking project. A tracker that follows you over time/place but isn't yours is the AirTag-stalking signal; re-run as you move. Listen only |
+| `blehid [seconds]` | **defense** — flag nearby BLE HID devices (rogue-keyboard / injector detector); listen only |
+| `arm` · `arm <token>` | two-factor enable for offensive-TX ops — `arm` requests a one-time token (30 s window), `arm <token>` confirms; an armed session auto-disarms after 120 s idle |
+| `disarm` | hard-disarm — return to SAFE (offensive TX not permitted) |
+| `evilportal [ssid\|karma\|template <id>\|templates\|creds\|stop]` | **offensive (needs `arm`)** — rogue AP + captive credential-capture portal (DNS auto-pop, retained-credential readout) |
+| `badble "<duckyscript>" \| stop \| status` | **offensive (needs `arm`)** — BLE HID keystroke injection ("BadBLE") |
+| `ir recv <rx_gpio> [s] \| send <tx_gpio> \| show` | IR capture + replay via RMT (universal-remote); `send` transmits a captured frame. Needs an IR receiver/emitter |
+| `subghz begin <sclk> <miso> <mosi> <cs> \| rssi <mhz> \| capture <gdo0> <mhz> [s] \| replay <gdo0> \| end` | CC1101 sub-GHz — RSSI + OOK capture (receive) plus **arm-gated `replay`** (offensive OOK re-emit). Add-on module |
+| `nrf24 begin <sck> <miso> <mosi> <csn> <ce> \| scan \| sniff \| mousejack <text> \| end` | nRF24L01+ 2.4 GHz — channel scan + address sniff (receive) plus **arm-gated `mousejack`** keystroke injection. Add-on module |
+| `nfc begin <sda> <scl> \| read [seconds] \| clone <8hexUID> \| end` | PN532 NFC — read a card UID (receive) plus **arm-gated `clone`** (write a spoofed UID to a Gen2 magic card). Add-on module |
 | `sysinfo` | ESP-IDF version, reset reason, boot count, uptime, heap free |
 | `status` | one machine-readable line for the Cyber Controller host (below) |
 | `loglevel <tag\|*> <level>` | change ESP-IDF log verbosity at runtime |
 | `nvs get\|set <key> [value]` | small persistent key/value store for operator settings |
 | `reboot` | restart the unit |
+
+**Offensive-TX safety (the `arm` gate).** Recon, defensive, and logging ops transmit nothing. The offensive ops
+(`evilportal`, `badble`, `subghz replay`, `nrf24 mousejack`, `nfc clone`) are compiled in by default but every one is
+gated the same way: nothing goes on-air until you `arm` (request a one-time token, then confirm it within 30 s), and an
+armed session auto-disarms after 120 s of inactivity or an explicit `disarm`. A conservative or public build can define
+`LXVEOS_TX_DISABLE` to strip the offensive emitters out entirely (then `arm` always refuses). LxveOS still authors **no**
+jammer / deauth-flood / DoS transmit frames — those are catalogued and labelled but never emitted.
 
 Three facts persist in NVS across boots: the resolved CYD panel identity, the authorized-use acceptance, and a lifetime
 boot counter.
@@ -76,8 +98,10 @@ boot counter.
 [Cyber Controller](https://github.com/LxveAce/cyber-controller) host can read to identify a unit — a stable versioned
 prefix plus space-separated `key=value` fields (safe slugs / hex capability mask / decimal, no embedded spaces):
 ```
-LXVEOS/1 status board=<id> chip=<esp32|esp32s3> ui=<profile> fw=<version> panel=<driver|none> caps=0x<hex> ops=<ready>/<planned>/<unavailable> heap=<bytes>
+LXVEOS/1 status board=<id> chip=<esp32|esp32s3> ui=<profile> fw=<version> panel=<driver|none> caps=0x<hex> ops=<ready>/<planned>/<unavailable> heap=<bytes> arm=<safe|pending|armed>
 ```
+The `arm=` field lets the host see whether a unit currently has offensive TX armed. Fields are appended over time; a host
+parser keys on field names, so older hosts ignore any field they don't know.
 
 ## Build (once you have ESP-IDF v6.0.x)
 ```sh
