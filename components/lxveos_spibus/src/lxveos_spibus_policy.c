@@ -4,6 +4,8 @@
 // to gate its spi_bus_initialize()/spi_bus_free() calls; the host test drives them directly.
 #include "lxveos_spibus.h"
 
+#include <stddef.h>   // NULL
+
 lxveos_spibus_action_t lxveos_spibus_acquire_action(int cur, int *next)
 {
     if (cur < 0) {
