@@ -30,6 +30,42 @@ re-verify each upstream's LICENSE at the pinned commit before bumping a version.
 | esp-bsp / esp_bsp_generic | Apache-2.0 | board support contract |
 | esp-nimble | Apache-2.0 | BLE host |
 
+## Verbatim MIT notices (Direct-MIT-vendor)
+
+MIT requires the copyright notice to travel with any reused code. Where LxveOS folds in MIT-licensed work, the
+upstream notice is retained here.
+
+### ESP32 Marauder — Just Call Me Koko
+
+Ported code: the passive Pwnagotchi-presence detector (fixed grid MAC + JSON-in-SSID identity parse),
+following Marauder's "Detect Pwnagotchi" menu.
+
+```
+MIT License
+
+Copyright (c) 2020 Just Call Me Koko
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## Copyleft handling
+
 Any redistributed GPL/AGPL binary (launcher-aggregation or an optional lxveos-gpl variant) ships its complete
 corresponding source + build scripts, plus an in-UI "Source" link for AGPL-over-network. The MIT core does not
 contain copyleft code.

@@ -7,6 +7,8 @@
 
 #include "esp_wifi_types.h"
 
+#include <string.h>
+
 const char *lxveos_wifi_authmode_str(uint8_t authmode)
 {
     switch ((wifi_auth_mode_t)authmode) {
@@ -46,4 +48,99 @@ int lxveos_wifi_auth_grade(uint8_t authmode, const char **note)
         *note = n;
     }
     return g;
+}
+
+// ── Pwnagotchi presence detection — pure core (ported from ESP32 Marauder "Detect Pwnagotchi", MIT) ──────
+// A Pwnagotchi beacons from the fixed grid source MAC de:ad:be:ef:de:ad, stuffing a JSON identity object into
+// the beacon's (oversized) SSID element. These helpers are the host-tested pure core: the MAC match and a
+// small, allocation-free extractor for the name + total-handshakes count. No radio here — lxveos_wifi.c runs
+// the passive beacon watch that hands frames to them.
+
+static const uint8_t PWNAGOTCHI_MAC[6] = {0xde, 0xad, 0xbe, 0xef, 0xde, 0xad};
+
+bool lxveos_wifi_is_pwnagotchi_mac(const uint8_t *mac)
+{
+    return mac != NULL && memcmp(mac, PWNAGOTCHI_MAC, sizeof(PWNAGOTCHI_MAC)) == 0;
+}
+
+// Find the first occurrence of NUL-terminated `key` in the `len`-bounded (not necessarily NUL-terminated)
+// buffer `hay`. Returns the index just past the match, or -1 if not found.
+static int find_key(const char *hay, size_t len, const char *key)
+{
+    size_t klen = strlen(key);
+    if (klen == 0 || klen > len) {
+        return -1;
+    }
+    for (size_t i = 0; i + klen <= len; i++) {
+        if (memcmp(hay + i, key, klen) == 0) {
+            return (int)(i + klen);
+        }
+    }
+    return -1;
+}
+
+// Advance `i` (bounded by `len`) past the next ':' and any following spaces/tabs. Leaves `i` at the value.
+static size_t skip_to_value(const char *s, size_t len, size_t i)
+{
+    while (i < len && s[i] != ':') {
+        i++;
+    }
+    if (i < len) {
+        i++;   // step past ':'
+    }
+    while (i < len && (s[i] == ' ' || s[i] == '\t')) {
+        i++;
+    }
+    return i;
+}
+
+bool lxveos_wifi_pwnagotchi_parse(const char *essid, size_t essid_len, char *name, size_t name_cap,
+                                  uint32_t *pwnd_tot)
+{
+    if (name != NULL && name_cap > 0) {
+        name[0] = '\0';
+    }
+    if (pwnd_tot != NULL) {
+        *pwnd_tot = 0;
+    }
+    if (essid == NULL || essid_len == 0) {
+        return false;
+    }
+    // Only treat it as a Pwnagotchi identity object if it carries one of the expected JSON keys — a plain SSID
+    // must never be mis-read as a Pwnagotchi.
+    if (find_key(essid, essid_len, "\"name\"") < 0 && find_key(essid, essid_len, "\"pwnd_tot\"") < 0) {
+        return false;
+    }
+    bool got = false;
+
+    int p = find_key(essid, essid_len, "\"name\"");
+    if (p >= 0 && name != NULL && name_cap > 0) {
+        size_t i = skip_to_value(essid, essid_len, (size_t)p);
+        if (i < essid_len && essid[i] == '"') {
+            i++;   // past opening quote
+            size_t o = 0;
+            while (i < essid_len && essid[i] != '"' && o + 1 < name_cap) {
+                name[o++] = essid[i++];
+            }
+            name[o] = '\0';
+            got = true;
+        }
+    }
+
+    p = find_key(essid, essid_len, "\"pwnd_tot\"");
+    if (p >= 0 && pwnd_tot != NULL) {
+        size_t i = skip_to_value(essid, essid_len, (size_t)p);
+        uint32_t v = 0;
+        bool any = false;
+        while (i < essid_len && essid[i] >= '0' && essid[i] <= '9') {
+            v = v * 10u + (uint32_t)(essid[i] - '0');
+            i++;
+            any = true;
+        }
+        if (any) {
+            *pwnd_tot = v;
+            got = true;
+        }
+    }
+    return got;
 }

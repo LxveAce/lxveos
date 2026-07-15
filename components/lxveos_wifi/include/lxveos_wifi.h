@@ -144,6 +144,23 @@ bool lxveos_wifi_is_open(uint8_t authmode);
 // mode name (3+). Returns the grade.
 int lxveos_wifi_auth_grade(uint8_t authmode, const char **note);
 
+// ── Pwnagotchi presence detection (passive) — pure core ─────────────────────────────────────────────────
+// Ported from ESP32 Marauder's "Detect Pwnagotchi" (MIT — see CREDITS.md). A Pwnagotchi announces itself in a
+// Wi-Fi beacon sent from the fixed grid source MAC de:ad:be:ef:de:ad, carrying its identity as a JSON object
+// stuffed into the beacon's (oversized) SSID element. These two helpers are the host-tested pure core; the
+// on-device promiscuous beacon watch that feeds them lives in lxveos_wifi.c (receive-only, transmits nothing).
+
+// True if `mac` (6 bytes) is the fixed Pwnagotchi grid-advertisement address de:ad:be:ef:de:ad.
+bool lxveos_wifi_is_pwnagotchi_mac(const uint8_t *mac);
+
+// Extract a Pwnagotchi's advertised name + total-handshakes count ("pwnd_tot") from the JSON identity object
+// carried in a beacon SSID. `essid` need NOT be NUL-terminated; `essid_len` bounds it (a crafted Pwnagotchi
+// SSID IE can exceed 32 bytes). On a plausible parse writes the name (NUL-terminated, bounded by `name_cap`)
+// and *pwnd_tot and returns true; on a non-Pwnagotchi/empty buffer clears the outputs and returns false.
+// Deliberately a small, allocation-free scanner for this one flat object — not a general JSON parser.
+bool lxveos_wifi_pwnagotchi_parse(const char *essid, size_t essid_len, char *name, size_t name_cap,
+                                  uint32_t *pwnd_tot);
+
 #ifdef __cplusplus
 }
 #endif
