@@ -49,6 +49,7 @@ static const lxveos_op_t OPS[] = {
     {"ble_spam",       "BLE advertise spam",    LXVEOS_OPCAT_ATTACK,  LXVEOS_CAP_BLE,     "multi",    false},
     // ── Defense ───────────────────────────────────────────────────────────────────────────────────
     {"deauth_detect",  "Deauth/pwn detector",   LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_WIFI,    "Marauder", true},
+    {"pwnagotchi_detect", "Pwnagotchi presence detector", LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_WIFI, "Marauder", true},
     {"evil_twin_detect", "Evil-twin/rogue-AP detector", LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_WIFI, "custom", true},
     {"wifi_security_audit", "AP security-posture audit", LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_WIFI, "custom", true},
     {"ble_flood_detect", "BLE advert-flood detector", LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_BLE, "custom", true},

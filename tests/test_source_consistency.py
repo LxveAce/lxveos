@@ -82,7 +82,7 @@ _MUST_STAY_UNVALIDATED = {
 # High-confidence built-in-radio / Wi-Fi-SoftAP ops that ARE trusted from a green CI build (implemented=true).
 _MUST_BE_IMPLEMENTED = {
     "wifi_ap_scan", "wifi_sta_scan", "wifi_sniff", "wifi_probe_scan", "eapol_capture",
-    "deauth_detect", "evil_twin_detect", "wifi_security_audit", "wifi_wardrive",
+    "deauth_detect", "pwnagotchi_detect", "evil_twin_detect", "wifi_security_audit", "wifi_wardrive",
     "ble_scan", "ble_flood_detect", "ble_tracker_detect", "ble_hid_detect", "evil_portal", "karma_ap",
 }
 
@@ -180,6 +180,7 @@ _CLI_TO_SLUGS = {
     "wardrive": {"wifi_wardrive"},
     "blescan": {"ble_scan"},
     "defend": {"deauth_detect"},
+    "pwnwatch": {"pwnagotchi_detect"},
     "eviltwin": {"evil_twin_detect"},
     "apaudit": {"wifi_security_audit"},
     "bleflood": {"ble_flood_detect"},

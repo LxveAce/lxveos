@@ -782,6 +782,74 @@ static int cmd_defend(int argc, char **argv)
     return 0;
 }
 
+// `pwnwatch [seconds] [channel]` — passive Pwnagotchi-presence detector (the `pwnagotchi_detect` catalog op).
+// Flags beacons from the fixed Pwnagotchi grid MAC de:ad:be:ef:de:ad and decodes the JSON identity (name +
+// handshake count) from the beacon SSID. Ported from ESP32 Marauder's "Detect Pwnagotchi" (see CREDITS.md).
+// Listen only — sends nothing. The decoded name is device-supplied, so it goes through sanitize_copy() before
+// print (a crafted name must not carry terminal escapes into the operator's console).
+static int cmd_pwnwatch(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_WIFI)) {
+        printf("wifi capability is not active on this build — cannot watch\n");
+        return 0;
+    }
+    uint32_t secs = 15;
+    uint8_t channel = 0;  // 0 = hop all channels
+    if (argc >= 2) {
+        long v = strtol(argv[1], NULL, 10);
+        if (v >= 1 && v <= 120) {
+            secs = (uint32_t)v;
+        } else {
+            printf("usage: pwnwatch [seconds 1-120] [channel 1-13]  (default 15s, all channels)\n");
+            return 0;
+        }
+    }
+    if (argc >= 3) {
+        long c = strtol(argv[2], NULL, 10);
+        if (c >= 1 && c <= 13) {
+            channel = (uint8_t)c;
+        } else {
+            printf("usage: pwnwatch [seconds 1-120] [channel 1-13]  (default 15s, all channels)\n");
+            return 0;
+        }
+    }
+    if (channel) {
+        printf("passive pwnagotchi watch for %us on channel %u (listen only — sends nothing)...\n",
+               (unsigned)secs, channel);
+    } else {
+        printf("passive pwnagotchi watch for %us, all channels (listen only — sends nothing)...\n",
+               (unsigned)secs);
+    }
+    lxveos_wifi_pwnagotchi_stats_t st;
+    esp_err_t e = lxveos_wifi_pwnagotchi_watch(secs, channel, &st);
+    if (e != ESP_OK) {
+        printf("watch failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    printf("beacons %u — pwnagotchi beacons %u  (%u channel dwells)\n",
+           (unsigned)st.beacons, (unsigned)st.pwnagotchi, (unsigned)st.channels_swept);
+    if (st.pwnagotchi == 0) {
+        printf("verdict: clear — no Pwnagotchi presence seen\n");
+    } else {
+        char nm[40];
+        sanitize_copy(nm, sizeof(nm), st.found ? st.last_name : "");  // device-supplied name -> console-safe
+        printf("⚠ Pwnagotchi present — last id \"%s\" (handshakes %u, rssi %ddBm)\n",
+               nm, (unsigned)st.last_pwnd_tot, (int)st.last_rssi);
+    }
+    if (lxveos_evt_enabled() && st.pwnagotchi > 0) {
+        char line[128];
+        size_t n = lxveos_evt_begin(line, sizeof(line), "alert");
+        n = lxveos_evt_kv(line, sizeof(line), n, "kind", "pwnagotchi");
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "count", st.pwnagotchi);
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "handshakes", st.last_pwnd_tot);
+        printf("%s\n", line);
+    }
+    return 0;
+}
+
 // `eviltwin` — passive evil-twin / rogue-AP detector (a CUSTOM LxveOS op). Runs one AP scan and flags any
 // ESSID advertised by more than one BSSID, or by both an open and an encrypted BSSID — the classic
 // karma/Wi-Fi-Pineapple signature of a cloned network. Purely analytic over the scan; sends nothing.
@@ -2305,6 +2373,7 @@ static void register_commands(void)
         {.command = "probes", .help = "Passive probe-request SSID logger: probes [seconds] [channel] (listen only)", .func = &cmd_probes},
         {.command = "capture", .help = "Passive EAPOL/PMKID capture -> hashcat 22000: capture [seconds] [channel]", .func = &cmd_capture},
         {.command = "defend", .help = "Passive deauth/disassoc attack detector: defend [seconds] [channel]", .func = &cmd_defend},
+        {.command = "pwnwatch", .help = "Passive Pwnagotchi-presence detector: pwnwatch [seconds] [channel] (listen only)", .func = &cmd_pwnwatch},
         {.command = "eviltwin", .help = "Passive evil-twin/rogue-AP detector (duplicate-BSSID ESSIDs)", .func = &cmd_eviltwin},
         {.command = "apaudit", .help = "Passive AP security audit — flag open/WEP/legacy-WPA + WPS-enabled networks (listen only)", .func = &cmd_apaudit},
         {.command = "wardrive", .help = "Passive Wi-Fi wardrive CSV export (bssid,ssid,ch,rssi,auth per line)", .func = &cmd_wardrive},

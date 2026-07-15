@@ -1000,5 +1000,99 @@ esp_err_t lxveos_wifi_deauth_watch(uint32_t seconds, uint8_t channel, lxveos_wif
     return ESP_OK;
 }
 
+// ── Pwnagotchi presence watch (passive) ─────────────────────────────────────────────────────────────────
+// Flags Wi-Fi beacons sent from the fixed Pwnagotchi grid MAC de:ad:be:ef:de:ad and decodes the JSON identity
+// stuffed into the beacon SSID (pure core in lxveos_wifi_labels.c; ported from ESP32 Marauder "Detect
+// Pwnagotchi", MIT — see CREDITS.md). LISTEN ONLY — transmits nothing. The scalar counters are volatile
+// (written from the promiscuous callback, read after it quiesces); the name buffer is a plain static
+// snapshotted after promiscuous is disabled — the same split the deauth watch uses for its offender table.
+static volatile uint32_t s_pwn_beacons;
+static volatile uint32_t s_pwn_count;
+static volatile uint32_t s_pwn_last_tot;
+static volatile int8_t   s_pwn_last_rssi;
+static volatile bool     s_pwn_found;
+static char              s_pwn_name[32];
+
+static void pwnagotchi_rx_cb(void *buf, wifi_promiscuous_pkt_type_t type)
+{
+    const wifi_promiscuous_pkt_t *pkt = (const wifi_promiscuous_pkt_t *)buf;
+    if (pkt == NULL) {
+        return;
+    }
+    const uint8_t *f = pkt->payload;
+    const int len = pkt->rx_ctrl.sig_len;
+    if (len < 24) {
+        return;
+    }
+    // Management beacon only (frame type 0, subtype 8).
+    if (type != WIFI_PKT_MGMT || ((f[0] >> 2) & 0x3) != 0 || ((f[0] >> 4) & 0xF) != 8) {
+        return;
+    }
+    s_pwn_beacons++;
+    if (!lxveos_wifi_is_pwnagotchi_mac(f + 10)) {   // addr2 = source address
+        return;
+    }
+    s_pwn_count++;
+    // Walk the tagged parameters to the SSID element (tag 0) — it carries the JSON identity.
+    int p = 24 + 12;
+    while (p + 2 <= len) {
+        uint8_t tag = f[p];
+        uint8_t tlen = f[p + 1];
+        if (p + 2 + tlen > len) {
+            break;
+        }
+        if (tag == 0) {
+            char name[32];
+            uint32_t tot = 0;
+            if (lxveos_wifi_pwnagotchi_parse((const char *)(f + p + 2), tlen, name, sizeof(name), &tot)) {
+                memcpy(s_pwn_name, name, sizeof(name));
+                s_pwn_last_tot = tot;
+                s_pwn_last_rssi = (int8_t)pkt->rx_ctrl.rssi;
+                s_pwn_found = true;
+            }
+            break;
+        }
+        p += 2 + tlen;
+    }
+}
+
+esp_err_t lxveos_wifi_pwnagotchi_watch(uint32_t seconds, uint8_t channel, lxveos_wifi_pwnagotchi_stats_t *out)
+{
+    if (out != NULL) {
+        memset(out, 0, sizeof(*out));
+    }
+    if (seconds == 0) {
+        seconds = 15;
+    }
+    ESP_RETURN_ON_ERROR(ensure_wifi_up(), TAG, "wifi bring-up");
+
+    s_pwn_beacons = 0;
+    s_pwn_count = 0;
+    s_pwn_last_tot = 0;
+    s_pwn_last_rssi = 0;
+    s_pwn_found = false;
+    memset(s_pwn_name, 0, sizeof(s_pwn_name));
+
+    const wifi_promiscuous_filter_t filt = {.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
+    ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous_filter(&filt), TAG, "promisc filter");
+    ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous_rx_cb(pwnagotchi_rx_cb), TAG, "promisc cb");
+    ESP_RETURN_ON_ERROR(esp_wifi_set_promiscuous(true), TAG, "promisc on");
+
+    uint8_t swept = run_channel_loop(seconds, channel, 300);
+    esp_wifi_set_promiscuous(false);
+
+    if (out != NULL) {
+        out->seconds = seconds;
+        out->beacons = s_pwn_beacons;
+        out->pwnagotchi = s_pwn_count;
+        out->found = s_pwn_found;
+        out->last_pwnd_tot = s_pwn_last_tot;
+        out->last_rssi = s_pwn_last_rssi;
+        out->channels_swept = swept;
+        memcpy(out->last_name, s_pwn_name, sizeof(out->last_name));
+    }
+    return ESP_OK;
+}
+
 // lxveos_wifi_authmode_str / lxveos_wifi_is_open / lxveos_wifi_auth_grade live in lxveos_wifi_labels.c
 // (pure authmode->label + security-grade math, host-tested off-target in tests/host_c/test_wifi_labels.c).

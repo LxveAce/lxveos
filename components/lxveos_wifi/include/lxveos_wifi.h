@@ -161,6 +161,25 @@ bool lxveos_wifi_is_pwnagotchi_mac(const uint8_t *mac);
 bool lxveos_wifi_pwnagotchi_parse(const char *essid, size_t essid_len, char *name, size_t name_cap,
                                   uint32_t *pwnd_tot);
 
+// Tally from one passive Pwnagotchi-presence watch (lxveos_wifi_pwnagotchi_watch): total beacons seen, how
+// many came from the Pwnagotchi grid MAC, and the most recently decoded identity.
+typedef struct {
+    uint32_t seconds;         // window watched
+    uint32_t beacons;         // total beacons seen (any source)
+    uint32_t pwnagotchi;      // beacons from the Pwnagotchi grid MAC de:ad:be:ef:de:ad
+    bool     found;           // at least one JSON identity decoded
+    char     last_name[32];   // most recent decoded name ("" if none / undecoded)
+    uint32_t last_pwnd_tot;   // its advertised total-handshakes count
+    int8_t   last_rssi;       // its last-seen signal strength (dBm)
+    uint8_t  channels_swept;  // channel dwells performed
+} lxveos_wifi_pwnagotchi_stats_t;
+
+// PASSIVE Pwnagotchi-presence watch for ~`seconds`. `channel` 0 hops the whole 2.4 GHz plan; 1-13 LOCKS to
+// that channel. Runs promiscuous, flags beacons from the Pwnagotchi grid MAC and decodes the JSON identity
+// from the SSID (via the pure core above). Listen only — transmits nothing. Writes the tally to *out (may be
+// NULL). Returns ESP_OK or an esp_err_t.
+esp_err_t lxveos_wifi_pwnagotchi_watch(uint32_t seconds, uint8_t channel, lxveos_wifi_pwnagotchi_stats_t *out);
+
 #ifdef __cplusplus
 }
 #endif
