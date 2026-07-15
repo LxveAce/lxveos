@@ -6,6 +6,8 @@
 // the offensive emitter out entirely, making lxveos_arm_can_emit() a hard false regardless of arm state.
 #include "lxveos_arm.h"
 
+#include <stddef.h>  // NULL — don't rely on it arriving transitively through the esp_* headers
+
 #include "esp_log.h"
 #include "esp_timer.h"
 
