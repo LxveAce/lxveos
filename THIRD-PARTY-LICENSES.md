@@ -3,8 +3,7 @@
 LxveOS core is MIT. Components and upstream work are used per the table below. Reuse mode:
 **Direct-MIT-vendor** (code folded in, notice preserved) · **Clean-room** (ideas only, reimplemented) ·
 **Registry-dep** (pulled unmodified from the ESP Component Registry at build time). Verified 2026-07-07;
-re-verify each upstream's LICENSE at the pinned commit before bumping a version. Full detail:
-command-center/projects/lxveos/{inspiration-and-reuse.md,CREDITS-DRAFT.md}.
+re-verify each upstream's LICENSE at the pinned commit before bumping a version.
 
 ## Upstream firmware
 | Project | Author / org | License | Reuse mode |

@@ -2,8 +2,7 @@
 
 LxveOS builds on the great open ESP32 security-firmware community — with proper credit and **without
 competing**. Ideas/concepts are free to learn from (not copyrightable); only permissively-licensed **code**
-is reused directly. Full, verified map: `LxveAce/command-center` → `projects/lxveos/inspiration-and-reuse.md`
-and `THIRD-PARTY-LICENSES.md`.
+is reused directly. The full per-project map is in [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md).
 
 ## Direct code reuse (MIT — vendored with notice)
 - **ESP32 Marauder** — Just Call Me Koko (MIT) — Wi-Fi scan/monitor, wardrive WiGLE CSV, Evil Portal, serial protocol.

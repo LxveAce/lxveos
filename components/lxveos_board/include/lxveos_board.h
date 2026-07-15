@@ -1,6 +1,6 @@
 #pragma once
 // LxveOS board bring-up entry. The board is selected at build time via LXVEOS_BOARD (exported env var);
-// its details come from the generated boards/<board>/board_info.h. See README / build-architecture.md.
+// its details come from the generated boards/<board>/board_info.h. See README.
 #include "esp_err.h"
 
 #ifdef __cplusplus

@@ -1,5 +1,5 @@
 {
-  "_schema": "LxveOS board+display+input capability manifest. THE SSOT: scripts/gen_board_configs.py turns each row into boards/<id>/sdkconfig.defaults + board_info.h + CMakePresets entries, and Cyber Controller reads it for detect->variant->flash. Honesty rule: unknown pins/IDs/offsets stay null, NEVER invented. provenance = verified-on-hw | datasheet-community. This repo copy holds the M0 Tier-1 boards; the full 40+ board fleet lives in command-center/projects/lxveos/ and is reconciled to this schema incrementally.",
+  "_schema": "LxveOS board+display+input capability manifest. THE SSOT: scripts/gen_board_configs.py turns each row into boards/<id>/sdkconfig.defaults + board_info.h + CMakePresets entries, and Cyber Controller reads it for detect->variant->flash. Honesty rule: unknown pins/IDs/offsets stay null, NEVER invented. provenance = verified-on-hw | datasheet-community. This repo copy holds the M0 Tier-1 boards; more boards are reconciled to this schema incrementally.",
   "_version": "0.1.0-m0",
   "boards": {
     "bare_esp32_headless": {

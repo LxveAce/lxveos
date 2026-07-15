@@ -23,14 +23,13 @@ directly, copyleft work is learned from clean-room (ideas, not code). See [`CRED
 > compiled behind a two-factor `arm` gate** and are for hardware you own or are explicitly authorized to test — see
 > [`RESPONSIBLE-USE.md`](RESPONSIBLE-USE.md).
 
-## Design (single source of truth)
-The full design lives in `LxveAce/command-center` → `projects/lxveos/`:
-- `lxveos-ARCHITECTURE.md` — the overall design + deep CYD autodetect + licensing plan
-- `build-architecture.md` — this repo's ESP-IDF v6 architecture (what's implemented here)
-- `board-support-matrix.md` — the 40+ board fleet, tiered M0/M1/M2
-- `feature-matrix.md` — feature modules × boards + hardware add-on unlock map
-- `inspiration-and-reuse.md` — per-firmware idea/license/reuse map
-- `cyd_boards.json` — the board+display+input capability manifest (SSOT; a copy lives here, kept in sync)
+## Design
+The implementation lives here, and [`cyd_boards.json`](cyd_boards.json) is the single source of truth for board
+support (see [Core decisions](#core-decisions) below). The rest of the map, all in-tree:
+- [`docs/EVENT-PROTOCOL.md`](docs/EVENT-PROTOCOL.md) — the on-device serial event/telemetry format
+- [`RESPONSIBLE-USE.md`](RESPONSIBLE-USE.md) — authorized-use policy and the no-jammer boundary
+- [`CREDITS.md`](CREDITS.md) · [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md) — upstream projects and their licenses
+- `components/lxveos_*` — the board HAL, capability catalog, arm gate, and GUI, one component each
 
 ## Core decisions
 - **Base:** ESP-IDF v6.0.x + CMake. **License:** MIT (core). **UI stack:** `esp_lcd` + `esp_lvgl_port` + LVGL 9

@@ -6,7 +6,7 @@ Emits, for every board in the manifest:
   boards/<id>/board_info.h         runtime constants the BSP needs (driver, w/h, runtime_probe, ui_profile)
 
 Adding a board = one JSON edit + re-run. The manifest stays the single source shared with Cyber Controller.
-No ESP-IDF required to run this (pure Python). See command-center/projects/lxveos/build-architecture.md.
+No ESP-IDF required to run this (pure Python).
 
 Boards are built with explicit idf.py flags (a private -B build dir + that board's SDKCONFIG + the chained
 SDKCONFIG_DEFAULTS + an exported LXVEOS_BOARD) — NOT CMakePresets. idf.py auto-applies the FIRST preset in

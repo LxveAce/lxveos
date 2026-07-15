@@ -1,6 +1,6 @@
 #pragma once
 // LxveOS serial CLI + Cyber Controller bridge. On every board this is the headless control surface and
-// the versioned UART protocol Cyber Controller talks to (detect/flash/telemetry). See build-architecture.md.
+// the versioned UART protocol Cyber Controller talks to (detect/flash/telemetry). See docs/EVENT-PROTOCOL.md.
 #include "esp_err.h"
 
 #ifdef __cplusplus
