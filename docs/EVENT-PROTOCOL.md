@@ -38,8 +38,8 @@ dashboard poll, not an event.
 |---|---|---|---|
 | `bridge` | `state=on\|off` | `bridge` | emission toggle ack |
 | `ap` | `bssid`(mac) `ssid`(hex) `ch` `rssi` `auth` | `scan` | one per AP found |
-| `sta` | `mac`(mac) `ap`(mac) `rssi` | `stations` | client station; `ap` = associated BSSID if known |
-| `probe` | `mac`(mac) `ssid`(hex) `rssi` | `probes` | probe-request; `ssid` = requested SSID |
+| `sta` | `mac`(mac) `ap`(mac) `rssi` `frames` `essid`(hex) | `stations` | client station; `ap` = associated BSSID, `essid` its ESSID if a beacon was also seen, `frames` = data frames observed |
+| `probe` | `ssid`(hex) `seen` `rssi` | `probes` | one per directed SSID a nearby device is hunting for; `seen` = probe-request frames. No client MAC — the passive probe scan aggregates by SSID, not by device |
 | `ble` | `addr`(mac) `name`(hex) `rssi` `appearance` `svc`(hex) | `blescan` | fields present when known |
 | `hs` | `kind=pmkid\|eapol` `bssid`(mac) `sta`(mac) `essid`(hex) | `capture` | one per crackable capture; feeds Crack Lab |
 | `pcap` | `id` `bytes` | `pcap_log` | a pcap segment was written (needs storage; HW) |

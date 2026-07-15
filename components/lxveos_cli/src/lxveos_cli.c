@@ -588,6 +588,24 @@ static int cmd_stations(int argc, char **argv)
                cs[i].ap[0], cs[i].ap[1], cs[i].ap[2], cs[i].ap[3], cs[i].ap[4], cs[i].ap[5],
                cs[i].essid[0] ? cs[i].essid : "<unknown>", (unsigned)cs[i].frames, cs[i].rssi);
     }
+    if (lxveos_evt_enabled()) {
+        for (size_t i = 0; i < found; i++) {
+            char line[192];
+            size_t n = lxveos_evt_begin(line, sizeof(line), "sta");
+            n = lxveos_evt_kv_mac(line, sizeof(line), n, "mac", cs[i].sta);
+            n = lxveos_evt_kv_mac(line, sizeof(line), n, "ap", cs[i].ap);
+            n = lxveos_evt_kv_int(line, sizeof(line), n, "rssi", cs[i].rssi);
+            n = lxveos_evt_kv_uint(line, sizeof(line), n, "frames", cs[i].frames);
+            n = lxveos_evt_kv_hex(line, sizeof(line), n, "essid",
+                                  (const uint8_t *)cs[i].essid, strlen(cs[i].essid));
+            printf("%s\n", line);
+        }
+        char done[64];
+        size_t dn = lxveos_evt_begin(done, sizeof(done), "done");
+        dn = lxveos_evt_kv(done, sizeof(done), dn, "of", "stations");
+        dn = lxveos_evt_kv_uint(done, sizeof(done), dn, "n", (unsigned long)found);
+        printf("%s\n", done);
+    }
     printf("%u client(s) inferred (%u beacons seen)\n", (unsigned)found, (unsigned)beacons);
     return 0;
 }
@@ -655,6 +673,22 @@ static int cmd_probes(int argc, char **argv)
             putchar(' ');
         }
         printf(" %5u %4ddB\n", (unsigned)pr[i].count, pr[i].rssi);
+    }
+    if (lxveos_evt_enabled()) {
+        for (size_t i = 0; i < found; i++) {
+            char line[160];
+            size_t n = lxveos_evt_begin(line, sizeof(line), "probe");
+            n = lxveos_evt_kv_hex(line, sizeof(line), n, "ssid",
+                                  (const uint8_t *)pr[i].ssid, strlen(pr[i].ssid));
+            n = lxveos_evt_kv_uint(line, sizeof(line), n, "seen", pr[i].count);
+            n = lxveos_evt_kv_int(line, sizeof(line), n, "rssi", pr[i].rssi);
+            printf("%s\n", line);
+        }
+        char done[64];
+        size_t dn = lxveos_evt_begin(done, sizeof(done), "done");
+        dn = lxveos_evt_kv(done, sizeof(done), dn, "of", "probes");
+        dn = lxveos_evt_kv_uint(done, sizeof(done), dn, "n", (unsigned long)found);
+        printf("%s\n", done);
     }
     printf("%u directed SSID(s) from %u probe request(s) (%u wildcard/broadcast)\n",
            (unsigned)found, (unsigned)total, (unsigned)wildcard);
