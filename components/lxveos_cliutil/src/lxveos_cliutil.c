@@ -87,7 +87,9 @@ void sanitize_copy(char *dst, size_t cap, const char *src)
     size_t i = 0;
     for (; src != NULL && src[i] != '\0' && i < cap - 1; i++) {
         unsigned char c = (unsigned char)src[i];
-        dst[i] = (c < 0x20 || c == 0x7f) ? '.' : (char)c;
+        // Fold C0 (< 0x20), DEL (0x7f) AND C1 (0x80-0x9f) control bytes to '.': a raw 0x9b is CSI on some
+        // terminals. Bytes >= 0xa0 pass through so legitimate UTF-8 / high-Latin names survive.
+        dst[i] = (c < 0x20 || c == 0x7f || (c >= 0x80 && c <= 0x9f)) ? '.' : (char)c;
     }
     dst[i] = '\0';
 }
@@ -106,8 +108,8 @@ void csv_quote_field(char *dst, size_t cap, const char *src)
     // Invariant before writing content: always keep 2 slots free for the closing '"' and the NUL.
     for (size_t i = 0; src != NULL && src[i] != '\0'; i++) {
         unsigned char c = (unsigned char)src[i];
-        if (c < 0x20 || c == 0x7f) {
-            c = '.';  // sanitize control bytes -> a single '.' (not a quote, so it takes the else branch)
+        if (c < 0x20 || c == 0x7f || (c >= 0x80 && c <= 0x9f)) {
+            c = '.';  // sanitize C0/DEL/C1 control bytes -> a single '.' (>= 0xa0 UTF-8 passes through)
         }
         if (c == '"') {
             if (o + 2 > cap - 2) {

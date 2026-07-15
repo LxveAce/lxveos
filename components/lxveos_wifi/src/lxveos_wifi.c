@@ -1042,7 +1042,7 @@ static void pwnagotchi_rx_cb(void *buf, wifi_promiscuous_pkt_type_t type)
             break;
         }
         if (tag == 0) {
-            char name[32];
+            char name[32] = {0};   // zero-init: parse NUL-terminates, but don't drag stack tail into s_pwn_name
             uint32_t tot = 0;
             if (lxveos_wifi_pwnagotchi_parse((const char *)(f + p + 2), tlen, name, sizeof(name), &tot)) {
                 memcpy(s_pwn_name, name, sizeof(name));

@@ -94,6 +94,11 @@ static void test_sanitize_copy(void)
     // embedded newline/tab (both < 0x20) -> '.'
     sanitize_copy(buf, sizeof(buf), "x\n\ty");
     assert(strcmp(buf, "x..y") == 0);
+    // C1 control (0x9b = CSI on some terminals) -> '.', but UTF-8 / high-Latin bytes (>= 0xa0) pass through
+    sanitize_copy(buf, sizeof(buf), "a\x9b" "31mb");
+    assert(strcmp(buf, "a.31mb") == 0);
+    sanitize_copy(buf, sizeof(buf), "caf\xc3\xa9");   // "café" in UTF-8 — high bytes survive
+    assert(strcmp(buf, "caf\xc3\xa9") == 0);
     // truncation at cap-1, always NUL-terminated (canary at index 3 must be overwritten with '\0')
     char small[4];
     small[3] = 'Z';

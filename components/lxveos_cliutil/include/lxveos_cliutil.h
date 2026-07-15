@@ -27,14 +27,15 @@ bool parse_hex_octets(const char *s, uint8_t *out, size_t nbytes);
 // (digits-then-stop), matching the convention the Wi-Fi ops already use.
 bool parse_int_arg(const char *s, long lo, long hi, long *out);
 
-// Copy `src` into `dst` (at most cap-1 bytes) with control/non-printable bytes (< 0x20 or 0x7f) replaced by
-// '.', so a DEVICE-SUPPLIED string (a Wi-Fi SSID, a BLE local name) can't emit terminal escapes that garble
-// or spoof the operator console when printed via a raw %s. `dst` is always NUL-terminated; cap 0 and a NULL
-// dst are no-ops; a NULL src yields an empty string.
+// Copy `src` into `dst` (at most cap-1 bytes) with control bytes (C0 < 0x20, DEL 0x7f, and C1 0x80-0x9f)
+// replaced by '.', so a DEVICE-SUPPLIED string (a Wi-Fi SSID, a BLE local name) can't emit terminal escapes
+// that garble or spoof the operator console when printed via a raw %s. Bytes >= 0xa0 pass through so
+// legitimate UTF-8 / high-Latin names survive. `dst` is always NUL-terminated; cap 0 and a NULL dst are
+// no-ops; a NULL src yields an empty string.
 void sanitize_copy(char *dst, size_t cap, const char *src);
 
 // Format `src` as one RFC4180 CSV field into `dst`: a double-quoted field with any embedded '"' doubled and
-// control bytes (< 0x20 or 0x7f) replaced by '.', so a comma / quote / newline in a device-supplied name
+// control bytes (C0 < 0x20, DEL 0x7f, C1 0x80-0x9f) replaced by '.', so a comma / quote / newline in a device-supplied name
 // can't break the CSV row or inject a new one. `dst` always includes the closing quote and a NUL (content is
 // truncated first if `cap` is tight); a cap < 3 (no room for `""`) yields an empty string.
 void csv_quote_field(char *dst, size_t cap, const char *src);

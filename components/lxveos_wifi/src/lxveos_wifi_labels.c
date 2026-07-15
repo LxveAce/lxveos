@@ -7,6 +7,7 @@
 
 #include "esp_wifi_types.h"
 
+#include <stdint.h>
 #include <string.h>
 
 const char *lxveos_wifi_authmode_str(uint8_t authmode)
@@ -94,6 +95,8 @@ static size_t skip_to_value(const char *s, size_t len, size_t i)
     return i;
 }
 
+// NOTE: on-device callers MUST gate on lxveos_wifi_is_pwnagotchi_mac() first — this parser trusts that the
+// buffer is a Pwnagotchi advertisement and will happily read the JSON keys out of any SSID that contains them.
 bool lxveos_wifi_pwnagotchi_parse(const char *essid, size_t essid_len, char *name, size_t name_cap,
                                   uint32_t *pwnd_tot)
 {
@@ -133,7 +136,9 @@ bool lxveos_wifi_pwnagotchi_parse(const char *essid, size_t essid_len, char *nam
         uint32_t v = 0;
         bool any = false;
         while (i < essid_len && essid[i] >= '0' && essid[i] <= '9') {
-            v = v * 10u + (uint32_t)(essid[i] - '0');
+            uint32_t d = (uint32_t)(essid[i] - '0');
+            // Saturate instead of wrapping — a spoofed count must not overflow uint32 into a small number.
+            v = (v > (UINT32_MAX - d) / 10u) ? UINT32_MAX : v * 10u + d;
             i++;
             any = true;
         }

@@ -101,6 +101,18 @@ static void test_pwnagotchi(void)
     const char *j3 = "{\"name\":\"abcdefgh\"}";
     assert(lxveos_wifi_pwnagotchi_parse(j3, strlen(j3), small, sizeof(small), NULL));
     assert(strcmp(small, "abcd") == 0);   // 4 chars + NUL in a 5-byte buffer
+
+    // Overflow: an absurd pwnd_tot saturates at UINT32_MAX rather than wrapping to a small wrong number.
+    uint32_t big = 0;
+    const char *jb = "{\"pwnd_tot\":99999999999}";
+    assert(lxveos_wifi_pwnagotchi_parse(jb, strlen(jb), NULL, 0, &big));
+    assert(big == 4294967295u);
+
+    // Name with no closing quote: copies to the buffer / essid end, truncates cleanly, stays NUL-terminated.
+    char nq[8];
+    const char *jn = "{\"name\":\"unterminated";
+    assert(lxveos_wifi_pwnagotchi_parse(jn, strlen(jn), nq, sizeof(nq), NULL));
+    assert(strcmp(nq, "untermi") == 0);   // 7 chars fit in nq[8]
 }
 
 int main(void)

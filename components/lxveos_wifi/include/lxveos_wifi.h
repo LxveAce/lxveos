@@ -176,8 +176,9 @@ typedef struct {
 
 // PASSIVE Pwnagotchi-presence watch for ~`seconds`. `channel` 0 hops the whole 2.4 GHz plan; 1-13 LOCKS to
 // that channel. Runs promiscuous, flags beacons from the Pwnagotchi grid MAC and decodes the JSON identity
-// from the SSID (via the pure core above). Listen only — transmits nothing. Writes the tally to *out (may be
-// NULL). Returns ESP_OK or an esp_err_t.
+// from a SINGLE beacon's first SSID element (a Pwnagotchi that splits its JSON across frames yields a partial
+// decode — matches the upstream Marauder behaviour). Listen only — transmits nothing. Writes the tally to
+// *out (may be NULL). Returns ESP_OK or an esp_err_t.
 esp_err_t lxveos_wifi_pwnagotchi_watch(uint32_t seconds, uint8_t channel, lxveos_wifi_pwnagotchi_stats_t *out);
 
 #ifdef __cplusplus
