@@ -1146,6 +1146,11 @@ static int cmd_arm(int argc, char **argv)
         printf("recon/defense ops need no arming; they run as usual.\n");
         return 0;
     }
+    if (argc >= 2 && strcmp(argv[1], "status") == 0) {
+        // Read-only query — never mutates arm state (unlike bare `arm`, which requests).
+        printf("arm state: %s\n", lxveos_arm_state_name(lxveos_arm_state()));
+        return 0;
+    }
     if (argc >= 2) {
         uint32_t token = (uint32_t)strtoul(argv[1], NULL, 10);
         esp_err_t e = lxveos_arm_confirm(token);
@@ -1155,6 +1160,13 @@ static int cmd_arm(int argc, char **argv)
             printf("arm confirm failed (%s) — state now %s. Re-run 'arm' to start over.\n",
                    esp_err_to_name(e), lxveos_arm_state_name(lxveos_arm_state()));
         }
+        return 0;
+    }
+    // No-arg `arm`: report if already ARMED instead of re-requesting — otherwise "checking" would drop a live
+    // armed session back to PENDING (a footgun). Use `arm status` for a pure read-only query in any state.
+    if (lxveos_arm_state() == LXVEOS_ARM_ARMED) {
+        printf("already ARMED — offensive TX permitted. Run 'disarm' to return to SAFE "
+               "(also auto-disarms after inactivity).\n");
         return 0;
     }
     uint32_t token = 0;
@@ -1820,7 +1832,7 @@ static void register_commands(void)
         {.command = "btracker", .help = "Passive BLE item-tracker/stalking detector (AirTag/Tile/SmartTag/Chipolo/PebbleBee/GoogleFMN): btracker [seconds]", .func = &cmd_btracker},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
-        {.command = "arm", .help = "Two-factor enable for offensive-TX ops: arm (request), then arm <token> (confirm)", .func = &cmd_arm},
+        {.command = "arm", .help = "Two-factor enable for offensive-TX ops: arm (request), arm <token> (confirm), arm status (query)", .func = &cmd_arm},
         {.command = "disarm", .help = "Hard-disarm: return to SAFE (offensive TX not permitted)", .func = &cmd_disarm},
         {.command = "evilportal", .help = "Rogue AP + captive portal (needs arm): evilportal [ssid|karma|template <id>|templates|creds|stop]", .func = &cmd_evilportal},
         {.command = "badble", .help = "BLE HID keystroke injection (needs arm): badble \"<duckyscript>\" | stop | status", .func = &cmd_badble},
