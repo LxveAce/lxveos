@@ -113,6 +113,19 @@ def validate_manifest(boards, root=ROOT):
                             continue
                         if not isinstance(pv, int) or pv < -1 or pv > 48:
                             errs.append(f"{p} display.pins.{pk}={pv!r} must be an int in [-1,48]")
+        # input pinouts — same rule as display pins (verified ints in [-1,48]); an input's `pins` is optional.
+        for it in (b.get("input") or []):
+            ipins = it.get("pins") if isinstance(it, dict) else None
+            if ipins is None:
+                continue
+            if not isinstance(ipins, dict):
+                errs.append(f"{p} input '{it.get('class','?')}' pins must be an object or null")
+                continue
+            for pk, pv in ipins.items():
+                if pk.startswith("_"):
+                    continue
+                if not isinstance(pv, int) or pv < -1 or pv > 48:
+                    errs.append(f"{p} input '{it.get('class','?')}' pins.{pk}={pv!r} must be an int in [-1,48]")
     return errs
 
 
@@ -144,6 +157,19 @@ def sdkconfig_lines(bid, b):
             # catalog reports it "attachable" (vs a flat "unavailable") via CONFIG_LXVEOS_ADDON_*.
             out.append(f"CONFIG_LXVEOS_ADDON_{k.upper()}=y")
     return "\n".join(out) + "\n"
+
+
+def _touch_with_pins(inputs):
+    """The first SPI touch controller carrying a verified pin set, or (None, None). Feeds the LXVEOS_TOUCH_*
+    block the BSP uses to bring up an LVGL pointer indev; a pin-less touch entry stays HAS_PINS 0 (honesty)."""
+    need = ("sclk", "mosi", "miso", "cs")
+    for it in inputs:
+        if not isinstance(it, dict) or it.get("class") != "touch":
+            continue
+        pins = it.get("pins")
+        if isinstance(pins, dict) and all(isinstance(pins.get(k), int) for k in need):
+            return it, pins
+    return None, None
 
 
 def board_info_h(bid, b):
@@ -207,6 +233,20 @@ def board_info_h(bid, b):
         lines.append("#define LXVEOS_INPUT_LIST(X) \\\n" + " \\\n".join(rows))
     else:
         lines.append("#define LXVEOS_INPUT_LIST(X)")
+    # Touch controller pinout (parallel to the display pins): emitted only when a touch input carries a
+    # verified pin set, so the BSP can bring up an XPT2046 LVGL pointer indev. LXVEOS_TOUCH_HAS_PINS gates it;
+    # -1 == absent (e.g. no IRQ line). A pin-less touch entry stays HAS_PINS 0 (honesty rule).
+    tit, tpins = _touch_with_pins(inputs)
+    lines.append(f'#define LXVEOS_TOUCH_HAS_PINS    {1 if tpins is not None else 0}')
+    if tit is not None and tpins is not None:
+        lines += [
+            f'#define LXVEOS_TOUCH_CONTROLLER  {s(tit.get("controller"))}',
+            f'#define LXVEOS_TOUCH_PIN_SCLK    {tpins.get("sclk", -1)}',
+            f'#define LXVEOS_TOUCH_PIN_MOSI    {tpins.get("mosi", -1)}',
+            f'#define LXVEOS_TOUCH_PIN_MISO    {tpins.get("miso", -1)}',
+            f'#define LXVEOS_TOUCH_PIN_CS      {tpins.get("cs", -1)}',
+            f'#define LXVEOS_TOUCH_PIN_IRQ     {tpins.get("irq", -1)}',
+        ]
     return "\n".join(lines) + "\n"
 
 

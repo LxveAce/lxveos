@@ -139,6 +139,31 @@ def test_backlight_gap_defines_track_pins():
                 assert d not in h, f"{bid}: emitted {d} without a pins block"
 
 
+def test_cyd_touch_pins_emitted():
+    """The CYD's XPT2046 touch controller emits a LXVEOS_TOUCH_* block (controller + the verified separate-bus
+    pinout) so the BSP can bring up a pointer indev; the pins match the community-verified manifest values."""
+    h = g.board_info_h("cyd_2432S028_classic", BOARDS["cyd_2432S028_classic"])
+    for line in ("#define LXVEOS_TOUCH_HAS_PINS    1",
+                 '#define LXVEOS_TOUCH_CONTROLLER  "XPT2046"',
+                 "#define LXVEOS_TOUCH_PIN_SCLK    25",
+                 "#define LXVEOS_TOUCH_PIN_MOSI    32",
+                 "#define LXVEOS_TOUCH_PIN_MISO    39",
+                 "#define LXVEOS_TOUCH_PIN_CS      33",
+                 "#define LXVEOS_TOUCH_PIN_IRQ     36"):
+        assert line in h, f"CYD touch pinout drift: missing `{line}`"
+
+
+def test_touch_block_absent_without_verified_pins():
+    """A board with no touch controller (or a pin-less touch entry) emits LXVEOS_TOUCH_HAS_PINS 0 and no touch
+    pin defines (honesty rule — the generator never invents a touch pinout)."""
+    for bid, b in BOARDS.items():
+        _tit, tpins = g._touch_with_pins(b.get("input") or [])
+        h = g.board_info_h(bid, b)
+        if tpins is None:
+            assert "#define LXVEOS_TOUCH_HAS_PINS    0" in h, f"{bid}: expected TOUCH_HAS_PINS 0"
+            assert "LXVEOS_TOUCH_PIN_SCLK" not in h, f"{bid}: leaked touch pins without a verified pin set"
+
+
 def test_input_summary_emitted():
     """board_info.h carries LXVEOS_INPUT_COUNT matching the manifest and an LXVEOS_INPUT_LIST X-macro
     with one X(...) row per input device (none on headless boards)."""

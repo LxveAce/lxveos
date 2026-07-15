@@ -25,7 +25,9 @@
           "_note": "Display SPI on HSPI/SPI2. Community-sourced + adversarially verified (witnessmenow ESP32-Cheap-Yellow-Display User_Setup.h, rzeldent sunton board JSON, Random Nerd Tutorials, espboards.dev): unanimous across 4 refs, skeptic CONFIRMED, no 1-USB/2-USB divergence (pinouts identical, only the driver IC differs). rst=-1 tied to EN. Backlight GPIO21 active-HIGH (distinct from the RGB LED on 4/16/17). UNVERIFIED on this unit's hardware. Touch XPT2046 is a SEPARATE bus: sclk25/mosi32/miso39/cs33/irq36." }
       },
       "input": [
-        { "class": "touch", "controller": "XPT2046", "bus": "spi", "addr_or_cs": 33, "maps_to_lvgl": "pointer", "_note": "resistive; CS GPIO33 datasheet-community" }
+        { "class": "touch", "controller": "XPT2046", "bus": "spi", "addr_or_cs": 33,
+          "pins": { "sclk": 25, "mosi": 32, "miso": 39, "cs": 33, "irq": 36 },
+          "maps_to_lvgl": "pointer", "_note": "resistive XPT2046 on a SEPARATE SPI bus from the display (community-sourced + adversarially verified, same refs as display.pins _note): sclk25/mosi32/miso39/cs33/irq36. UNVERIFIED on this unit's hardware." }
       ],
       "ui_profile": "touch_gui",
       "features": { "wifi": true, "ble": true, "bt_classic": true, "display": true, "gps": "addon" },
