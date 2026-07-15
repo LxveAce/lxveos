@@ -77,6 +77,70 @@ static void test_menu_content(void)
     assert(has(menu, "wifi_ap_scan\n"));
 }
 
+// Find a catalog op by slug (NULL if absent).
+static const lxveos_op_t *find_op(const char *slug)
+{
+    for (size_t i = 0; i < lxveos_ops_count(); i++) {
+        const lxveos_op_t *op = lxveos_ops_get(i);
+        if (op && strcmp(op->slug, slug) == 0) {
+            return op;
+        }
+    }
+    return NULL;
+}
+
+static void test_detail(void)
+{
+    lxveos_caps_probe();   // fixture: Wi-Fi active, sub-GHz add-on
+    char d[512];
+
+    // A ready recon op: title, slug, category/status, capability, source; no policy line (STD class).
+    const lxveos_op_t *scan = find_op("wifi_ap_scan");
+    assert(scan != NULL);
+    lxveos_gui_compose_detail(d, sizeof(d), scan);
+    assert(has(d, "Wi-Fi AP scan"));      // title
+    assert(has(d, "slug: wifi_ap_scan"));
+    assert(has(d, "recon"));              // category
+    assert(has(d, "ready"));              // WIFI active + implemented -> ready
+    assert(has(d, "needs: wifi"));        // required capability
+    assert(has(d, "src: Marauder"));      // inspired_by
+    assert(!has(d, "offensive") && !has(d, "restricted"));
+
+    // An offensive op carries the ARM-required policy line.
+    const lxveos_op_t *portal = find_op("evil_portal");
+    assert(portal != NULL);
+    lxveos_gui_compose_detail(d, sizeof(d), portal);
+    assert(has(d, "Evil-portal captive portal"));
+    assert(has(d, "offensive: requires ARM before TX"));
+
+    // A restricted (DoS-class) op carries the upstream-TX policy line, not the arm line.
+    const lxveos_op_t *burst = find_op("deauth_burst");
+    assert(burst != NULL);
+    lxveos_gui_compose_detail(d, sizeof(d), burst);
+    assert(has(d, "restricted: owner/upstream-supplied TX"));
+    assert(!has(d, "requires ARM"));
+
+    // A sub-GHz add-on op reports "attachable" on this fixture board.
+    const lxveos_op_t *sg = find_op("subghz_scan");
+    assert(sg != NULL);
+    lxveos_gui_compose_detail(d, sizeof(d), sg);
+    assert(has(d, "attachable"));
+
+    // NULL op -> safe placeholder; cap 0 -> no write; small cap -> truncated but terminated.
+    lxveos_gui_compose_detail(d, sizeof(d), NULL);
+    assert(strcmp(d, "(no op selected)") == 0);
+    char z = 'Q';
+    lxveos_gui_compose_detail(&z, 0, scan);
+    assert(z == 'Q');
+    char small[16];
+    memset(small, 'G', sizeof(small));
+    lxveos_gui_compose_detail(small, 12, scan);
+    assert(strlen(small) < 12);
+    for (size_t i = 12; i < sizeof(small); i++) {
+        assert(small[i] == 'G');   // nothing written past cap
+    }
+}
+
 static void test_menu_bounds(void)
 {
     // Small buffer: the builder must truncate cleanly — always NUL-terminated, never writing past `cap`.
@@ -106,6 +170,7 @@ int main(void)
 {
     test_arm_banner();
     test_menu_content();
+    test_detail();
     test_menu_bounds();
     printf("test_gui_menu: all tests passed\n");
     return 0;
