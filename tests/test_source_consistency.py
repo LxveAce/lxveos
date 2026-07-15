@@ -75,15 +75,15 @@ def test_offensive_tx_drivers_check_the_arm_gate():
 # and ble_hid_inject stay implemented=false until validated on real hardware — a green CI build proves the code
 # compiles, never that the RF/HID actually works. This guard fails if any is flipped true off green CI alone.
 _MUST_STAY_UNVALIDATED = {
-    "subghz_scan", "subghz_replay", "nrf24_scan", "nrf24_mousejack",
-    "nfc_read", "nfc_clone", "ir_recv", "ir_send", "ble_hid_inject",
+    "subghz_scan", "subghz_replay", "subghz_brute", "nrf24_scan", "nrf24_mousejack",
+    "nfc_read", "nfc_clone", "nfc_emulate", "ir_recv", "ir_send", "ble_hid_inject",
 }
 
 # High-confidence built-in-radio / Wi-Fi-SoftAP ops that ARE trusted from a green CI build (implemented=true).
 _MUST_BE_IMPLEMENTED = {
     "wifi_ap_scan", "wifi_sta_scan", "wifi_sniff", "wifi_probe_scan", "eapol_capture",
     "deauth_detect", "evil_twin_detect", "wifi_security_audit", "wifi_wardrive",
-    "ble_scan", "ble_flood_detect", "ble_tracker_detect", "evil_portal", "karma_ap",
+    "ble_scan", "ble_flood_detect", "ble_tracker_detect", "ble_hid_detect", "evil_portal", "karma_ap",
 }
 
 # The interference-emitter class (RF jammer / deauth-flood / beacon-flood / BLE advert-spam) is a FIXED
@@ -130,3 +130,77 @@ def test_status_bridge_line_exposes_arm_state():
     """The CC bridge status line + its README doc must surface arm state (label, never hide)."""
     assert 'arm=%s' in CLI_C, "cmd_status no longer emits the arm= field"
     assert 'arm=<safe|pending|armed>' in README, "README bridge-line doc missing the arm= field"
+
+
+# ── CLI command <-> op-catalog coverage ────────────────────────────────────────────────────────────
+# The catalog (lxveos_ops.c OPS[]) is the SSOT the CC bridge reads, so every security CLI verb must map
+# to a real catalog slug, and every catalog slug must either have a CLI verb or be a KNOWN cli-less row.
+# This is the guard that would have caught the `blehid` drift (a shipped detector with no catalog row, so
+# `features`/`status` under-reported the unit). Curated because one verb can drive several slugs
+# (subghz/nfc/nrf24/ir subcommands) and several slugs are intentionally cli-less.
+
+# Introspection/utility verbs that intentionally have NO catalog op.
+_UTILITY_CMDS = {
+    "agree", "arm", "disarm", "caps", "features", "info", "status", "sysinfo",
+    "loglevel", "nvs", "reboot",
+}
+
+# Each security verb -> the catalog slug(s) it drives (subcommands fold into the parent verb).
+_CLI_TO_SLUGS = {
+    "scan": {"wifi_ap_scan"},
+    "sniff": {"wifi_sniff"},
+    "stations": {"wifi_sta_scan"},
+    "probes": {"wifi_probe_scan"},
+    "capture": {"eapol_capture"},
+    "wardrive": {"wifi_wardrive"},
+    "blescan": {"ble_scan"},
+    "defend": {"deauth_detect"},
+    "eviltwin": {"evil_twin_detect"},
+    "apaudit": {"wifi_security_audit"},
+    "bleflood": {"ble_flood_detect"},
+    "btracker": {"ble_tracker_detect"},
+    "blehid": {"ble_hid_detect"},
+    "evilportal": {"evil_portal", "karma_ap"},
+    "badble": {"ble_hid_inject"},
+    "subghz": {"subghz_scan", "subghz_replay", "subghz_brute"},
+    "nrf24": {"nrf24_scan", "nrf24_mousejack"},
+    "nfc": {"nfc_read", "nfc_clone", "nfc_emulate"},
+    "ir": {"ir_recv", "ir_send"},
+}
+
+# Catalog slugs with NO CLI verb by design:
+#  - interference emitters: control-surface rows only, never an authored TX loop (fixed boundary)
+#  - idf-infeasible: no honest driver on the ESP32/S3 stack (5 GHz PHY / WPS external-registrar)
+#  - fleet-board roadmap: needs SD (pcap_log) or a GPS module (wardrive_log)
+_SLUGS_WITHOUT_CLI = (
+    _INTERFERENCE_EMITTERS
+    | {"wps_attack", "wifi_5ghz_scan"}
+    | {"pcap_log", "wardrive_log"}
+)
+
+
+def test_every_security_cli_command_maps_to_a_catalog_slug():
+    """Every registered non-utility CLI verb must map to catalog slug(s) that exist — so a new security
+    command can't ship without a catalog row (the `blehid` drift this guard was added for)."""
+    cat = _catalog()
+    security = _registered_commands() - _UTILITY_CMDS
+    unmapped = sorted(security - set(_CLI_TO_SLUGS))
+    assert not unmapped, (
+        f"security CLI verb(s) with no catalog mapping: {unmapped} — add them to _CLI_TO_SLUGS "
+        "(and give each a catalog row in lxveos_ops.c)"
+    )
+    for cmd in sorted(_CLI_TO_SLUGS):
+        absent = sorted(s for s in _CLI_TO_SLUGS[cmd] if s not in cat)
+        assert not absent, f"CLI verb `{cmd}` maps to slug(s) absent from the catalog: {absent}"
+
+
+def test_every_catalog_slug_has_a_cli_or_is_known_cli_less():
+    """Every catalog slug must either be driven by a CLI verb or be an explicitly cli-less row — so a slug
+    can't silently lose its command (or be added unreachable) without being classified."""
+    cat = _catalog()
+    reachable: set[str] = set().union(*_CLI_TO_SLUGS.values())
+    orphan = sorted(s for s in cat if s not in reachable and s not in _SLUGS_WITHOUT_CLI)
+    assert not orphan, (
+        f"catalog slug(s) with no CLI verb and not classified cli-less: {orphan} — wire a command "
+        "or add to _SLUGS_WITHOUT_CLI (emitter-excluded / idf-infeasible / fleet-roadmap)"
+    )
