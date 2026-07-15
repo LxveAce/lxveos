@@ -23,6 +23,7 @@ static const lxveos_op_t OPS[] = {
     {"wifi_probe_scan", "Probe-request SSID log", LXVEOS_OPCAT_RECON,  LXVEOS_CAP_WIFI,    "Marauder", true},
     {"wifi_5ghz_scan", "Wi-Fi 5 GHz AP scan",   LXVEOS_OPCAT_RECON,   LXVEOS_CAP_WIFI,    "custom",   false},
     {"eapol_capture",  "EAPOL/PMKID capture",   LXVEOS_OPCAT_RECON,   LXVEOS_CAP_WIFI,    "Marauder", true},
+    {"airspace_summary", "Airspace occupancy summary", LXVEOS_OPCAT_RECON, LXVEOS_CAP_WIFI, "custom",  true},
     {"ble_scan",       "BLE device scan",       LXVEOS_OPCAT_RECON,   LXVEOS_CAP_BLE,     "Marauder", true},
     {"subghz_scan",    "Sub-GHz scan",          LXVEOS_OPCAT_RECON,   LXVEOS_CAP_SUBGHZ,  "Flipper",  false},
     {"nfc_read",       "NFC tag read",          LXVEOS_OPCAT_RECON,   LXVEOS_CAP_NFC,     "Flipper",  false},

@@ -45,7 +45,7 @@ dashboard poll, not an event.
 | `pcap` | `id` `bytes` | `pcap_log` | a pcap segment was written (needs storage; HW) |
 | `arm` | `state=safe\|pending\|armed\|tx_disabled` `token`(pending only) `window`(s, pending) | `arm`/`disarm` | arm state change. `tx_disabled` = offensive TX compiled out (LXVEOS_TX_DISABLE). Also printed as human prose (always), so CC tracks arm state even with the bridge off |
 | `alert` | `kind=deauth\|eviltwin\|tracker\|bleflood\|blehid\|wps` `...`(kind-specific) | `defend`/`eviltwin`/`apaudit`/`bleflood`/`btracker`/`blehid` | a detector fired |
-| `snapshot` | `aps` `stas` `bles` `alerts` | `recon` (custom) | airspace summary counts |
+| `snapshot` | `aps` `open` `wps` `bles` `trackers` | `airspace` (custom) | airspace occupancy counts; `bles`/`trackers` present only when BLE is active |
 | `done` | `of=<cmd>` `n=<count>` | any listing cmd | end-of-listing marker so CC knows the batch is complete |
 
 ### `alert` kind-specific fields (the detector that fires it in parentheses)

@@ -2045,6 +2045,84 @@ static int cmd_blehid(int argc, char **argv)
     return 0;
 }
 
+// `airspace [ble_seconds]` — CUSTOM: a one-shot airspace occupancy summary (the `airspace_summary` catalog
+// op). Runs a passive Wi-Fi AP scan and, when BLE is active, a short passive BLE observe, and reports the
+// counts that matter for a quick "what's around me": APs with the open / WPS-exposed / hidden splits, and
+// BLE advertisers with the known-tracker count. Emits one `LXVEOS/1 snapshot` event for the CC dashboard.
+// Purely analytic over passive scans — transmits nothing. WIFI-gated; BLE counts are best-effort when present.
+static int cmd_airspace(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_WIFI)) {
+        printf("wifi capability is not active on this build — cannot summarize airspace\n");
+        return 0;
+    }
+    long bsecs = 4;
+    if (argc >= 2 && !parse_int_arg(argv[1], 1, 30, &bsecs)) {
+        printf("usage: airspace [ble_seconds 1-30]  (default 4)\n");
+        return 0;
+    }
+    bool ble = lxveos_cap_active(LXVEOS_CAP_BLE);
+    printf("airspace summary — passive Wi-Fi scan%s (listen only — no frames sent)...\n",
+           ble ? " + BLE observe" : "");
+    static lxveos_wifi_ap_t aps[64];
+    size_t naps = 0;
+    esp_err_t e = lxveos_wifi_scan(aps, sizeof(aps) / sizeof(aps[0]), &naps);
+    if (e != ESP_OK) {
+        printf("wifi scan failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    unsigned nopen = 0, nwps = 0, nhidden = 0;
+    for (size_t i = 0; i < naps; i++) {
+        if (lxveos_wifi_is_open(aps[i].authmode)) {
+            nopen++;
+        }
+        if (aps[i].wps) {
+            nwps++;
+        }
+        if (aps[i].ssid[0] == '\0') {
+            nhidden++;
+        }
+    }
+    size_t nble = 0;
+    unsigned trackers = 0;
+    if (ble) {
+        static lxveos_ble_dev_t devs[48];
+        esp_err_t be = lxveos_ble_scan((uint32_t)bsecs, devs, sizeof(devs) / sizeof(devs[0]), &nble);
+        if (be == ESP_OK) {
+            for (size_t i = 0; i < nble; i++) {
+                if (devs[i].tracker) {
+                    trackers++;
+                }
+            }
+        } else {
+            printf("(BLE observe failed: %s — Wi-Fi summary only)\n", esp_err_to_name(be));
+            ble = false;
+        }
+    }
+    printf("Wi-Fi: %u AP(s) — %u open, %u WPS-exposed, %u hidden\n", (unsigned)naps, nopen, nwps, nhidden);
+    if (ble) {
+        printf("BLE:   %u advertiser(s) — %u known tracker(s)\n", (unsigned)nble, trackers);
+    } else {
+        printf("BLE:   (radio not active — Wi-Fi summary only)\n");
+    }
+    if (lxveos_evt_enabled()) {
+        char line[128];
+        size_t n = lxveos_evt_begin(line, sizeof(line), "snapshot");
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "aps", (unsigned long)naps);
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "open", nopen);
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "wps", nwps);
+        if (ble) {
+            n = lxveos_evt_kv_uint(line, sizeof(line), n, "bles", (unsigned long)nble);
+            n = lxveos_evt_kv_uint(line, sizeof(line), n, "trackers", trackers);
+        }
+        printf("%s\n", line);
+    }
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -2061,6 +2139,7 @@ static void register_commands(void)
         {.command = "eviltwin", .help = "Passive evil-twin/rogue-AP detector (duplicate-BSSID ESSIDs)", .func = &cmd_eviltwin},
         {.command = "apaudit", .help = "Passive AP security audit — flag open/WEP/legacy-WPA + WPS-enabled networks (listen only)", .func = &cmd_apaudit},
         {.command = "wardrive", .help = "Passive Wi-Fi wardrive CSV export (bssid,ssid,ch,rssi,auth per line)", .func = &cmd_wardrive},
+        {.command = "airspace", .help = "Airspace occupancy summary: airspace [ble_seconds] — AP (open/WPS/hidden) + BLE (tracker) counts (listen only)", .func = &cmd_airspace},
         {.command = "blescan", .help = "Passive BLE device scan (+vendor/appearance/service-UUIDs): blescan [seconds] (listen only)", .func = &cmd_blescan},
         {.command = "bleflood", .help = "Passive BLE advert-flood/spam detector: bleflood [seconds] (listen only)", .func = &cmd_bleflood},
         {.command = "btracker", .help = "Passive BLE item-tracker/stalking detector (AirTag/Tile/SmartTag/Chipolo/PebbleBee/GoogleFMN): btracker [seconds]", .func = &cmd_btracker},

@@ -174,6 +174,7 @@ _CLI_TO_SLUGS = {
     "stations": {"wifi_sta_scan"},
     "probes": {"wifi_probe_scan"},
     "capture": {"eapol_capture"},
+    "airspace": {"airspace_summary"},
     "wardrive": {"wifi_wardrive"},
     "blescan": {"ble_scan"},
     "defend": {"deauth_detect"},
