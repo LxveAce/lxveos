@@ -175,7 +175,8 @@ def board_info_h(bid, b):
         has_pins = all(isinstance(pins.get(k), int) for k in need)
         lines.append(f'#define LXVEOS_DISP_HAS_PINS     {1 if has_pins else 0}')
         if has_pins:
-            bl = (d.get("backlight") or {}).get("pin")
+            bl = d.get("backlight") or {}
+            bl_pin = bl.get("pin")
             lines += [
                 f'#define LXVEOS_DISP_PIN_SCLK     {pins.get("sclk", -1)}',
                 f'#define LXVEOS_DISP_PIN_MOSI     {pins.get("mosi", -1)}',
@@ -183,7 +184,16 @@ def board_info_h(bid, b):
                 f'#define LXVEOS_DISP_PIN_CS       {pins.get("cs", -1)}',
                 f'#define LXVEOS_DISP_PIN_DC       {pins.get("dc", -1)}',
                 f'#define LXVEOS_DISP_PIN_RST      {pins.get("rst", -1)}',
-                f'#define LXVEOS_DISP_PIN_BL       {bl if isinstance(bl, int) else -1}',
+                f'#define LXVEOS_DISP_PIN_BL       {bl_pin if isinstance(bl_pin, int) else -1}',
+                # Backlight drive: LEDC PWM (dimmable) vs plain GPIO on/off, and the level that means "on"
+                # (BL is active-HIGH on the CYD). The BSP configures LEDC when BL_PWM, else a push-pull GPIO.
+                f'#define LXVEOS_DISP_BL_PWM       {1 if bl.get("pwm") else 0}',
+                f'#define LXVEOS_DISP_BL_ACTIVE_LEVEL {1 if bl.get("active_level", 1) else 0}',
+                # Panel column/row offset (esp_lcd_panel_set_gap): a controller's visible-window origin can be
+                # shifted from the RAM origin (common on ST7789 cuts). 0/0 on the CYD; carried so a shifted
+                # panel is a manifest edit, not a code change. col_offset/row_offset are null-safe -> 0.
+                f'#define LXVEOS_DISP_GAP_X        {d.get("col_offset") or 0}',
+                f'#define LXVEOS_DISP_GAP_Y        {d.get("row_offset") or 0}',
             ]
     # Input devices as an X-macro list so the board layer can iterate them at compile time:
     #   #define X(class, controller, bus, lvgl_indev) ...   then   LXVEOS_INPUT_LIST(X)

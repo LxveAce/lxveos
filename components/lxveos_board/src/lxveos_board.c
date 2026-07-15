@@ -12,6 +12,7 @@
 #include "nvs.h"
 #if LXVEOS_DISP_HAS_PINS
 #include "driver/gpio.h"
+#include "driver/ledc.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
 #include "esp_lcd_panel_io.h"
@@ -79,6 +80,56 @@ static esp_lcd_panel_io_handle_t s_panel_io;      // valid after a successful br
 static esp_lcd_panel_handle_t    s_panel_handle;  // concrete panel, valid after create_panel()
 static uint8_t s_probe_d3[3];                     // RDID4 (0xD3) read at bring-up: 00 93 41 => ILI9341
 
+#if LXVEOS_DISP_PIN_BL >= 0
+// Backlight PWM: one low-speed LEDC timer + channel on the BL pin, 10-bit @ 5 kHz (well above flicker,
+// gentle on the transistor). bsp_display_backlight_set() maps 0-100% to duty, honouring BL_ACTIVE_LEVEL
+// (active-HIGH on the CYD -> higher duty = brighter; an active-LOW panel is the inverted duty).
+#define LXVEOS_BL_LEDC_MODE     LEDC_LOW_SPEED_MODE
+#define LXVEOS_BL_LEDC_TIMER    LEDC_TIMER_0
+#define LXVEOS_BL_LEDC_CHANNEL  LEDC_CHANNEL_0
+#define LXVEOS_BL_DUTY_MAX      ((1 << 10) - 1)   // 10-bit resolution
+static bool s_bl_pwm;   // true once the LEDC channel is configured (else fall back to GPIO on/off)
+
+// Configure the backlight and turn it on. LEDC PWM when the manifest marks the panel dimmable
+// (LXVEOS_DISP_BL_PWM), otherwise a plain push-pull GPIO driven to the active level.
+static esp_err_t backlight_init(void)
+{
+#if LXVEOS_DISP_BL_PWM
+    const ledc_timer_config_t tcfg = {
+        .speed_mode = LXVEOS_BL_LEDC_MODE,
+        .timer_num = LXVEOS_BL_LEDC_TIMER,
+        .duty_resolution = LEDC_TIMER_10_BIT,
+        .freq_hz = 5000,
+        .clk_cfg = LEDC_AUTO_CLK,
+    };
+    ESP_RETURN_ON_ERROR(ledc_timer_config(&tcfg), TAG, "backlight ledc timer");
+    const ledc_channel_config_t ccfg = {
+        .gpio_num = LXVEOS_DISP_PIN_BL,
+        .speed_mode = LXVEOS_BL_LEDC_MODE,
+        .channel = LXVEOS_BL_LEDC_CHANNEL,
+        .timer_sel = LXVEOS_BL_LEDC_TIMER,
+        .duty = 0,
+        .hpoint = 0,
+    };
+    ESP_RETURN_ON_ERROR(ledc_channel_config(&ccfg), TAG, "backlight ledc channel");
+    s_bl_pwm = true;
+    ESP_LOGI(TAG, "backlight LEDC PWM on GPIO%d (active-%s)", LXVEOS_DISP_PIN_BL,
+             LXVEOS_DISP_BL_ACTIVE_LEVEL ? "HIGH" : "LOW");
+    return bsp_display_backlight_set(100);   // full brightness
+#else
+    const gpio_config_t blcfg = {
+        .pin_bit_mask = 1ULL << LXVEOS_DISP_PIN_BL,
+        .mode = GPIO_MODE_OUTPUT,
+    };
+    ESP_RETURN_ON_ERROR(gpio_config(&blcfg), TAG, "backlight gpio");
+    gpio_set_level(LXVEOS_DISP_PIN_BL, LXVEOS_DISP_BL_ACTIVE_LEVEL);   // on
+    ESP_LOGI(TAG, "backlight GPIO%d -> on (active-%s)", LXVEOS_DISP_PIN_BL,
+             LXVEOS_DISP_BL_ACTIVE_LEVEL ? "HIGH" : "LOW");
+    return ESP_OK;
+#endif
+}
+#endif  // LXVEOS_DISP_PIN_BL >= 0
+
 // Bring up the display SPI bus + esp_lcd panel-IO handle from the generated GPIOs (LXVEOS_DISP_PIN_*).
 // This is the transport half; creating the concrete panel (ST7789 built-in vs ILI9341 managed, per the
 // resolved identity) + reset/init/backlight/LVGL is the next increment. The pins are community-verified
@@ -124,16 +175,10 @@ static esp_err_t bring_up_panel_io(void)
     s_probe_d3[1] = idd3[1];
     s_probe_d3[2] = idd3[2];
 
-    // Backlight on (GPIO21, active-HIGH on the CYD). Simple push-pull drive for this probe; LEDC PWM
-    // dimming arrives with the panel driver. A lit backlight is the visible "this is the CYD" signal.
+    // Backlight up (LEDC PWM on the CYD's GPIO21, dimmable; see backlight_init). A lit backlight is the
+    // visible "this is the CYD" signal, and bsp_display_backlight_set() can dim it from here on.
 #if LXVEOS_DISP_PIN_BL >= 0
-    const gpio_config_t blcfg = {
-        .pin_bit_mask = 1ULL << LXVEOS_DISP_PIN_BL,
-        .mode = GPIO_MODE_OUTPUT,
-    };
-    ESP_RETURN_ON_ERROR(gpio_config(&blcfg), TAG, "backlight gpio");
-    gpio_set_level(LXVEOS_DISP_PIN_BL, 1);
-    ESP_LOGI(TAG, "backlight GPIO%d -> HIGH", LXVEOS_DISP_PIN_BL);
+    ESP_RETURN_ON_ERROR(backlight_init(), TAG, "backlight");
 #endif
     return ESP_OK;
 }
@@ -159,6 +204,8 @@ static esp_err_t create_panel(void)
     }
     ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(s_panel_handle), TAG, "panel reset");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_init(s_panel_handle), TAG, "panel init");
+    // Visible-window origin offset (0/0 on the CYD; non-zero for shifted panel cuts, from the manifest).
+    esp_lcd_panel_set_gap(s_panel_handle, LXVEOS_DISP_GAP_X, LXVEOS_DISP_GAP_Y);
     esp_lcd_panel_invert_color(s_panel_handle, !is_ili9341);   // ST7789 needs inversion; ILI9341 does not
     esp_lcd_panel_disp_on_off(s_panel_handle, true);
 
@@ -210,8 +257,26 @@ esp_err_t bsp_display_get_caps(lxve_display_caps_t *out)
 
 esp_err_t bsp_display_backlight_set(uint8_t pct)
 {
-    (void)pct;
-    return ESP_OK;  // TODO(M0): PWM backlight per board_info.h
+    if (pct > 100) {
+        pct = 100;
+    }
+#if LXVEOS_DISP_HAS_PINS && LXVEOS_DISP_PIN_BL >= 0
+    if (s_bl_pwm) {
+        uint32_t duty = (uint32_t)pct * LXVEOS_BL_DUTY_MAX / 100;
+#if !LXVEOS_DISP_BL_ACTIVE_LEVEL
+        duty = LXVEOS_BL_DUTY_MAX - duty;   // active-LOW panel: invert so 100% is still brightest
+#endif
+        ESP_RETURN_ON_ERROR(ledc_set_duty(LXVEOS_BL_LEDC_MODE, LXVEOS_BL_LEDC_CHANNEL, duty),
+                            TAG, "backlight duty");
+        return ledc_update_duty(LXVEOS_BL_LEDC_MODE, LXVEOS_BL_LEDC_CHANNEL);
+    }
+    // Non-PWM panel: on/off only. Any non-zero request is "on" at the active level.
+    gpio_set_level(LXVEOS_DISP_PIN_BL, pct ? LXVEOS_DISP_BL_ACTIVE_LEVEL : !LXVEOS_DISP_BL_ACTIVE_LEVEL);
+    return ESP_OK;
+#else
+    (void)pct;   // display board with no backlight pin in the manifest yet
+    return ESP_OK;
+#endif
 }
 
 // Opaque esp_lcd handles for the LVGL port layer (lxveos_gui). NULL until create_panel() runs, and on

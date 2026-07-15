@@ -114,6 +114,31 @@ def test_cyd_pins_match_verified_pinout():
         assert line in h, f"CYD pinout drift: missing `{line}`"
 
 
+def test_cyd_backlight_and_gap_defines():
+    """The CYD emits its backlight drive (PWM, active-HIGH) and panel gap (0/0) so the BSP configures LEDC
+    dimming + esp_lcd_panel_set_gap from the manifest rather than hard-coded constants."""
+    h = g.board_info_h("cyd_2432S028_classic", BOARDS["cyd_2432S028_classic"])
+    for line in ("#define LXVEOS_DISP_BL_PWM       1",
+                 "#define LXVEOS_DISP_BL_ACTIVE_LEVEL 1",
+                 "#define LXVEOS_DISP_GAP_X        0",
+                 "#define LXVEOS_DISP_GAP_Y        0"):
+        assert line in h, f"CYD backlight/gap drift: missing `{line}`"
+
+
+def test_backlight_gap_defines_track_pins():
+    """The backlight-drive + gap defines are emitted exactly when the pin block is (they sit inside the same
+    has-pins guard the BSP compiles against); a display board without verified pins emits none of them."""
+    bl_gap = ("LXVEOS_DISP_BL_PWM", "LXVEOS_DISP_BL_ACTIVE_LEVEL", "LXVEOS_DISP_GAP_X", "LXVEOS_DISP_GAP_Y")
+    for bid, b in BOARDS.items():
+        h = g.board_info_h(bid, b)
+        if "#define LXVEOS_DISP_HAS_PINS     1" in h:
+            for d in bl_gap:
+                assert f"#define {d}" in h, f"{bid}: has pins but missing {d}"
+        else:
+            for d in bl_gap:
+                assert d not in h, f"{bid}: emitted {d} without a pins block"
+
+
 def test_input_summary_emitted():
     """board_info.h carries LXVEOS_INPUT_COUNT matching the manifest and an LXVEOS_INPUT_LIST X-macro
     with one X(...) row per input device (none on headless boards)."""
