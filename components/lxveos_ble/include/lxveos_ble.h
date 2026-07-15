@@ -107,6 +107,11 @@ const char *lxveos_ble_tracker_str(uint8_t tracker);
 // subcategory, and anything not in the known set falls through to "appr:0x<hex>" — never mis-labelled.
 void lxveos_ble_appearance_str(uint16_t appearance, char *buf, size_t buflen);
 
+// If `d` is a Flipper Zero, return its case colour ("Black"/"White"/"Transparent"); else NULL. Detection is a
+// match on the advertised 16-bit service UUIDs 0x3081/0x3082/0x3083 (parsed into d->svc_uuids). Ported from
+// ESP32 Marauder "Flipper Sniff" (MIT — see CREDITS.md). Pure over the scanned device — host-tested.
+const char *lxveos_ble_flipper_color(const lxveos_ble_dev_t *d);
+
 // ── BLE HID keystroke injection (the `ble_hid_inject` op, "BadBLE") — OFFENSIVE TX, arm-gated ─────────
 // LxveOS advertises as a standard BLE HID keyboard ("LxveOS-KB"); when a target host pairs and subscribes
 // to the input report, it plays `script` as keystrokes — a Rubber-Ducky primitive over BLE, for authorized

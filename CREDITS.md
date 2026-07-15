@@ -6,8 +6,9 @@ is reused directly. The full per-project map is in [`THIRD-PARTY-LICENSES.md`](T
 
 ## Direct code reuse (MIT — vendored with notice)
 - **ESP32 Marauder** — Just Call Me Koko (MIT), *Copyright (c) 2020 Just Call Me Koko* — Wi-Fi scan/monitor,
-  wardrive WiGLE CSV, Evil Portal, serial protocol, the passive Pwnagotchi-presence detector ported from its
-  "Detect Pwnagotchi" menu, and a BLE wardrive CSV export. Full MIT license text retained in `THIRD-PARTY-LICENSES.md`.
+  wardrive WiGLE CSV, Evil Portal, serial protocol, the passive Pwnagotchi-presence and Flipper-Zero detectors
+  (ported from its "Detect Pwnagotchi" / "Flipper Sniff" menus), and a BLE wardrive CSV export. Full MIT license
+  text retained in `THIRD-PARTY-LICENSES.md`.
 - **ESP32-DIV** — CiferTech (MIT) — recon/scan/GPS/SD paths (jammer code excluded, by policy).
 - **risinek/esp32-wifi-penetration-tool** (MIT) — ESP-IDF PMKID / EAPOL-handshake capture approach (LxveOS emits
   hashcat-22000 `WPA*01`/`WPA*02` lines directly; PCAP/HCCAPX export is not shipped).

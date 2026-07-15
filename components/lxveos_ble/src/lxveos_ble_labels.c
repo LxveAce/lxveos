@@ -132,3 +132,26 @@ void lxveos_ble_appearance_str(uint16_t appearance, char *buf, size_t buflen)
         snprintf(buf, buflen, "appr:0x%04x", appearance);
     }
 }
+
+const char *lxveos_ble_flipper_color(const lxveos_ble_dev_t *d)
+{
+    if (d == NULL) {
+        return NULL;
+    }
+    // Match on the already-parsed 16-bit service UUIDs (AD type 0x02/0x03) — a proper AD-structure match, so
+    // (unlike Marauder's raw-payload byte scan) an unrelated field that merely contains these bytes can't
+    // false-match. svc_uuid_count is capped at the array size by the parser; bound defensively anyway.
+    uint8_t n = d->svc_uuid_count;
+    if (n > 8) {
+        n = 8;
+    }
+    for (uint8_t i = 0; i < n; i++) {
+        switch (d->svc_uuids[i]) {
+        case LXVEOS_BLE_UUID_FLIPPER_BLACK:       return "Black";
+        case LXVEOS_BLE_UUID_FLIPPER_WHITE:       return "White";
+        case LXVEOS_BLE_UUID_FLIPPER_TRANSPARENT: return "Transparent";
+        default: break;
+        }
+    }
+    return NULL;
+}

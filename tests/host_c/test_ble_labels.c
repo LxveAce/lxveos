@@ -66,12 +66,44 @@ static void test_appearance_str(void)
     assert(buf[0] == 'X');
 }
 
+static void test_flipper_color(void)
+{
+    lxveos_ble_dev_t d = {0};
+    // A Flipper advertises one of 0x3081/0x3082/0x3083 among its service UUIDs -> case colour.
+    d.svc_uuids[0] = 0x180f;   // Battery — an unrelated standard UUID alongside it
+    d.svc_uuids[1] = 0x3082;
+    d.svc_uuid_count = 2;
+    assert(strcmp(lxveos_ble_flipper_color(&d), "White") == 0);
+    d.svc_uuids[0] = 0x3081;
+    d.svc_uuid_count = 1;
+    assert(strcmp(lxveos_ble_flipper_color(&d), "Black") == 0);
+    d.svc_uuids[0] = 0x3083;
+    assert(strcmp(lxveos_ble_flipper_color(&d), "Transparent") == 0);
+
+    // A non-Flipper advertiser (only standard UUIDs) is not matched.
+    lxveos_ble_dev_t n = {0};
+    n.svc_uuids[0] = 0x180f;
+    n.svc_uuids[1] = 0x1812;   // HID
+    n.svc_uuid_count = 2;
+    assert(lxveos_ble_flipper_color(&n) == NULL);
+
+    // count bounds the match: a Flipper UUID sitting past svc_uuid_count is ignored (stale slot).
+    lxveos_ble_dev_t m = {0};
+    m.svc_uuids[0] = 0x3081;
+    m.svc_uuid_count = 0;
+    assert(lxveos_ble_flipper_color(&m) == NULL);
+
+    // NULL is safe.
+    assert(lxveos_ble_flipper_color(NULL) == NULL);
+}
+
 int main(void)
 {
     test_company_name();
     test_service_name();
     test_tracker_str();
     test_appearance_str();
+    test_flipper_color();
     printf("test_ble_labels: all tests passed\n");
     return 0;
 }

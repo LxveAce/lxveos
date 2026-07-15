@@ -1436,6 +1436,64 @@ static int cmd_blewardrive(int argc, char **argv)
     return 0;
 }
 
+// `flipper [seconds]` — passive Flipper Zero detector (the `flipper_detect` catalog op). One passive BLE scan,
+// flags advertisers carrying a Flipper service UUID (0x3081/82/83) and names the case colour. Ported from
+// ESP32 Marauder "Flipper Sniff" (see CREDITS.md). Listen only — advertises nothing, sends no scan requests.
+static int cmd_flipper(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_BLE)) {
+        printf("ble capability is not active on this build — cannot scan\n");
+        return 0;
+    }
+    uint32_t secs = 6;
+    if (argc >= 2) {
+        long v = strtol(argv[1], NULL, 10);
+        if (v >= 1 && v <= 60) {
+            secs = (uint32_t)v;
+        } else {
+            printf("usage: flipper [seconds 1-60]  (default 6)\n");
+            return 0;
+        }
+    }
+    printf("passive Flipper Zero scan for %us (GAP observe — advertises nothing)...\n", (unsigned)secs);
+    static lxveos_ble_dev_t devs[48];
+    size_t found = 0;
+    esp_err_t e = lxveos_ble_scan(secs, devs, sizeof(devs) / sizeof(devs[0]), &found);
+    if (e != ESP_OK) {
+        printf("ble scan failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    unsigned hits = 0;
+    for (size_t i = 0; i < found; i++) {
+        const lxveos_ble_dev_t *d = &devs[i];
+        const char *color = lxveos_ble_flipper_color(d);
+        if (color == NULL) {
+            continue;
+        }
+        hits++;
+        char nm[32];
+        sanitize_copy(nm, sizeof(nm), d->name);   // device-supplied name -> console-safe
+        printf("  flipper(%s) %02x:%02x:%02x:%02x:%02x:%02x  rssi %ddBm  %s\n",
+               color, d->addr[5], d->addr[4], d->addr[3], d->addr[2], d->addr[1], d->addr[0], d->rssi, nm);
+    }
+    if (hits) {
+        printf("verdict: ⚠ %u Flipper Zero(s) present (%u device(s) scanned)\n", hits, (unsigned)found);
+    } else {
+        printf("verdict: clear — no Flipper Zero seen (%u device(s) scanned)\n", (unsigned)found);
+    }
+    if (lxveos_evt_enabled() && hits > 0) {
+        char line[128];
+        size_t n = lxveos_evt_begin(line, sizeof(line), "alert");
+        n = lxveos_evt_kv(line, sizeof(line), n, "kind", "flipper");
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "count", hits);
+        printf("%s\n", line);
+    }
+    return 0;
+}
+
 // `arm [token]` — two-factor enable for offensive-TX ops. `arm` (no token) starts a request and prints a
 // one-time confirm code; `arm <token>` confirms it within 30s. Offensive TX is compiled in by default; only
 // a conservative LXVEOS_TX_DISABLE build has nothing to arm. Recon/defense ops never need arming. The gate
@@ -2441,6 +2499,7 @@ static void register_commands(void)
         {.command = "blescan", .help = "Passive BLE device scan (+vendor/appearance/service-UUIDs): blescan [seconds] (listen only)", .func = &cmd_blescan},
         {.command = "bleflood", .help = "Passive BLE advert-flood/spam detector: bleflood [seconds] (listen only)", .func = &cmd_bleflood},
         {.command = "btracker", .help = "Passive BLE item-tracker/stalking detector (AirTag/Tile/SmartTag/Chipolo/PebbleBee/GoogleFMN): btracker [seconds]", .func = &cmd_btracker},
+        {.command = "flipper", .help = "Passive Flipper Zero detector (BLE service-UUID match): flipper [seconds] (listen only)", .func = &cmd_flipper},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
         {.command = "bridge", .help = "Toggle machine-readable LXVEOS/1 event emission for the CC bridge: bridge on|off|status", .func = &cmd_bridge},
