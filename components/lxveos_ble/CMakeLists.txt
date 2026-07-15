@@ -6,4 +6,5 @@ idf_component_register(
     SRCS "src/lxveos_ble.c" "src/lxveos_ble_hid.c"
     INCLUDE_DIRS "include"
     REQUIRES bt lxveos_arm
+    PRIV_REQUIRES lxveos_hidmap
 )

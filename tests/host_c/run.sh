@@ -37,4 +37,10 @@ build_arm -DLXVEOS_TX_DISABLE  # conservative build: the emitter is stripped
     "$here/test_cliutil.c" "$root/components/lxveos_cliutil/src/lxveos_cliutil.c" -o "$out"
 "$out"
 
+# --- HID keystroke map (US-layout ascii->usb-hid + named keys): dependency-free, no stubs needed ---
+"$CC" -std=gnu11 -O1 -Wall \
+    -I"$root/components/lxveos_hidmap/include" \
+    "$here/test_hidmap.c" "$root/components/lxveos_hidmap/src/lxveos_hidmap.c" -o "$out"
+"$out"
+
 echo "host-c: all tests passed"
