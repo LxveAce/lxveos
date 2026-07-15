@@ -40,10 +40,10 @@ dashboard poll, not an event.
 | `ap` | `bssid`(mac) `ssid`(hex) `ch` `rssi` `auth` | `scan` | one per AP found |
 | `sta` | `mac`(mac) `ap`(mac) `rssi` `frames` `essid`(hex) | `stations` | client station; `ap` = associated BSSID, `essid` its ESSID if a beacon was also seen, `frames` = data frames observed |
 | `probe` | `ssid`(hex) `seen` `rssi` | `probes` | one per directed SSID a nearby device is hunting for; `seen` = probe-request frames. No client MAC — the passive probe scan aggregates by SSID, not by device |
-| `ble` | `addr`(mac) `name`(hex) `rssi` `appearance` `svc`(hex) | `blescan` | fields present when known |
-| `hs` | `kind=pmkid\|eapol` `bssid`(mac) `sta`(mac) `essid`(hex) | `capture` | one per crackable capture; feeds Crack Lab |
+| `ble` | `addr`(mac) `type` `rssi` `name`(hex) `company` `fp` `appr` `tracker` | `blescan` | addr is MSB-first; `company`/`fp`/`appr`/`tracker`/`name` present only when the advert carried them. `company` = numeric Bluetooth-SIG company ID (names can contain spaces); `tracker` = item-tracker class (0 = none) |
+| `hs` | `kind=pmkid\|eapol` `line`(hashcat-22000) | `capture` | one per crackable artifact; `line` is the ready-to-crack WPA*01/WPA*02 line (token-safe, ESSID hex inside), forwarded straight to Crack Lab |
 | `pcap` | `id` `bytes` | `pcap_log` | a pcap segment was written (needs storage; HW) |
-| `arm` | `state=safe\|pending\|armed` `token`(pending only) `window`(s, pending) `idle`(s, armed) | `arm`/`disarm`/timeout | arm state change |
+| `arm` | `state=safe\|pending\|armed\|tx_disabled` `token`(pending only) `window`(s, pending) | `arm`/`disarm` | arm state change. `tx_disabled` = offensive TX compiled out (LXVEOS_TX_DISABLE). Also printed as human prose (always), so CC tracks arm state even with the bridge off |
 | `alert` | `kind=deauth\|eviltwin\|tracker\|bleflood\|blehid\|wps` `...`(kind-specific) | `defend`/`eviltwin`/`apaudit`/`bleflood`/`btracker`/`blehid` | a detector fired |
 | `snapshot` | `aps` `stas` `bles` `alerts` | `recon` (custom) | airspace summary counts |
 | `done` | `of=<cmd>` `n=<count>` | any listing cmd | end-of-listing marker so CC knows the batch is complete |

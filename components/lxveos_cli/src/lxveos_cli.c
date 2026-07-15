@@ -473,6 +473,14 @@ static int cmd_sniff(int argc, char **argv)
 static void capture_emit_line(const char *line)
 {
     printf("  %s\n", line);
+    // Bridge: forward the ready-to-crack artifact straight to CC's Crack Lab. A hashcat-22000 line is
+    // already token-safe (no spaces — its ESSID field is hex) but can run several hundred bytes for a
+    // WPA*02 handshake, so emit it with a direct printf rather than the bounded evt builder (no fixed
+    // buffer to truncate it). `kind` distinguishes the WPA*01 PMKID from the WPA*02 EAPOL handshake.
+    if (lxveos_evt_enabled() && line != NULL) {
+        const char *kind = (strncmp(line, "WPA*01*", 7) == 0) ? "pmkid" : "eapol";
+        printf("LXVEOS/1 hs kind=%s line=%s\n", kind, line);
+    }
 }
 
 // `capture [seconds]` — passive EAPOL/PMKID capture (the `eapol_capture` catalog operation). Listens in
@@ -1015,6 +1023,40 @@ static int cmd_blescan(int argc, char **argv)
             printf("\n");
         }
     }
+    if (lxveos_evt_enabled()) {
+        for (size_t i = 0; i < found; i++) {
+            const lxveos_ble_dev_t *d = &devs[i];
+            // addr[] is little-endian (controller order); reverse it to the MSB-first MAC the table shows.
+            uint8_t a[6] = {d->addr[5], d->addr[4], d->addr[3], d->addr[2], d->addr[1], d->addr[0]};
+            char line[224];
+            size_t n = lxveos_evt_begin(line, sizeof(line), "ble");
+            n = lxveos_evt_kv_mac(line, sizeof(line), n, "addr", a);
+            n = lxveos_evt_kv(line, sizeof(line), n, "type", lxveos_ble_addr_type_str(d->addr_type));
+            n = lxveos_evt_kv_int(line, sizeof(line), n, "rssi", d->rssi);
+            if (d->name_len) {
+                n = lxveos_evt_kv_hex(line, sizeof(line), n, "name", (const uint8_t *)d->name, d->name_len);
+            }
+            if (d->has_mfg) {
+                // numeric company ID (not the name — company names can contain spaces); CC maps it.
+                n = lxveos_evt_kv_uint(line, sizeof(line), n, "company", d->company_id);
+            }
+            if (d->fastpair) {
+                n = lxveos_evt_kv_int(line, sizeof(line), n, "fp", 1);
+            }
+            if (d->appearance_present) {
+                n = lxveos_evt_kv_uint(line, sizeof(line), n, "appr", d->appearance);
+            }
+            if (d->tracker) {
+                n = lxveos_evt_kv_uint(line, sizeof(line), n, "tracker", d->tracker);
+            }
+            printf("%s\n", line);
+        }
+        char done[64];
+        size_t dn = lxveos_evt_begin(done, sizeof(done), "done");
+        dn = lxveos_evt_kv(done, sizeof(done), dn, "of", "blescan");
+        dn = lxveos_evt_kv_uint(done, sizeof(done), dn, "n", (unsigned long)found);
+        printf("%s\n", done);
+    }
     printf("%u BLE device(s) in range\n", (unsigned)found);
     return 0;
 }
@@ -1218,11 +1260,17 @@ static int cmd_arm(int argc, char **argv)
     if (!lxveos_arm_tx_compiled()) {
         printf("offensive TX is compiled OUT of this build (LXVEOS_TX_DISABLE set) — nothing to arm.\n");
         printf("recon/defense ops need no arming; they run as usual.\n");
+        if (lxveos_evt_enabled()) {
+            printf("LXVEOS/1 arm state=tx_disabled\n");
+        }
         return 0;
     }
     if (argc >= 2 && strcmp(argv[1], "status") == 0) {
         // Read-only query — never mutates arm state (unlike bare `arm`, which requests).
         printf("arm state: %s\n", lxveos_arm_state_name(lxveos_arm_state()));
+        if (lxveos_evt_enabled()) {
+            printf("LXVEOS/1 arm state=%s\n", lxveos_arm_state_name(lxveos_arm_state()));
+        }
         return 0;
     }
     if (argc >= 2) {
@@ -1234,6 +1282,9 @@ static int cmd_arm(int argc, char **argv)
             printf("arm confirm failed (%s) — state now %s. Re-run 'arm' to start over.\n",
                    esp_err_to_name(e), lxveos_arm_state_name(lxveos_arm_state()));
         }
+        if (lxveos_evt_enabled()) {
+            printf("LXVEOS/1 arm state=%s\n", lxveos_arm_state_name(lxveos_arm_state()));
+        }
         return 0;
     }
     // No-arg `arm`: report if already ARMED instead of re-requesting — otherwise "checking" would drop a live
@@ -1241,6 +1292,9 @@ static int cmd_arm(int argc, char **argv)
     if (lxveos_arm_state() == LXVEOS_ARM_ARMED) {
         printf("already ARMED — offensive TX permitted. Run 'disarm' to return to SAFE "
                "(also auto-disarms after inactivity).\n");
+        if (lxveos_evt_enabled()) {
+            printf("LXVEOS/1 arm state=armed\n");
+        }
         return 0;
     }
     uint32_t token = 0;
@@ -1250,6 +1304,10 @@ static int cmd_arm(int argc, char **argv)
         return 0;
     }
     printf("arm requested. Confirm within 30s:  arm %u\n", (unsigned)token);
+    if (lxveos_evt_enabled()) {
+        // window=30 mirrors CONFIRM_WINDOW_US in lxveos_arm.c (and the prose above).
+        printf("LXVEOS/1 arm state=pending token=%u window=30\n", (unsigned)token);
+    }
     return 0;
 }
 
@@ -1263,6 +1321,9 @@ static int cmd_disarm(int argc, char **argv)
     }
     lxveos_arm_disarm();
     printf("disarmed — state SAFE. Offensive TX not permitted.\n");
+    if (lxveos_evt_enabled()) {
+        printf("LXVEOS/1 arm state=safe\n");
+    }
     return 0;
 }
 
