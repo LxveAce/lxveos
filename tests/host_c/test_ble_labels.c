@@ -97,6 +97,82 @@ static void test_flipper_color(void)
     assert(lxveos_ble_flipper_color(NULL) == NULL);
 }
 
+static void test_meta(void)
+{
+    // A device advertising a Meta company ID (mfg data) is Meta.
+    lxveos_ble_dev_t d = {0};
+    d.has_mfg = true;
+    d.company_id = 0xFD5F;   // Oculus VR (Meta)
+    assert(lxveos_ble_is_meta(&d) == true);
+
+    // A Meta match can also come from an advertised service UUID.
+    lxveos_ble_dev_t s = {0};
+    s.svc_uuids[0] = 0x180f;  // Battery — unrelated standard UUID alongside it
+    s.svc_uuids[1] = 0x0D53;  // Luxottica (Ray-Ban Meta)
+    s.svc_uuid_count = 2;
+    assert(lxveos_ble_is_meta(&s) == true);
+
+    // Blocked wins: a device carrying BOTH a Meta ID and a deny-listed ID is NOT Meta (strips the
+    // Apple/Samsung/Microsoft popup-flood payloads that would otherwise false-match).
+    lxveos_ble_dev_t b = {0};
+    b.has_mfg = true;
+    b.company_id = 0xFD5F;    // Meta...
+    b.svc_uuids[0] = 0xFD5A;  // ...but also a SmartTag block signal -> denied
+    b.svc_uuid_count = 1;
+    assert(lxveos_ble_is_meta(&b) == false);
+
+    // A plain Apple advertiser (deny-listed, no Meta ID) is not Meta.
+    lxveos_ble_dev_t a = {0};
+    a.has_mfg = true;
+    a.company_id = 0x004C;    // Apple
+    assert(lxveos_ble_is_meta(&a) == false);
+
+    // A device with no Meta identifier at all is not Meta.
+    lxveos_ble_dev_t n = {0};
+    n.svc_uuids[0] = 0x1812;  // HID
+    n.svc_uuid_count = 1;
+    assert(lxveos_ble_is_meta(&n) == false);
+
+    // company_id is only a candidate when has_mfg is set (a stale company_id with has_mfg=false is ignored).
+    lxveos_ble_dev_t stale = {0};
+    stale.has_mfg = false;
+    stale.company_id = 0xFD5F;
+    assert(lxveos_ble_is_meta(&stale) == false);
+
+    // NULL is safe.
+    assert(lxveos_ble_is_meta(NULL) == false);
+}
+
+static void test_skimmer(void)
+{
+    // Exact default HC-0x BT-serial module names -> possible skimmer.
+    lxveos_ble_dev_t d = {0};
+    strcpy(d.name, "HC-05");
+    d.name_len = 5;
+    assert(lxveos_ble_is_skimmer(&d) == true);
+    strcpy(d.name, "HC-06");
+    assert(lxveos_ble_is_skimmer(&d) == true);
+    strcpy(d.name, "HC-03");
+    assert(lxveos_ble_is_skimmer(&d) == true);
+
+    // EXACT match only — a renamed or differently-cased module is not flagged (narrow heuristic).
+    lxveos_ble_dev_t r = {0};
+    strcpy(r.name, "HC-05-BT");
+    r.name_len = 8;
+    assert(lxveos_ble_is_skimmer(&r) == false);
+    strcpy(r.name, "hc-05");
+    r.name_len = 5;
+    assert(lxveos_ble_is_skimmer(&r) == false);
+
+    // A device with no advertised name is not flagged.
+    lxveos_ble_dev_t e = {0};
+    e.name_len = 0;
+    assert(lxveos_ble_is_skimmer(&e) == false);
+
+    // NULL is safe.
+    assert(lxveos_ble_is_skimmer(NULL) == false);
+}
+
 int main(void)
 {
     test_company_name();
@@ -104,6 +180,8 @@ int main(void)
     test_tracker_str();
     test_appearance_str();
     test_flipper_color();
+    test_meta();
+    test_skimmer();
     printf("test_ble_labels: all tests passed\n");
     return 0;
 }

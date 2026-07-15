@@ -7,6 +7,7 @@
 #include "lxveos_ble_internal.h"
 
 #include <stdio.h>
+#include <string.h>
 
 // A small table of Bluetooth SIG company identifiers — deliberately limited to vendors we are certain of
 // and that matter for BLE-spam attribution (Apple/Microsoft/Google/Samsung are the popup-flood payloads),
@@ -154,4 +155,78 @@ const char *lxveos_ble_flipper_color(const lxveos_ble_dev_t *d)
         }
     }
     return NULL;
+}
+
+// The Meta match set + the deny-list that wins over it (see lxveos_ble_internal.h). Ported from ESP32 Marauder
+// "Meta Detect". Kept SEPARATE from the item-tracker table on purpose: 0xFD5A is a SmartTag *tracker* signal
+// there but a *block* signal here.
+static const uint16_t META_IDS[] = {
+    LXVEOS_BLE_META_ID_0, LXVEOS_BLE_META_ID_1, LXVEOS_BLE_META_ID_2,
+    LXVEOS_BLE_META_ID_3, LXVEOS_BLE_META_ID_4, LXVEOS_BLE_META_ID_5,
+};
+static const uint16_t META_BLOCKED[] = {
+    LXVEOS_BLE_SVC_SMARTTAG, LXVEOS_BLE_META_BLOCK_SAMSUNG2, LXVEOS_BLE_CID_APPLE,
+    LXVEOS_BLE_CID_MICROSOFT, LXVEOS_BLE_META_BLOCK_PHONE,
+};
+
+static bool uint16_in(uint16_t v, const uint16_t *set, size_t n)
+{
+    for (size_t i = 0; i < n; i++) {
+        if (set[i] == v) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool lxveos_ble_is_meta(const lxveos_ble_dev_t *d)
+{
+    if (d == NULL) {
+        return false;
+    }
+    // Candidate 16-bit identifiers = manufacturer company ID (if present) + advertised service UUIDs. (Marauder
+    // also checks service-DATA UUIDs; LxveOS doesn't parse those into a general list, so this is the mfg+service
+    // subset — a faithful, slightly narrower match.) Blocked wins: any candidate in the deny-list => not Meta.
+    uint16_t cand[1 + 8];
+    size_t nc = 0;
+    if (d->has_mfg) {
+        cand[nc++] = d->company_id;
+    }
+    uint8_t su = d->svc_uuid_count;
+    if (su > 8) {
+        su = 8;
+    }
+    for (uint8_t i = 0; i < su; i++) {
+        cand[nc++] = d->svc_uuids[i];
+    }
+    for (size_t i = 0; i < nc; i++) {
+        if (uint16_in(cand[i], META_BLOCKED, sizeof(META_BLOCKED) / sizeof(META_BLOCKED[0]))) {
+            return false;
+        }
+    }
+    for (size_t i = 0; i < nc; i++) {
+        if (uint16_in(cand[i], META_IDS, sizeof(META_IDS) / sizeof(META_IDS[0]))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Card-skimmer default BT-serial module names (ESP32 Marauder "Detect Card Skimmers"). EXACT full-name match —
+// many gas-pump/ATM skimmers reuse an HC-0x SPP module with its stock name. NOTE: narrow heuristic — it also
+// flags legit hobby HC-0x modules (present as "possible", never definitive) and, since LxveOS scans BLE only,
+// won't see classic-BT-only modules. Faithful to what Marauder catches.
+static const char *SKIMMER_NAMES[] = {"HC-03", "HC-05", "HC-06"};
+
+bool lxveos_ble_is_skimmer(const lxveos_ble_dev_t *d)
+{
+    if (d == NULL || d->name_len == 0) {
+        return false;
+    }
+    for (size_t i = 0; i < sizeof(SKIMMER_NAMES) / sizeof(SKIMMER_NAMES[0]); i++) {
+        if (strcmp(d->name, SKIMMER_NAMES[i]) == 0) {
+            return true;
+        }
+    }
+    return false;
 }

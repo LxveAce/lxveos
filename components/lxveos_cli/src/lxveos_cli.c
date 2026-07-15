@@ -1501,6 +1501,127 @@ static int cmd_flipper(int argc, char **argv)
     return 0;
 }
 
+// `meta [seconds]` — passive Meta / Ray-Ban Meta glasses + Oculus detector (the `meta_detect` catalog op). One
+// passive BLE scan, flags advertisers whose mfg company ID or a service UUID is in the Meta set (a deny-list
+// strips Apple/Samsung/Microsoft popup-flood payloads first). Ported from ESP32 Marauder "Meta Detect" (see
+// CREDITS.md). Listen only — advertises nothing, sends no scan requests.
+static int cmd_meta(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_BLE)) {
+        printf("ble capability is not active on this build — cannot scan\n");
+        return 0;
+    }
+    uint32_t secs = 6;
+    if (argc >= 2) {
+        long v = strtol(argv[1], NULL, 10);
+        if (v >= 1 && v <= 60) {
+            secs = (uint32_t)v;
+        } else {
+            printf("usage: meta [seconds 1-60]  (default 6)\n");
+            return 0;
+        }
+    }
+    printf("passive Meta/Ray-Ban glasses scan for %us (GAP observe — advertises nothing)...\n", (unsigned)secs);
+    lxveos_ble_dev_t *devs = s_ble_scan;   // shared buffer (single-threaded CLI) — keeps DRAM small
+    size_t found = 0;
+    esp_err_t e = lxveos_ble_scan(secs, devs, LXVEOS_BLE_SCAN_MAX, &found);
+    if (e != ESP_OK) {
+        printf("ble scan failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    unsigned hits = 0;
+    for (size_t i = 0; i < found; i++) {
+        const lxveos_ble_dev_t *d = &devs[i];
+        if (!lxveos_ble_is_meta(d)) {
+            continue;
+        }
+        hits++;
+        char nm[32];
+        sanitize_copy(nm, sizeof(nm), d->name);   // device-supplied name -> console-safe
+        printf("  meta %02x:%02x:%02x:%02x:%02x:%02x  rssi %ddBm  %s\n",
+               d->addr[5], d->addr[4], d->addr[3], d->addr[2], d->addr[1], d->addr[0], d->rssi, nm);
+    }
+    if (hits) {
+        printf("verdict: ⚠ %u Meta device(s) present (%u device(s) scanned)\n", hits, (unsigned)found);
+    } else {
+        printf("verdict: clear — no Meta device seen (%u device(s) scanned)\n", (unsigned)found);
+    }
+    if (lxveos_evt_enabled() && hits > 0) {
+        char line[128];
+        size_t n = lxveos_evt_begin(line, sizeof(line), "alert");
+        n = lxveos_evt_kv(line, sizeof(line), n, "kind", "meta");
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "count", hits);
+        printf("%s\n", line);
+    }
+    return 0;
+}
+
+// `skimmer [seconds]` — passive card-skimmer heuristic (the `skimmer_detect` catalog op). One passive BLE scan,
+// flags advertisers whose local name is EXACTLY a default HC-0x BT-serial module name (HC-03/05/06) — the stock
+// modules cheap skimmers reuse. Ported from ESP32 Marauder "Detect Card Skimmers" (see CREDITS.md). NARROW: also
+// flags legit hobby HC-0x modules (shown as "possible"), and BLE-only misses classic-BT-only skimmers. Listen
+// only — advertises nothing, sends no scan requests.
+static int cmd_skimmer(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_BLE)) {
+        printf("ble capability is not active on this build — cannot scan\n");
+        return 0;
+    }
+    uint32_t secs = 6;
+    if (argc >= 2) {
+        long v = strtol(argv[1], NULL, 10);
+        if (v >= 1 && v <= 60) {
+            secs = (uint32_t)v;
+        } else {
+            printf("usage: skimmer [seconds 1-60]  (default 6)\n");
+            return 0;
+        }
+    }
+    printf("passive card-skimmer scan for %us (GAP observe — advertises nothing)...\n", (unsigned)secs);
+    lxveos_ble_dev_t *devs = s_ble_scan;   // shared buffer (single-threaded CLI) — keeps DRAM small
+    size_t found = 0;
+    esp_err_t e = lxveos_ble_scan(secs, devs, LXVEOS_BLE_SCAN_MAX, &found);
+    if (e != ESP_OK) {
+        printf("ble scan failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    unsigned hits = 0;
+    for (size_t i = 0; i < found; i++) {
+        const lxveos_ble_dev_t *d = &devs[i];
+        if (!lxveos_ble_is_skimmer(d)) {
+            continue;
+        }
+        hits++;
+        char nm[32];
+        sanitize_copy(nm, sizeof(nm), d->name);   // device-supplied name -> console-safe
+        printf("  possible-skimmer %02x:%02x:%02x:%02x:%02x:%02x  rssi %ddBm  name=%s\n",
+               d->addr[5], d->addr[4], d->addr[3], d->addr[2], d->addr[1], d->addr[0], d->rssi, nm);
+    }
+    if (hits) {
+        // Deliberately hedged: a default-named BT-serial module is only a *possible* skimmer (legit hobby
+        // modules share the name; BLE-only won't see classic-BT-only skimmers). Never states it as certain.
+        printf("verdict: ⚠ %u default-named BT-serial module(s) — possible skimmer, verify in person "
+               "(%u device(s) scanned)\n", hits, (unsigned)found);
+    } else {
+        printf("verdict: clear — no default-named BT-serial module seen (%u device(s) scanned)\n",
+               (unsigned)found);
+    }
+    if (lxveos_evt_enabled() && hits > 0) {
+        char line[128];
+        size_t n = lxveos_evt_begin(line, sizeof(line), "alert");
+        n = lxveos_evt_kv(line, sizeof(line), n, "kind", "skimmer");
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "count", hits);
+        printf("%s\n", line);
+    }
+    return 0;
+}
+
 // `arm [token]` — two-factor enable for offensive-TX ops. `arm` (no token) starts a request and prints a
 // one-time confirm code; `arm <token>` confirms it within 30s. Offensive TX is compiled in by default; only
 // a conservative LXVEOS_TX_DISABLE build has nothing to arm. Recon/defense ops never need arming. The gate
@@ -2507,6 +2628,8 @@ static void register_commands(void)
         {.command = "bleflood", .help = "Passive BLE advert-flood/spam detector: bleflood [seconds] (listen only)", .func = &cmd_bleflood},
         {.command = "btracker", .help = "Passive BLE item-tracker/stalking detector (AirTag/Tile/SmartTag/Chipolo/PebbleBee/GoogleFMN): btracker [seconds]", .func = &cmd_btracker},
         {.command = "flipper", .help = "Passive Flipper Zero detector (BLE service-UUID match): flipper [seconds] (listen only)", .func = &cmd_flipper},
+        {.command = "meta", .help = "Passive Meta/Ray-Ban glasses + Oculus detector (BLE mfg/service-ID match): meta [seconds] (listen only)", .func = &cmd_meta},
+        {.command = "skimmer", .help = "Passive card-skimmer heuristic — flag default-named HC-0x BT-serial modules: skimmer [seconds] (listen only)", .func = &cmd_skimmer},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
         {.command = "bridge", .help = "Toggle machine-readable LXVEOS/1 event emission for the CC bridge: bridge on|off|status", .func = &cmd_bridge},

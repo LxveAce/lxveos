@@ -84,7 +84,7 @@ _MUST_BE_IMPLEMENTED = {
     "wifi_ap_scan", "wifi_sta_scan", "wifi_sniff", "wifi_probe_scan", "eapol_capture",
     "deauth_detect", "pwnagotchi_detect", "evil_twin_detect", "wifi_security_audit", "wifi_wardrive",
     "ble_scan", "ble_wardrive", "ble_flood_detect", "ble_tracker_detect", "flipper_detect",
-    "ble_hid_detect", "evil_portal", "karma_ap",
+    "meta_detect", "skimmer_detect", "ble_hid_detect", "evil_portal", "karma_ap",
 }
 
 # The interference-emitter class (RF jammer / deauth-flood / beacon-flood / BLE advert-spam) is a FIXED
@@ -188,6 +188,8 @@ _CLI_TO_SLUGS = {
     "bleflood": {"ble_flood_detect"},
     "btracker": {"ble_tracker_detect"},
     "flipper": {"flipper_detect"},
+    "meta": {"meta_detect"},
+    "skimmer": {"skimmer_detect"},
     "blehid": {"ble_hid_detect"},
     "evilportal": {"evil_portal", "karma_ap"},
     "badble": {"ble_hid_inject"},

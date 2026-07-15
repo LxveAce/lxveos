@@ -28,3 +28,17 @@
 #define LXVEOS_BLE_UUID_FLIPPER_BLACK       0x3081u
 #define LXVEOS_BLE_UUID_FLIPPER_WHITE       0x3082u
 #define LXVEOS_BLE_UUID_FLIPPER_TRANSPARENT 0x3083u
+
+// Meta / Ray-Ban Meta glasses + Oculus (ESP32 Marauder "Meta Detect" / BT_SCAN_RAYBAN). A device matches if
+// any of its manufacturer company ID or advertised 16-bit service UUID is in the Meta set — UNLESS one of its
+// identifiers is in the deny-list first (blocked wins), which strips the Apple/Samsung/Microsoft popup-flood
+// payloads. Values are Marauder's (WiFiScan.h ~815-830); 0xFD5F is Oculus VR (Meta) per the BT SIG registry.
+#define LXVEOS_BLE_META_ID_0  0xFD5Fu  // Meta / Oculus VR
+#define LXVEOS_BLE_META_ID_1  0xFEB7u  // Meta
+#define LXVEOS_BLE_META_ID_2  0xFEB8u  // Meta
+#define LXVEOS_BLE_META_ID_3  0x01ABu  // Meta
+#define LXVEOS_BLE_META_ID_4  0x058Eu  // Meta
+#define LXVEOS_BLE_META_ID_5  0x0D53u  // Luxottica (Ray-Ban Meta)
+// Deny-list (checked first). 0xFD5A/0x004C/0x0006 already exist above as SVC_SMARTTAG / CID_APPLE / CID_MICROSOFT.
+#define LXVEOS_BLE_META_BLOCK_SAMSUNG2 0xFD69u  // Samsung
+#define LXVEOS_BLE_META_BLOCK_PHONE    0xFEF3u  // phone popup payload

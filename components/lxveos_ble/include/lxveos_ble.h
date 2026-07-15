@@ -112,6 +112,17 @@ void lxveos_ble_appearance_str(uint16_t appearance, char *buf, size_t buflen);
 // ESP32 Marauder "Flipper Sniff" (MIT — see CREDITS.md). Pure over the scanned device — host-tested.
 const char *lxveos_ble_flipper_color(const lxveos_ble_dev_t *d);
 
+// True if `d` looks like a Meta / Ray-Ban Meta glasses / Oculus device: its mfg company ID or an advertised
+// service UUID is in the Meta set AND none of its identifiers is in the deny-list (which is checked first, so a
+// Apple/Samsung/Microsoft payload can't false-match). Ported from ESP32 Marauder "Meta Detect". Host-tested.
+bool lxveos_ble_is_meta(const lxveos_ble_dev_t *d);
+
+// True if `d`'s advertised local name is EXACTLY a default HC-0x BT-serial module name (HC-03/05/06) — the
+// stock modules cheap skimmers reuse. A narrow "possible skimmer / default-named module" heuristic (also flags
+// legit hobby modules; BLE-only, so classic-BT skimmers are missed). Ported from ESP32 Marauder "Detect Card
+// Skimmers". Host-tested.
+bool lxveos_ble_is_skimmer(const lxveos_ble_dev_t *d);
+
 // ── BLE HID keystroke injection (the `ble_hid_inject` op, "BadBLE") — OFFENSIVE TX, arm-gated ─────────
 // LxveOS advertises as a standard BLE HID keyboard ("LxveOS-KB"); when a target host pairs and subscribes
 // to the input report, it plays `script` as keystrokes — a Rubber-Ducky primitive over BLE, for authorized

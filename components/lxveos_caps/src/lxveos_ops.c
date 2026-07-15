@@ -55,6 +55,8 @@ static const lxveos_op_t OPS[] = {
     {"ble_flood_detect", "BLE advert-flood detector", LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_BLE, "custom", true},
     {"ble_tracker_detect", "BLE item-tracker/stalking detector", LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_BLE, "custom", true},
     {"flipper_detect", "Flipper Zero detector", LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_BLE, "Marauder", true},
+    {"meta_detect",    "Meta/Ray-Ban glasses detector", LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_BLE, "Marauder", true},
+    {"skimmer_detect", "BLE card-skimmer heuristic", LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_BLE, "Marauder", true},
     {"ble_hid_detect", "Rogue BLE-HID detector", LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_BLE, "custom", true},
     {"target_watch",   "Target-address watchlist", LXVEOS_OPCAT_DEFENSE, LXVEOS_CAP_WIFI, "custom", true},
     // ── Logging ───────────────────────────────────────────────────────────────────────────────────
