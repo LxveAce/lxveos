@@ -39,7 +39,7 @@ static void test_cc1101_rssi_to_dbm(void)
     }
     // Hand-worked anchors (note C integer division truncates toward zero for the negatives).
     assert(lxveos_cc1101_rssi_to_dbm(0) == -74);      // 0/2 - 74
-    assert(lxveos_cc1101_rssi_to_dbm(127) == -43);    // 63/2 - 74 = 31 - 74
+    assert(lxveos_cc1101_rssi_to_dbm(127) == -11);    // 127/2 - 74 = 63 - 74
     assert(lxveos_cc1101_rssi_to_dbm(128) == -128);   // (128-256)/2 - 74 = -64 - 74 = -138 -> clamp
     assert(lxveos_cc1101_rssi_to_dbm(200) == -102);   // (200-256)/2 - 74 = -28 - 74
     assert(lxveos_cc1101_rssi_to_dbm(255) == -74);    // (255-256)/2 - 74 = 0 - 74
