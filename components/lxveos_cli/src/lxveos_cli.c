@@ -105,6 +105,25 @@ static bool locked(void)
     return true;
 }
 
+// Copy `src` into `dst` (at most cap-1 bytes) with control/non-printable bytes replaced by '.', so a
+// DEVICE-SUPPLIED string (a Wi-Fi SSID, a BLE local name) can't emit terminal escapes that garble or spoof
+// the operator's console — a crafted name carrying ESC[2J / cursor moves would otherwise reach the terminal
+// verbatim through a raw %s. `dst` is always NUL-terminated. The machine LXVEOS/1 event lines hex-encode
+// these same fields, so this is purely for the human-readable output. (`probes`/`apaudit`/`wardrive`
+// sanitize inline where they also pad or CSV-quote; this is the shared helper for the plain-print sites.)
+static void sanitize_copy(char *dst, size_t cap, const char *src)
+{
+    if (cap == 0) {
+        return;
+    }
+    size_t i = 0;
+    for (; src != NULL && src[i] != '\0' && i < cap - 1; i++) {
+        unsigned char c = (unsigned char)src[i];
+        dst[i] = (c < 0x20 || c == 0x7f) ? '.' : (char)c;
+    }
+    dst[i] = '\0';
+}
+
 // `agree` — accept the authorized-use terms; persisted so later boots start unlocked.
 static int cmd_agree(int argc, char **argv)
 {
@@ -828,7 +847,9 @@ static int cmd_eviltwin(int argc, char **argv)
         }
         if (nbssid >= 2 || (nopen > 0 && nenc > 0)) {
             flagged++;
-            printf("  [!] \"%s\": %d BSSIDs (%d open, %d encrypted)%s\n", aps[i].ssid, nbssid,
+            char ss[33];
+            sanitize_copy(ss, sizeof(ss), aps[i].ssid);  // device-supplied SSID -> console-safe
+            printf("  [!] \"%s\": %d BSSIDs (%d open, %d encrypted)%s\n", ss, nbssid,
                    nopen, nenc, (nopen > 0 && nenc > 0) ? "  <- open+encrypted twin" : "");
             for (size_t j = 0; j < found; j++) {
                 if (strcmp(aps[j].ssid, aps[i].ssid) == 0) {
@@ -1026,11 +1047,13 @@ static int cmd_blescan(int argc, char **argv)
         } else {
             appr[0] = '\0';
         }
+        char nm[32];
+        sanitize_copy(nm, sizeof(nm), d->name);  // control-byte-safe copy of the device-supplied name
         char ident[48];
         if (d->name_len && appr[0]) {
-            snprintf(ident, sizeof(ident), "%s [%s]", d->name, appr);
+            snprintf(ident, sizeof(ident), "%s [%s]", nm, appr);
         } else if (d->name_len) {
-            snprintf(ident, sizeof(ident), "%s", d->name);
+            snprintf(ident, sizeof(ident), "%s", nm);
         } else if (appr[0]) {
             snprintf(ident, sizeof(ident), "[%s]", appr);
         } else {
@@ -1231,9 +1254,11 @@ static int cmd_btracker(int argc, char **argv)
             continue;  // not a known tracker
         }
         trackers++;
+        char nm[32];
+        sanitize_copy(nm, sizeof(nm), d->name_len ? d->name : "");  // device-supplied name -> console-safe
         printf("  %02x:%02x:%02x:%02x:%02x:%02x %-7s %4ddB %-14s %s\n",
                d->addr[5], d->addr[4], d->addr[3], d->addr[2], d->addr[1], d->addr[0],
-               lxveos_ble_addr_type_str(d->addr_type), d->rssi, tn, d->name_len ? d->name : "");
+               lxveos_ble_addr_type_str(d->addr_type), d->rssi, tn, nm);
         if (lxveos_evt_enabled()) {
             uint8_t a[6] = {d->addr[5], d->addr[4], d->addr[3], d->addr[2], d->addr[1], d->addr[0]};
             char line[160];
@@ -1994,10 +2019,12 @@ static int cmd_blehid(int argc, char **argv)
         hits++;
         char appr[24];
         lxveos_ble_appearance_str(devs[i].appearance, appr, sizeof(appr));
+        char nm[32];
+        sanitize_copy(nm, sizeof(nm), devs[i].name_len ? devs[i].name : "(no name)");
         printf("  [HID] %02X:%02X:%02X:%02X:%02X:%02X  %ddBm  %-10s  %s\n",
                devs[i].addr[5], devs[i].addr[4], devs[i].addr[3],
                devs[i].addr[2], devs[i].addr[1], devs[i].addr[0],
-               devs[i].rssi, appr, devs[i].name_len ? devs[i].name : "(no name)");
+               devs[i].rssi, appr, nm);
         if (lxveos_evt_enabled()) {
             uint8_t a[6] = {devs[i].addr[5], devs[i].addr[4], devs[i].addr[3],
                             devs[i].addr[2], devs[i].addr[1], devs[i].addr[0]};

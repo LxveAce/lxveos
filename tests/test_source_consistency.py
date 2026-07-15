@@ -126,6 +126,26 @@ def test_cli_numeric_args_use_validated_parsing_not_atoi():
     assert not calls, f"{len(calls)} bare atoi(argv...) call(s) remain in the CLI — route them through parse_int_arg"
 
 
+def test_device_supplied_names_are_console_sanitized():
+    """A device-supplied Wi-Fi SSID / BLE local name must never reach a raw printf %s — a crafted name can
+    carry terminal escapes (cursor moves / screen clears) that garble or spoof the operator's console. The
+    plain-print sites (eviltwin / blescan / btracker / blehid) route the name through sanitize_copy()
+    (control bytes -> '.'); probes / apaudit / wardrive sanitize inline where they also pad or CSV-quote.
+    This guard fails if one of the hardened sites regresses to printing the raw device string."""
+    assert "static void sanitize_copy(" in CLI_C, "the shared console sanitizer sanitize_copy() was removed"
+    # 1 definition + >= 4 call sites (blescan, eviltwin, btracker, blehid)
+    assert CLI_C.count("sanitize_copy(") >= 5, "a device-name print site lost its sanitize_copy() call"
+    # the specific raw-name-into-printf patterns that were hardened must stay gone
+    raw_patterns = {
+        "blescan ident": '"%s [%s]", d->name',
+        "eviltwin flagged": ", aps[i].ssid, nbssid",
+        "btracker row": "d->rssi, tn, d->name_len ? d->name",
+        "blehid row": "devs[i].rssi, appr, devs[i].name_len ? devs[i].name",
+    }
+    regressed = sorted(site for site, pat in raw_patterns.items() if pat in CLI_C)
+    assert not regressed, f"raw device-name print path(s) reintroduced (route through sanitize_copy): {regressed}"
+
+
 def test_status_bridge_line_exposes_arm_state():
     """The CC bridge status line + its README doc must surface arm state + tx-compiled (label, never hide)."""
     assert 'arm=%s' in CLI_C, "cmd_status no longer emits the arm= field"
