@@ -12,6 +12,8 @@
 #include "bsp/display.h"
 #include "lxveos_board.h"
 #include "lxveos_ops.h"
+#include "lxveos_arm.h"
+#include "lxveos_gui_menu.h"
 
 #include "esp_lcd_types.h"
 #include "esp_lvgl_port.h"
@@ -22,52 +24,6 @@
 #include <stdio.h>
 
 static const char *TAG = "lxveos_gui";
-
-// Compose the capability menu as one formatted, grouped block: a category header (RECON / ATTACK /
-// DEFENSE / …) whenever the category changes, then one line per op — a status glyph ([+] ready, [.]
-// planned, [x] this board can't) + the op slug + a policy tag ((arm) for arm-gated offensive, (upstream)
-// for the interference class LxveOS carries as control-surface only). Data comes straight from the op
-// catalog so the on-device menu can never claim a feature the firmware doesn't actually have. Bounded.
-static void compose_menu(char *buf, size_t cap)
-{
-    if (cap == 0) {
-        return;
-    }
-    buf[0] = '\0';
-    size_t n = lxveos_ops_count();
-    size_t off = 0;
-    lxveos_opcat_t last = LXVEOS_OPCAT_COUNT;
-    for (size_t i = 0; i < n; i++) {
-        const lxveos_op_t *op = lxveos_ops_get(i);
-        if (op == NULL) {
-            continue;
-        }
-        if (op->category != last) {
-            last = op->category;
-            int w = snprintf(buf + off, cap - off, "%s%s\n", (i ? "\n" : ""), lxveos_opcat_name(last));
-            if (w < 0 || (size_t)w >= cap - off) {
-                break;
-            }
-            off += (size_t)w;
-        }
-        const char *g;
-        switch (lxveos_op_status(op)) {
-            case LXVEOS_OP_READY:      g = "[+]"; break;
-            case LXVEOS_OP_PLANNED:    g = "[.]"; break;
-            case LXVEOS_OP_ATTACHABLE: g = "[~]"; break;
-            default:                   g = "[x]"; break;
-        }
-        lxveos_opclass_t k = lxveos_op_class(op);
-        const char *tag = (k == LXVEOS_OPCLASS_OFFENSIVE)  ? " (arm)"
-                        : (k == LXVEOS_OPCLASS_RESTRICTED) ? " (upstream)"
-                        : "";
-        int w = snprintf(buf + off, cap - off, " %s %s%s\n", g, op->slug, tag);
-        if (w < 0 || (size_t)w >= cap - off) {
-            break;
-        }
-        off += (size_t)w;
-    }
-}
 
 esp_err_t lxveos_gui_start(void)
 {
@@ -114,7 +70,10 @@ esp_err_t lxveos_gui_start(void)
     snprintf(hdr, sizeof(hdr), "%s  ops %u/%u/%u", lxveos_ui_profile(),
              (unsigned)ready, (unsigned)planned, (unsigned)(attachable + unavail));
     static char menu[2600];
-    compose_menu(menu, sizeof(menu));
+    lxveos_gui_compose_menu(menu, sizeof(menu));
+    lxveos_arm_state_t arm = lxveos_arm_state();
+    char banner[24];
+    lxveos_gui_compose_arm_banner(banner, sizeof(banner), arm);
 
     // All LVGL object calls run under the port lock.
     lvgl_port_lock(0);
@@ -130,6 +89,16 @@ esp_err_t lxveos_gui_start(void)
     lv_label_set_text(tally, hdr);
     lv_obj_set_style_text_color(tally, lv_color_hex(0x9A9A9A), 0);
     lv_obj_align(tally, LV_ALIGN_TOP_RIGHT, -6, 7);
+
+    // ARM/SAFE banner — top-centre, coloured by state so the unit's transmit posture is unmissable:
+    // red when ARMED (offensive TX permitted), amber while a two-factor arm is PENDING, brand-green SAFE.
+    uint32_t arm_color = (arm == LXVEOS_ARM_ARMED)   ? 0xFF3030
+                       : (arm == LXVEOS_ARM_PENDING) ? 0xFFB020
+                                                     : 0x39FF14;
+    lv_obj_t *arm_lbl = lv_label_create(scr);
+    lv_label_set_text(arm_lbl, banner);
+    lv_obj_set_style_text_color(arm_lbl, lv_color_hex(arm_color), 0);
+    lv_obj_align(arm_lbl, LV_ALIGN_TOP_MID, 0, 5);
 
     // Scrollable capability menu (grouped by category) fills the area below the header.
     lv_obj_t *box = lv_obj_create(scr);

@@ -67,4 +67,13 @@ build_arm -DLXVEOS_TX_DISABLE  # conservative build: the emitter is stripped
     "$here/test_spibus.c" "$root/components/lxveos_spibus/src/lxveos_spibus_policy.c" -o "$out"
 "$out"
 
+# --- on-device GUI text composition (arm banner + capability menu): real op catalog + caps registry, driven
+#     off a fixture sdkconfig.h (Wi-Fi board + sub-GHz add-on) so every op-status glyph is exercised ---
+"$CC" -std=gnu11 -O1 -Wall \
+    -I"$root/components/lxveos_gui/src" -I"$root/components/lxveos_caps/include" \
+    -I"$root/components/lxveos_arm/include" -I"$here/stubs" \
+    "$here/test_gui_menu.c" "$root/components/lxveos_gui/src/lxveos_gui_menu.c" \
+    "$root/components/lxveos_caps/src/lxveos_ops.c" "$root/components/lxveos_caps/src/lxveos_caps.c" -o "$out"
+"$out"
+
 echo "host-c: all tests passed"
