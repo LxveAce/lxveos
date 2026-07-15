@@ -10,12 +10,14 @@
 #include "lxveos_gui.h"
 
 #include "bsp/display.h"
+#include "bsp/touch.h"
 #include "lxveos_board.h"
 #include "lxveos_ops.h"
 #include "lxveos_arm.h"
 #include "lxveos_gui_menu.h"
 
 #include "esp_lcd_types.h"
+#include "esp_lcd_touch.h"
 #include "esp_lvgl_port.h"
 #include "lvgl.h"
 #include "esp_check.h"
@@ -61,6 +63,22 @@ esp_err_t lxveos_gui_start(void)
     if (disp == NULL) {
         ESP_LOGE(TAG, "lvgl_port_add_disp failed");
         return ESP_FAIL;
+    }
+
+    // Register the touch panel (if the board brought one up in bsp_input_start) as an LVGL pointer indev, so
+    // the launcher is tappable/scrollable. Non-fatal: a display-only board (or a failed indev) still shows the
+    // read-only launcher. Coordinate calibration is a HW-tune, done on real glass.
+    esp_lcd_touch_handle_t touch = (esp_lcd_touch_handle_t)bsp_touch_handle();
+    if (touch != NULL) {
+        const lvgl_port_touch_cfg_t touch_cfg = {
+            .disp = disp,
+            .handle = touch,
+        };
+        if (lvgl_port_add_touch(&touch_cfg) == NULL) {
+            ESP_LOGW(TAG, "lvgl_port_add_touch failed — launcher stays read-only");
+        } else {
+            ESP_LOGI(TAG, "touch indev registered (XPT2046 pointer)");
+        }
     }
 
     size_t ready = 0, planned = 0, attachable = 0, unavail = 0;

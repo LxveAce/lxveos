@@ -3,6 +3,7 @@ idf_component_register(
     INCLUDE_DIRS "include"
     REQUIRES lxveos_config
     PRIV_REQUIRES nvs_flash esp_lcd esp_driver_spi esp_driver_gpio esp_driver_ledc esp_lcd_ili9341
+                  esp_lcd_touch esp_lcd_touch_xpt2046
 )
 # esp_driver_ledc supplies driver/ledc.h for the PWM backlight (IDF v6 split the old monolithic `driver`
 # component into esp_driver_*; each driver/*.h needs its component in REQUIRES).

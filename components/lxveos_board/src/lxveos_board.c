@@ -19,6 +19,10 @@
 #include "esp_lcd_panel_vendor.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_ili9341.h"
+#if LXVEOS_TOUCH_HAS_PINS
+#include "esp_lcd_touch.h"
+#include "esp_lcd_touch_xpt2046.h"
+#endif
 #endif
 #endif
 
@@ -225,6 +229,45 @@ static esp_err_t create_panel(void)
              is_ili9341 ? "ILI9341" : "ST7789", LXVEOS_DISP_W, LXVEOS_DISP_H);
     return ESP_OK;
 }
+
+#if LXVEOS_TOUCH_HAS_PINS
+// XPT2046 resistive touch on its OWN SPI bus (the touch pins are distinct from the display's, so it can't
+// share the display host). SPI3/VSPI is used: it's free on the touch boards (the CYD has no SPI3 add-on
+// radios — those are the lxveos_spibus sub-GHz/nRF24 modules, absent here). A future board that put an add-on
+// radio on SPI3 alongside touch would route this through lxveos_spibus instead. The resulting handle feeds the
+// LVGL pointer indev (lxveos_gui). Coordinate calibration + orientation are a HW-tune (UNVERIFIED on glass).
+#define LXVEOS_TOUCH_SPI_HOST  SPI3_HOST
+static esp_lcd_touch_handle_t s_touch;   // valid after create_touch()
+
+static esp_err_t create_touch(void)
+{
+    const spi_bus_config_t tbus = {
+        .sclk_io_num = LXVEOS_TOUCH_PIN_SCLK,
+        .mosi_io_num = LXVEOS_TOUCH_PIN_MOSI,
+        .miso_io_num = LXVEOS_TOUCH_PIN_MISO,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+    };
+    ESP_RETURN_ON_ERROR(spi_bus_initialize(LXVEOS_TOUCH_SPI_HOST, &tbus, SPI_DMA_CH_AUTO), TAG, "touch spi bus");
+
+    esp_lcd_panel_io_handle_t tio;
+    const esp_lcd_panel_io_spi_config_t tio_cfg = ESP_LCD_TOUCH_IO_SPI_XPT2046_CONFIG(LXVEOS_TOUCH_PIN_CS);
+    ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LXVEOS_TOUCH_SPI_HOST, &tio_cfg,
+                        &tio), TAG, "touch panel-IO");
+
+    const esp_lcd_touch_config_t tcfg = {
+        .x_max = LXVEOS_DISP_W,
+        .y_max = LXVEOS_DISP_H,
+        .rst_gpio_num = -1,
+        .int_gpio_num = LXVEOS_TOUCH_PIN_IRQ,
+        .flags = { .swap_xy = 0, .mirror_x = 0, .mirror_y = 0 },
+    };
+    ESP_RETURN_ON_ERROR(esp_lcd_touch_new_spi_xpt2046(tio, &tcfg, &s_touch), TAG, "xpt2046");
+    ESP_LOGI(TAG, "touch: XPT2046 on SPI3 sclk=%d mosi=%d miso=%d cs=%d irq=%d", LXVEOS_TOUCH_PIN_SCLK,
+             LXVEOS_TOUCH_PIN_MOSI, LXVEOS_TOUCH_PIN_MISO, LXVEOS_TOUCH_PIN_CS, LXVEOS_TOUCH_PIN_IRQ);
+    return ESP_OK;
+}
+#endif  // LXVEOS_TOUCH_HAS_PINS
 #endif  // LXVEOS_DISP_HAS_PINS
 
 esp_err_t bsp_display_start(void)
@@ -297,12 +340,21 @@ void *bsp_display_io_handle(void)
     return NULL;
 #endif
 }
+void *bsp_touch_handle(void)
+{
+#if LXVEOS_DISP_HAS_PINS && LXVEOS_TOUCH_HAS_PINS
+    return s_touch;
+#else
+    return NULL;
+#endif
+}
 
 #else  // headless — no panel
 
 const char *bsp_display_panel(void) { return ""; }
 void *bsp_display_panel_handle(void) { return NULL; }
 void *bsp_display_io_handle(void) { return NULL; }
+void *bsp_touch_handle(void) { return NULL; }
 
 esp_err_t bsp_display_start(void) { return ESP_OK; }
 
@@ -333,6 +385,9 @@ esp_err_t bsp_input_start(void)
 #undef X
 #else
     ESP_LOGI(TAG, "input: none (headless)");
+#endif
+#if LXVEOS_DISP_HAS_PINS && LXVEOS_TOUCH_HAS_PINS
+    ESP_RETURN_ON_ERROR(create_touch(), TAG, "touch");
 #endif
     return ESP_OK;
 }
