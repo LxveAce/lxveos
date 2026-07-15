@@ -12,6 +12,12 @@
 // the op slug, and a policy tag ((arm) / (upstream)). Data comes straight from the op catalog.
 void lxveos_gui_compose_menu(char *buf, size_t cap);
 
+// Compose the one-line list-button label for a single op into `buf` (bounded by `cap`): the status glyph
+// ([+]/[.]/[~]/[x]), the slug, and the policy tag ((arm)/(upstream)) — the same per-op rendering compose_menu
+// puts on each line, factored out so the GUI can build a tappable button per op (B12d interactive launcher).
+// A NULL op yields a short placeholder.
+void lxveos_gui_compose_op_label(char *buf, size_t cap, const lxveos_op_t *op);
+
 // Compose the ARM/SAFE banner text for the given arm state into `buf` (bounded by `cap`). Pure mapping of the
 // two-factor arm state to a short, unambiguous banner the header shows (coloured by lxveos_gui.c).
 void lxveos_gui_compose_arm_banner(char *buf, size_t cap, lxveos_arm_state_t state);

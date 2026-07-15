@@ -31,23 +31,37 @@ void lxveos_gui_compose_menu(char *buf, size_t cap)
             }
             off += (size_t)w;
         }
-        const char *g;
-        switch (lxveos_op_status(op)) {
-            case LXVEOS_OP_READY:      g = "[+]"; break;
-            case LXVEOS_OP_PLANNED:    g = "[.]"; break;
-            case LXVEOS_OP_ATTACHABLE: g = "[~]"; break;
-            default:                   g = "[x]"; break;
-        }
-        lxveos_opclass_t k = lxveos_op_class(op);
-        const char *tag = (k == LXVEOS_OPCLASS_OFFENSIVE)  ? " (arm)"
-                        : (k == LXVEOS_OPCLASS_RESTRICTED) ? " (upstream)"
-                        : "";
-        int w = snprintf(buf + off, cap - off, " %s %s%s\n", g, op->slug, tag);
+        char lbl[64];
+        lxveos_gui_compose_op_label(lbl, sizeof(lbl), op);
+        int w = snprintf(buf + off, cap - off, " %s\n", lbl);
         if (w < 0 || (size_t)w >= cap - off) {
             break;
         }
         off += (size_t)w;
     }
+}
+
+void lxveos_gui_compose_op_label(char *buf, size_t cap, const lxveos_op_t *op)
+{
+    if (cap == 0) {
+        return;
+    }
+    if (op == NULL) {
+        snprintf(buf, cap, "(none)");
+        return;
+    }
+    const char *g;
+    switch (lxveos_op_status(op)) {
+        case LXVEOS_OP_READY:      g = "[+]"; break;
+        case LXVEOS_OP_PLANNED:    g = "[.]"; break;
+        case LXVEOS_OP_ATTACHABLE: g = "[~]"; break;
+        default:                   g = "[x]"; break;
+    }
+    lxveos_opclass_t k = lxveos_op_class(op);
+    const char *tag = (k == LXVEOS_OPCLASS_OFFENSIVE)  ? " (arm)"
+                    : (k == LXVEOS_OPCLASS_RESTRICTED) ? " (upstream)"
+                    : "";
+    snprintf(buf, cap, "%s %s%s", g, op->slug, tag);
 }
 
 void lxveos_gui_compose_arm_banner(char *buf, size_t cap, lxveos_arm_state_t state)

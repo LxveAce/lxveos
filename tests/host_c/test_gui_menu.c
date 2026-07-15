@@ -146,6 +146,42 @@ static void test_detail(void)
     }
 }
 
+static void test_op_label(void)
+{
+    // The per-op list-button label the interactive launcher (B12d) puts on each tappable row: glyph + slug +
+    // policy tag, no leading space / newline (that's compose_menu's framing). Fixture: Wi-Fi built in, sub-GHz add-on.
+    lxveos_caps_probe();
+    char lbl[64];
+
+    // Ready STD recon op: glyph + slug, no tag.
+    lxveos_gui_compose_op_label(lbl, sizeof(lbl), find_op("wifi_ap_scan"));
+    assert(strcmp(lbl, "[+] wifi_ap_scan") == 0);
+    // Ready offensive op: (arm) tag.
+    lxveos_gui_compose_op_label(lbl, sizeof(lbl), find_op("evil_portal"));
+    assert(strcmp(lbl, "[+] evil_portal (arm)") == 0);
+    // Restricted DoS-class op: planned here (WIFI active, unimplemented) + (upstream) tag.
+    lxveos_gui_compose_op_label(lbl, sizeof(lbl), find_op("deauth_burst"));
+    assert(strcmp(lbl, "[.] deauth_burst (upstream)") == 0);
+    // Add-on op, module not wired on this board: attachable glyph.
+    lxveos_gui_compose_op_label(lbl, sizeof(lbl), find_op("subghz_scan"));
+    assert(strcmp(lbl, "[~] subghz_scan") == 0);
+    // Physically-impossible op: unavailable glyph (honesty — same as the menu renders).
+    lxveos_gui_compose_op_label(lbl, sizeof(lbl), find_op("wifi_5ghz_scan"));
+    assert(strcmp(lbl, "[x] wifi_5ghz_scan") == 0);
+
+    // The label is exactly what compose_menu wraps per line (so the list rows match the text menu).
+    char menu[4000];
+    lxveos_gui_compose_menu(menu, sizeof(menu));
+    assert(has(menu, "[+] evil_portal (arm)"));
+
+    // NULL op -> placeholder; cap 0 -> no write.
+    lxveos_gui_compose_op_label(lbl, sizeof(lbl), NULL);
+    assert(strcmp(lbl, "(none)") == 0);
+    char z = 'Q';
+    lxveos_gui_compose_op_label(&z, 0, find_op("wifi_ap_scan"));
+    assert(z == 'Q');
+}
+
 static void test_menu_bounds(void)
 {
     // Small buffer: the builder must truncate cleanly — always NUL-terminated, never writing past `cap`.
@@ -176,6 +212,7 @@ int main(void)
     test_arm_banner();
     test_menu_content();
     test_detail();
+    test_op_label();
     test_menu_bounds();
     printf("test_gui_menu: all tests passed\n");
     return 0;

@@ -1,12 +1,13 @@
 // LxveOS on-device GUI — LVGL launcher. Brings the LVGL port up on the board's esp_lcd panel (resolved +
 // initialised by lxveos_board) and draws the launcher: a branded header (title + board/op tally) and a
-// scrollable capability menu built straight from the op catalog, grouped by category with per-op status
-// and policy tags. Read-only display for now — touch/keypad activation (an LVGL indev via
-// lvgl_port_add_touch + bsp_input_start) is the next increment.
+// tappable capability list built straight from the op catalog, grouped by category with per-op status and
+// policy tags. Tapping an op opens a detail card (compose_detail) with a close button — the interactive
+// launcher. Tap-to-RUN (op dispatch) is the next increment and is HW-gated: nothing is authored on-air here.
 //
 // No-op on headless boards (null panel handle). UNVERIFIED on hardware; extra tunes the draw-buffer size,
-// byte order (swap_bytes) and rotation on real glass. Widget surface is deliberately conservative
-// (labels + one scroll container) so it stays green under our strict -Werror -Wextra toolchain.
+// byte order (swap_bytes), rotation, and the list/detail layout + touch calibration on real glass. The widget
+// surface stays conservative (core lv_obj containers + lv_label only — no optional lv_list/lv_button) so it
+// holds green under our strict -Werror -Wextra toolchain and doesn't depend on non-default LVGL widget flags.
 #include "lxveos_gui.h"
 
 #include "bsp/display.h"
@@ -23,9 +24,64 @@
 #include "esp_check.h"
 #include "esp_log.h"
 
+#include <stdint.h>
 #include <stdio.h>
 
 static const char *TAG = "lxveos_gui";
+
+// The op-detail card currently open (NULL when none). One at a time: tapping another op replaces it. All
+// access is from LVGL event callbacks, which run single-threaded under the LVGL port lock.
+static lv_obj_t *s_detail;
+
+// Close (delete) the open detail card. Wired to its "close" button.
+static void detail_close_cb(lv_event_t *e)
+{
+    (void)e;
+    if (s_detail != NULL) {
+        lv_obj_delete(s_detail);
+        s_detail = NULL;
+    }
+}
+
+// Tap handler for a capability-list row: open (or replace) the detail card for that op. The op's catalog
+// index rides in the event user-data. This shows read-only detail text (compose_detail) — it does NOT run
+// the op; tap-to-dispatch is a later HW-gated increment, so nothing is transmitted here.
+static void op_row_cb(lv_event_t *e)
+{
+    size_t idx = (size_t)(uintptr_t)lv_event_get_user_data(e);
+    const lxveos_op_t *op = lxveos_ops_get(idx);
+    static char detail[320];
+    lxveos_gui_compose_detail(detail, sizeof(detail), op);
+
+    if (s_detail != NULL) {
+        lv_obj_delete(s_detail);
+    }
+    lv_obj_t *scr = lv_screen_active();
+    s_detail = lv_obj_create(scr);
+    lv_obj_set_size(s_detail, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(s_detail, lv_color_hex(0x0A0A0A), 0);
+    lv_obj_set_style_border_width(s_detail, 0, 0);
+    lv_obj_set_style_pad_all(s_detail, 8, 0);
+
+    lv_obj_t *text = lv_label_create(s_detail);
+    lv_label_set_text(text, detail);
+    lv_obj_set_width(text, lv_pct(100));
+    lv_label_set_long_mode(text, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_color(text, lv_color_hex(0xCFCFCF), 0);
+    lv_obj_align(text, LV_ALIGN_TOP_LEFT, 0, 2);
+
+    // "close" control — a clickable lv_obj (core widget), so we don't depend on the optional lv_button build flag.
+    lv_obj_t *close = lv_obj_create(s_detail);
+    lv_obj_set_size(close, 70, 32);
+    lv_obj_align(close, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+    lv_obj_set_style_bg_color(close, lv_color_hex(0x2A2A2A), 0);
+    lv_obj_set_style_border_width(close, 0, 0);
+    lv_obj_add_flag(close, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(close, detail_close_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *close_lbl = lv_label_create(close);
+    lv_label_set_text(close_lbl, "close");
+    lv_obj_center(close_lbl);
+}
 
 esp_err_t lxveos_gui_start(void)
 {
@@ -87,8 +143,6 @@ esp_err_t lxveos_gui_start(void)
     // Header stays 3 numbers for width; attachable folds into the trailing "not-ready" count.
     snprintf(hdr, sizeof(hdr), "%s  ops %u/%u/%u", lxveos_ui_profile(),
              (unsigned)ready, (unsigned)planned, (unsigned)(attachable + unavail));
-    static char menu[2600];
-    lxveos_gui_compose_menu(menu, sizeof(menu));
     lxveos_arm_state_t arm = lxveos_arm_state();
     char banner[24];
     lxveos_gui_compose_arm_banner(banner, sizeof(banner), arm);
@@ -118,23 +172,52 @@ esp_err_t lxveos_gui_start(void)
     lv_obj_set_style_text_color(arm_lbl, lv_color_hex(arm_color), 0);
     lv_obj_align(arm_lbl, LV_ALIGN_TOP_MID, 0, 5);
 
-    // Scrollable capability menu (grouped by category) fills the area below the header.
-    lv_obj_t *box = lv_obj_create(scr);
-    lv_obj_set_size(box, caps.width, caps.height - 30);
-    lv_obj_align(box, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_style_bg_color(box, lv_color_hex(0x0E0E0E), 0);
-    lv_obj_set_style_border_width(box, 0, 0);
-    lv_obj_set_style_pad_all(box, 6, 0);
-    lv_obj_set_scroll_dir(box, LV_DIR_VER);
+    // Tappable capability list (grouped by category) fills the area below the header. Built from CORE widgets
+    // only — a scrollable lv_obj with flex-column layout, one clickable lv_obj row per op (+ an lv_label child)
+    // — so it never leans on the optional lv_list / lv_button build flags (LV_USE_LIST / LV_USE_BUTTON), which
+    // this project doesn't force on. Tapping a row opens that op's detail card (op_row_cb). The classic CYD has
+    // no PSRAM, so this ~35-row list is the RAM-heaviest surface: a HW-tune point (row count / LVGL heap).
+    lv_obj_t *list = lv_obj_create(scr);
+    lv_obj_set_size(list, caps.width, caps.height - 30);
+    lv_obj_align(list, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_color(list, lv_color_hex(0x0E0E0E), 0);
+    lv_obj_set_style_border_width(list, 0, 0);
+    lv_obj_set_style_pad_all(list, 2, 0);
+    lv_obj_set_style_pad_row(list, 2, 0);
+    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_scroll_dir(list, LV_DIR_VER);
 
-    lv_obj_t *lbl = lv_label_create(box);
-    lv_label_set_text(lbl, menu);
-    lv_obj_set_width(lbl, caps.width - 20);
-    lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_color(lbl, lv_color_hex(0xCFCFCF), 0);
+    lxveos_opcat_t last_cat = LXVEOS_OPCAT_COUNT;
+    for (size_t i = 0; i < lxveos_ops_count(); i++) {
+        const lxveos_op_t *op = lxveos_ops_get(i);
+        if (op == NULL) {
+            continue;
+        }
+        if (op->category != last_cat) {            // non-clickable category header (a plain flex-item label)
+            last_cat = op->category;
+            lv_obj_t *cat = lv_label_create(list);
+            lv_label_set_text(cat, lxveos_opcat_name(last_cat));
+            lv_obj_set_style_text_color(cat, lv_color_hex(0x39FF14), 0);
+            lv_obj_set_style_pad_top(cat, 4, 0);
+        }
+        char row_txt[64];
+        lxveos_gui_compose_op_label(row_txt, sizeof(row_txt), op);
+        lv_obj_t *row = lv_obj_create(list);       // clickable core-widget row (no lv_button dependency)
+        lv_obj_set_width(row, lv_pct(100));
+        lv_obj_set_height(row, LV_SIZE_CONTENT);
+        lv_obj_set_style_bg_color(row, lv_color_hex(0x141414), 0);
+        lv_obj_set_style_border_width(row, 0, 0);
+        lv_obj_set_style_pad_all(row, 5, 0);
+        lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);   // the row shouldn't eat the tap as an inner scroll
+        lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(row, op_row_cb, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
+        lv_obj_t *row_lbl = lv_label_create(row);
+        lv_label_set_text(row_lbl, row_txt);
+        lv_obj_set_style_text_color(row_lbl, lv_color_hex(0xCFCFCF), 0);
+    }
     lvgl_port_unlock();
 
-    ESP_LOGI(TAG, "LVGL up: %dx%d, launcher + capability menu drawn (%u ops ready)", caps.width,
+    ESP_LOGI(TAG, "LVGL up: %dx%d, launcher + tappable capability list drawn (%u ops ready)", caps.width,
              caps.height, (unsigned)ready);
     return ESP_OK;
 }
