@@ -80,6 +80,7 @@ authorized-use terms; the acceptance is stored in NVS, so it's a one-time gate p
 | `nfc begin <sda> <scl> \| read [seconds] \| clone <8hexUID> \| end` | PN532 NFC — read a card UID (receive) plus **arm-gated `clone`** (write a spoofed UID to a Gen2 magic card). Add-on module |
 | `sysinfo` | ESP-IDF version, reset reason, boot count, uptime, heap free |
 | `status` | one machine-readable line for the Cyber Controller host (below) |
+| `bridge` · `bridge on\|off\|status` | toggle machine-readable `LXVEOS/1 <type> k=v` event emission for the Cyber Controller bridge (off by default; recon/defense/capture/arm ops stream typed event lines when on) — see `docs/EVENT-PROTOCOL.md` |
 | `loglevel <tag\|*> <level>` | change ESP-IDF log verbosity at runtime |
 | `nvs get\|set <key> [value]` | small persistent key/value store for operator settings |
 | `reboot` | restart the unit |

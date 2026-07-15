@@ -5,6 +5,12 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+// Emission gate (see the header). Plain process-global; set by the `bridge` command, read at every emit site.
+static bool s_evt_enabled = false;
+
+void lxveos_evt_set_enabled(bool on) { s_evt_enabled = on; }
+bool lxveos_evt_enabled(void) { return s_evt_enabled; }
+
 // Bounded printf-append: writes at buf[off..] within cap (which includes the NUL), advances off. On overflow it
 // clamps off to cap-1 (buf stays NUL-terminated at the boundary) so every later append is a no-op — the line is
 // truncated, never overrun. The format attribute makes the compiler check each call's format vs its args.

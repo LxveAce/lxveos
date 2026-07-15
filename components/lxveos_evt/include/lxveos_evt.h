@@ -20,12 +20,21 @@
 //     n = lxveos_evt_kv_int(line, sizeof(line), n, "rssi", rssi);
 //     n = lxveos_evt_kv    (line, sizeof(line), n, "auth", "wpa2");
 //     puts(line);   // LXVEOS/1 ap bssid=de:ad:be:ef:00:01 ssid=4d794e6574 ch=6 rssi=-42 auth=wpa2
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// --- Emission gate -----------------------------------------------------------------------------------------
+// Whether recon/defense/capture/arm op handlers should PRINT their LXVEOS/1 event lines. Off by default so the
+// interactive console stays clean; CC turns it on with `bridge on`. A simple process-global policy flag,
+// readable from any component's emit site (the CLI handlers, and later the streaming-op driver callbacks). The
+// line *builders* above stay pure/stateless — this is the only mutable state in the component.
+void lxveos_evt_set_enabled(bool on);
+bool lxveos_evt_enabled(void);
 
 // Start an event line: writes "LXVEOS/1 <type>" into buf (capacity cap) and returns the new length. `type`
 // should be a short lowercase token (ap/sta/probe/ble/hs/pcap/arm/alert/snapshot). Returns 0 (empty buf) on

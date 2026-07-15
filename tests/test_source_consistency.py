@@ -144,7 +144,7 @@ def test_status_bridge_line_exposes_arm_state():
 # Introspection/utility verbs that intentionally have NO catalog op.
 _UTILITY_CMDS = {
     "agree", "arm", "disarm", "caps", "features", "info", "status", "sysinfo",
-    "loglevel", "nvs", "reboot",
+    "loglevel", "nvs", "reboot", "bridge",
 }
 
 # Each security verb -> the catalog slug(s) it drives (subcommands fold into the parent verb).

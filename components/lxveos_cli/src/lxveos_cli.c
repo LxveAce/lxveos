@@ -32,6 +32,7 @@
 #include "lxveos_board.h"
 #include "lxveos_caps.h"
 #include "lxveos_evilportal.h"
+#include "lxveos_evt.h"
 #include "lxveos_ops.h"
 #include "lxveos_wifi.h"
 
@@ -195,6 +196,24 @@ static int cmd_status(int argc, char **argv)
            (unsigned)ops_ready, (unsigned)ops_planned, (unsigned)ops_unavail,
            (unsigned)esp_get_free_heap_size(), lxveos_arm_state_name(lxveos_arm_state()),
            lxveos_arm_tx_compiled() ? 1 : 0);
+    return 0;
+}
+
+// `bridge on|off|status` — toggle machine-readable LXVEOS/1 event emission (see docs/EVENT-PROTOCOL.md). Off by
+// default so the interactive console stays clean; the Cyber Controller sends `bridge on` after connect so the
+// recon/defense/capture/arm ops stream typed `LXVEOS/1 <type> k=v` lines it can parse. The `status` line is
+// always available regardless of this toggle.
+static int cmd_bridge(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (argc >= 2 && strcmp(argv[1], "on") == 0) {
+        lxveos_evt_set_enabled(true);
+    } else if (argc >= 2 && strcmp(argv[1], "off") == 0) {
+        lxveos_evt_set_enabled(false);
+    }
+    printf("LXVEOS/1 bridge state=%s\n", lxveos_evt_enabled() ? "on" : "off");
     return 0;
 }
 
@@ -367,6 +386,24 @@ static int cmd_scan(int argc, char **argv)
                aps[i].rssi, aps[i].channel, lxveos_wifi_authmode_str(aps[i].authmode),
                aps[i].bssid[0], aps[i].bssid[1], aps[i].bssid[2],
                aps[i].bssid[3], aps[i].bssid[4], aps[i].bssid[5]);
+    }
+    if (lxveos_evt_enabled()) {
+        for (size_t i = 0; i < found; i++) {
+            char line[192];
+            size_t n = lxveos_evt_begin(line, sizeof(line), "ap");
+            n = lxveos_evt_kv_mac(line, sizeof(line), n, "bssid", aps[i].bssid);
+            n = lxveos_evt_kv_hex(line, sizeof(line), n, "ssid",
+                                  (const uint8_t *)aps[i].ssid, strlen(aps[i].ssid));
+            n = lxveos_evt_kv_int(line, sizeof(line), n, "ch", aps[i].channel);
+            n = lxveos_evt_kv_int(line, sizeof(line), n, "rssi", aps[i].rssi);
+            n = lxveos_evt_kv(line, sizeof(line), n, "auth", lxveos_wifi_authmode_str(aps[i].authmode));
+            printf("%s\n", line);
+        }
+        char done[64];
+        size_t dn = lxveos_evt_begin(done, sizeof(done), "done");
+        dn = lxveos_evt_kv(done, sizeof(done), dn, "of", "scan");
+        dn = lxveos_evt_kv_uint(done, sizeof(done), dn, "n", (unsigned long)found);
+        printf("%s\n", done);
     }
     printf("%u AP(s) in range\n", (unsigned)found);
     return 0;
@@ -1835,6 +1872,7 @@ static void register_commands(void)
         {.command = "btracker", .help = "Passive BLE item-tracker/stalking detector (AirTag/Tile/SmartTag/Chipolo/PebbleBee/GoogleFMN): btracker [seconds]", .func = &cmd_btracker},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
+        {.command = "bridge", .help = "Toggle machine-readable LXVEOS/1 event emission for the CC bridge: bridge on|off|status", .func = &cmd_bridge},
         {.command = "arm", .help = "Two-factor enable for offensive-TX ops: arm (request), arm <token> (confirm), arm status (query)", .func = &cmd_arm},
         {.command = "disarm", .help = "Hard-disarm: return to SAFE (offensive TX not permitted)", .func = &cmd_disarm},
         {.command = "evilportal", .help = "Rogue AP + captive portal (needs arm): evilportal [ssid|karma|template <id>|templates|creds|stop]", .func = &cmd_evilportal},
