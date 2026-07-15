@@ -25,4 +25,10 @@ build_arm -DLXVEOS_TX_DISABLE  # conservative build: the emitter is stripped
     "$here/test_formenc.c" "$root/components/lxveos_formenc/src/lxveos_formenc.c" -o "$out"
 "$out"
 
+# --- serial-bridge event-line builder: dependency-free, no stubs needed ---
+"$CC" -std=gnu11 -O1 -Wall \
+    -I"$root/components/lxveos_evt/include" \
+    "$here/test_evt.c" "$root/components/lxveos_evt/src/lxveos_evt.c" -o "$out"
+"$out"
+
 echo "host-c: all tests passed"
