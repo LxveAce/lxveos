@@ -5,8 +5,9 @@ name: build-matrix
 # builds. Each board's build produces a single-file flashable image (merge-bin) uploaded as an artifact,
 # so any machine can flash a device without an ESP-IDF toolchain. The validate job also runs a host-C unit
 # test of the arm-gate safety state machine (no ESP-IDF needed). Each built board is then run through
-# scripts/size_report.py (app image vs its partition slot — fails on overflow, warns over the soft budget).
-# + on-device (Unity/pytest-embedded) tests once hardware bring-up lands.
+# scripts/check_deps.py (managed deps in the freshly resolved dependencies.lock vs the reviewed pins in
+# scripts/expected_deps.txt — fails on drift) and scripts/size_report.py (app image vs its partition slot —
+# fails on overflow, warns over the soft budget). + on-device (Unity/pytest-embedded) tests once bring-up lands.
 on:
   push:
   pull_request:
@@ -84,6 +85,12 @@ jobs:
             idf.py -B build/${{ matrix.board }}
             -D SDKCONFIG=build/${{ matrix.board }}/sdkconfig
             merge-bin -o ${{ matrix.board }}-merged.bin
+      # Supply-chain drift gate: the build just resolved the managed deps into dependencies.lock (git-ignored,
+      # regenerated every build). Fail the board if any resolved version drifts from the reviewed pins in
+      # scripts/expected_deps.txt, so a new upstream minor/patch can't enter a security-firmware build
+      # unreviewed. Adopting an upgrade is a conscious in-commit bump of the pin.
+      - name: Managed-dependency pin check ${{ matrix.board }}
+        run: python3 scripts/check_deps.py --lock dependencies.lock --board ${{ matrix.board }}
       # Flash-headroom gate: report the app image vs its partition slot and FAIL the board if it overflows
       # (a clearer, earlier signal than the flash-time failure). Warns above the soft budget without failing.
       - name: Flash-headroom report ${{ matrix.board }}

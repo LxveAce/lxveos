@@ -1,0 +1,13 @@
+# Managed-dependency version pins for the ESP-IDF Component Manager (drift gate; see scripts/check_deps.py).
+#
+# The Component Manager resolves the caret ranges declared in each component's idf_component.yml
+# (components/lxveos_board -> esp_lcd_ili9341 "^2.0"; components/lxveos_gui -> esp_lvgl_port "^2", lvgl "^9")
+# down to these exact versions. dependencies.lock is regenerated (and git-ignored) every build, so this file
+# is the committed record of what those ranges are EXPECTED to resolve to. CI runs check_deps.py against the
+# freshly generated lock and fails the build on any drift, so a new upstream minor/patch can't slip into a
+# security-firmware build unreviewed. To adopt an upgrade, bump the version here in the same commit.
+#
+# Format: <namespace/component> <exact-version>   (versions verified from CI build 29432550246, IDF v6.0.2)
+espressif/esp_lcd_ili9341 2.0.2
+espressif/esp_lvgl_port 2.8.0~1
+lvgl/lvgl 9.5.0
