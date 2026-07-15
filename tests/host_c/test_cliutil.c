@@ -34,6 +34,30 @@ static void test_parse_mac(void)
     assert(!parse_mac("de:ad:be:ef:00:01", NULL));
 }
 
+static void test_parse_hex_octets(void)
+{
+    uint8_t b[6];
+    // canonical 4-byte NFC UID, upper- and lower-case parse identically
+    assert(parse_hex_octets("DEADBEEF", b, 4));
+    assert(b[0] == 0xde && b[1] == 0xad && b[2] == 0xbe && b[3] == 0xef);
+    assert(parse_hex_octets("deadbeef", b, 4) && b[0] == 0xde && b[3] == 0xef);
+    // boundary byte values
+    assert(parse_hex_octets("00ff10ab", b, 4) && b[0] == 0x00 && b[1] == 0xff && b[2] == 0x10 && b[3] == 0xab);
+    // works for other widths (1 byte, 6 bytes = a colon-less MAC)
+    assert(parse_hex_octets("0f", b, 1) && b[0] == 0x0f);
+    assert(parse_hex_octets("001122334455", b, 6) && b[0] == 0x00 && b[5] == 0x55);
+    // rejects: too short, too long (trailing), odd length, non-hex, empty
+    assert(!parse_hex_octets("deadbe", b, 4));      // 6 chars, 4 bytes wanted
+    assert(!parse_hex_octets("deadbeef00", b, 4));  // 10 chars -> trailing rejected
+    assert(!parse_hex_octets("deadbee", b, 4));     // odd length (7)
+    assert(!parse_hex_octets("deadbeeg", b, 4));    // non-hex nibble
+    assert(!parse_hex_octets("", b, 4));            // empty
+    assert(!parse_hex_octets("0", b, 1));           // one nibble, one byte wanted
+    // NULL args -> false, never dereferenced
+    assert(!parse_hex_octets(NULL, b, 4));
+    assert(!parse_hex_octets("dead", NULL, 2));
+}
+
 static void test_parse_int_arg(void)
 {
     long v = -999;
@@ -117,6 +141,7 @@ static void test_csv_quote_field(void)
 int main(void)
 {
     test_parse_mac();
+    test_parse_hex_octets();
     test_parse_int_arg();
     test_sanitize_copy();
     test_csv_quote_field();

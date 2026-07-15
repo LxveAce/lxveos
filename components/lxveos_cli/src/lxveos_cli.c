@@ -1887,25 +1887,10 @@ static int cmd_nfc(int argc, char **argv)
         return 0;
     }
     if (argc >= 3 && strcmp(argv[1], "clone") == 0) {
-        // Parse 8 hex chars -> a 4-byte UID.
         const char *h = argv[2];
-        if (strlen(h) != 8) {
-            printf("clone needs a 4-byte UID as 8 hex chars, e.g. 'nfc clone DEADBEEF'\n");
-            return 0;
-        }
         uint8_t uid[4];
-        bool ok = true;
-        for (int i = 0; i < 4 && ok; i++) {
-            char b[3] = { h[i * 2], h[i * 2 + 1], 0 };
-            char *end = NULL;
-            long v = strtol(b, &end, 16);
-            if (end == b || *end != '\0') {
-                ok = false;
-            }
-            uid[i] = (uint8_t)v;
-        }
-        if (!ok) {
-            printf("invalid hex UID '%s'\n", h);
+        if (!parse_hex_octets(h, uid, sizeof(uid))) {  // exactly 8 hex chars -> 4-byte UID (host-tested)
+            printf("clone needs a 4-byte UID as 8 hex chars, e.g. 'nfc clone DEADBEEF'\n");
             return 0;
         }
         printf("NFC clone: present a writable/magic Mifare card to write UID %s ...\n", h);

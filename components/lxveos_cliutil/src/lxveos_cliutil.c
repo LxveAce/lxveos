@@ -45,6 +45,26 @@ bool parse_mac(const char *s, uint8_t out[6])
     return *s == '\0';  // reject anything trailing the sixth octet
 }
 
+bool parse_hex_octets(const char *s, uint8_t *out, size_t nbytes)
+{
+    if (s == NULL || out == NULL) {
+        return false;
+    }
+    for (size_t i = 0; i < nbytes; i++) {
+        int hi = hex_nibble(s[0]);
+        if (hi < 0) {
+            return false;  // check s[0] BEFORE s[1] so a short string never reads past the NUL
+        }
+        int lo = hex_nibble(s[1]);
+        if (lo < 0) {
+            return false;
+        }
+        out[i] = (uint8_t)((hi << 4) | lo);
+        s += 2;
+    }
+    return *s == '\0';  // reject any trailing chars (a too-long string)
+}
+
 bool parse_int_arg(const char *s, long lo, long hi, long *out)
 {
     if (s == NULL || out == NULL) {

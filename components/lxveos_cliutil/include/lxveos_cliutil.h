@@ -15,6 +15,12 @@ extern "C" {
 // short octets, no wrong separator, no trailing garbage). NULL args return false.
 bool parse_mac(const char *s, uint8_t out[6]);
 
+// Parse exactly `nbytes` CONTIGUOUS two-hex-digit octets (2*nbytes chars, no separators) from `s` into
+// out[0..nbytes-1] — e.g. parse_hex_octets("DEADBEEF", out, 4) -> {0xDE,0xAD,0xBE,0xEF}. Returns false
+// unless the whole string is exactly that many hex digits: a short/long string, a non-hex digit, or any
+// trailing char all reject (so a mistyped NFC UID can't be silently truncated). NULL args return false.
+bool parse_hex_octets(const char *s, uint8_t *out, size_t nbytes);
+
 // Parse a base-10 integer CLI argument in [lo, hi] into *out. Returns false for NULL args, a non-numeric
 // token (no digits consumed), or one out of range — so a bad GPIO / seconds arg errors with a usage hint
 // instead of silently becoming 0 the way atoi() does. A trailing-garbage token like "8x" parses as 8
