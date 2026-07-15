@@ -236,6 +236,58 @@ static void test_flock(void)
     assert(lxveos_ble_flock_confidence(NULL) == LXVEOS_BLE_FLOCK_NONE);
 }
 
+static void test_surveil(void)
+{
+    // A plain advertiser matches nothing.
+    lxveos_ble_dev_t plain = {0};
+    plain.svc_uuids[0] = 0x180f;  // Battery
+    plain.svc_uuid_count = 1;
+    assert(lxveos_ble_surveil_flags(&plain) == LXVEOS_SURVEIL_NONE);
+
+    // An item-tracker (tracker field set by the scan classifier) -> TRACKER bit.
+    lxveos_ble_dev_t t = {0};
+    t.tracker = LXVEOS_BLE_TRACKER_APPLE_FINDMY;
+    assert(lxveos_ble_surveil_flags(&t) == LXVEOS_SURVEIL_TRACKER);
+
+    // A Flipper -> FLIPPER bit.
+    lxveos_ble_dev_t fl = {0};
+    fl.svc_uuids[0] = 0x3082;
+    fl.svc_uuid_count = 1;
+    assert(lxveos_ble_surveil_flags(&fl) == LXVEOS_SURVEIL_FLIPPER);
+
+    // A Meta advertiser -> META bit.
+    lxveos_ble_dev_t me = {0};
+    me.has_mfg = true;
+    me.company_id = 0xFD5F;
+    assert(lxveos_ble_surveil_flags(&me) == LXVEOS_SURVEIL_META);
+
+    // A Flock (XUNTONG + name) -> FLOCK bit.
+    lxveos_ble_dev_t fc = {0};
+    fc.has_mfg = true;
+    fc.company_id = 0x09C8;
+    strcpy(fc.name, "FS Ext Battery");
+    fc.name_len = 14;
+    assert(lxveos_ble_surveil_flags(&fc) == LXVEOS_SURVEIL_FLOCK);
+
+    // A default-named BT-serial module -> SKIMMER bit.
+    lxveos_ble_dev_t sk = {0};
+    strcpy(sk.name, "HC-05");
+    sk.name_len = 5;
+    assert(lxveos_ble_surveil_flags(&sk) == LXVEOS_SURVEIL_SKIMMER);
+
+    // Category-bit labels (one bit per call), and 0 / unknown -> NULL.
+    assert(strcmp(lxveos_ble_surveil_str(LXVEOS_SURVEIL_TRACKER), "tracker") == 0);
+    assert(strcmp(lxveos_ble_surveil_str(LXVEOS_SURVEIL_FLOCK), "flock-cam") == 0);
+    assert(strcmp(lxveos_ble_surveil_str(LXVEOS_SURVEIL_META), "meta-glasses") == 0);
+    assert(strcmp(lxveos_ble_surveil_str(LXVEOS_SURVEIL_FLIPPER), "flipper") == 0);
+    assert(strcmp(lxveos_ble_surveil_str(LXVEOS_SURVEIL_SKIMMER), "skimmer?") == 0);
+    assert(lxveos_ble_surveil_str(LXVEOS_SURVEIL_NONE) == NULL);
+    assert(lxveos_ble_surveil_str(0xFF) == NULL);
+
+    // NULL is safe.
+    assert(lxveos_ble_surveil_flags(NULL) == LXVEOS_SURVEIL_NONE);
+}
+
 int main(void)
 {
     test_company_name();
@@ -246,6 +298,7 @@ int main(void)
     test_meta();
     test_skimmer();
     test_flock();
+    test_surveil();
     printf("test_ble_labels: all tests passed\n");
     return 0;
 }

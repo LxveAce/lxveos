@@ -1693,6 +1693,93 @@ static int cmd_flock(int argc, char **argv)
     return 0;
 }
 
+// `surveil [seconds]` — counter-surveillance BLE sweep (the `surveil_scan` catalog op, custom). One passive scan,
+// then folds EVERY passive BLE detector into a single "what surveillance gear is near me?" answer: item-trackers,
+// Flock cameras, Meta / Ray-Ban glasses, Flipper Zeros, and possible card-skimmers — per-device categories plus a
+// category tally. A privacy / anti-stalking sweep; listen only — advertises nothing, sends no scan requests.
+static int cmd_surveil(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    if (!lxveos_cap_active(LXVEOS_CAP_BLE)) {
+        printf("ble capability is not active on this build — cannot scan\n");
+        return 0;
+    }
+    uint32_t secs = 6;
+    if (argc >= 2) {
+        long v = strtol(argv[1], NULL, 10);
+        if (v >= 1 && v <= 60) {
+            secs = (uint32_t)v;
+        } else {
+            printf("usage: surveil [seconds 1-60]  (default 6)\n");
+            return 0;
+        }
+    }
+    printf("counter-surveillance sweep for %us (GAP observe — advertises nothing)...\n", (unsigned)secs);
+    lxveos_ble_dev_t *devs = s_ble_scan;   // shared buffer (single-threaded CLI) — keeps DRAM small
+    size_t found = 0;
+    esp_err_t e = lxveos_ble_scan(secs, devs, LXVEOS_BLE_SCAN_MAX, &found);
+    if (e != ESP_OK) {
+        printf("ble scan failed: %s\n", esp_err_to_name(e));
+        return 0;
+    }
+    // The category bits we walk, in display order. Per-category tallies parallel this list.
+    static const uint8_t CATS[] = {
+        LXVEOS_SURVEIL_TRACKER, LXVEOS_SURVEIL_FLOCK, LXVEOS_SURVEIL_META,
+        LXVEOS_SURVEIL_FLIPPER, LXVEOS_SURVEIL_SKIMMER,
+    };
+    const size_t ncats = sizeof(CATS) / sizeof(CATS[0]);
+    unsigned tally[sizeof(CATS) / sizeof(CATS[0])] = {0};
+    unsigned hits = 0;
+    for (size_t i = 0; i < found; i++) {
+        const lxveos_ble_dev_t *d = &devs[i];
+        uint8_t flags = lxveos_ble_surveil_flags(d);
+        if (flags == LXVEOS_SURVEIL_NONE) {
+            continue;
+        }
+        hits++;
+        // Build a "cat1+cat2" label for this device and bump each matched category's tally.
+        char cats[64];
+        size_t cl = 0;
+        cats[0] = '\0';
+        for (size_t c = 0; c < ncats; c++) {
+            if (flags & CATS[c]) {
+                tally[c]++;
+                const char *nm = lxveos_ble_surveil_str(CATS[c]);
+                cl += (size_t)snprintf(cats + cl, sizeof(cats) - cl, "%s%s", cl ? "+" : "", nm ? nm : "?");
+                if (cl >= sizeof(cats)) {
+                    cl = sizeof(cats) - 1;   // snprintf truncated; keep cl in-bounds for the next append
+                }
+            }
+        }
+        char nm[32];
+        sanitize_copy(nm, sizeof(nm), d->name);   // device-supplied name -> console-safe
+        printf("  [%s] %02x:%02x:%02x:%02x:%02x:%02x  rssi %ddBm  %s\n",
+               cats, d->addr[5], d->addr[4], d->addr[3], d->addr[2], d->addr[1], d->addr[0], d->rssi, nm);
+    }
+    if (hits) {
+        printf("verdict: ⚠ %u surveillance-relevant device(s) — tracker:%u flock:%u meta:%u flipper:%u skimmer:%u "
+               "(%u scanned). Skimmer/flock are heuristic — verify in person.\n",
+               hits, tally[0], tally[1], tally[2], tally[3], tally[4], (unsigned)found);
+    } else {
+        printf("verdict: clear — no surveillance-relevant BLE device seen (%u scanned)\n", (unsigned)found);
+    }
+    if (lxveos_evt_enabled() && hits > 0) {
+        char line[160];
+        size_t n = lxveos_evt_begin(line, sizeof(line), "alert");
+        n = lxveos_evt_kv(line, sizeof(line), n, "kind", "surveil");
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "count", hits);
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "tracker", tally[0]);
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "flock", tally[1]);
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "meta", tally[2]);
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "flipper", tally[3]);
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "skimmer", tally[4]);
+        printf("%s\n", line);
+    }
+    return 0;
+}
+
 // `arm [token]` — two-factor enable for offensive-TX ops. `arm` (no token) starts a request and prints a
 // one-time confirm code; `arm <token>` confirms it within 30s. Offensive TX is compiled in by default; only
 // a conservative LXVEOS_TX_DISABLE build has nothing to arm. Recon/defense ops never need arming. The gate
@@ -2702,6 +2789,7 @@ static void register_commands(void)
         {.command = "meta", .help = "Passive Meta/Ray-Ban glasses + Oculus detector (BLE mfg/service-ID match): meta [seconds] (listen only)", .func = &cmd_meta},
         {.command = "skimmer", .help = "Passive card-skimmer heuristic — flag default-named HC-0x BT-serial modules: skimmer [seconds] (listen only)", .func = &cmd_skimmer},
         {.command = "flock", .help = "Passive Flock Safety camera heuristic (BLE XUNTONG mfg + name): flock [seconds] — experimental, listen only", .func = &cmd_flock},
+        {.command = "surveil", .help = "Counter-surveillance BLE sweep — one scan folds tracker/Flock/Meta/Flipper/skimmer detectors into one summary: surveil [seconds] (listen only)", .func = &cmd_surveil},
         {.command = "sysinfo", .help = "Show ESP-IDF version, reset reason and heap free", .func = &cmd_sysinfo},
         {.command = "status", .help = "One machine-readable status line (Cyber Controller bridge format)", .func = &cmd_status},
         {.command = "bridge", .help = "Toggle machine-readable LXVEOS/1 event emission for the CC bridge: bridge on|off|status", .func = &cmd_bridge},

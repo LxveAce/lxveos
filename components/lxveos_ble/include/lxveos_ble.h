@@ -137,6 +137,22 @@ uint8_t lxveos_ble_flock_confidence(const lxveos_ble_dev_t *d);
 // Short label for a Flock confidence tier ("likely"/"possible"), or NULL for LXVEOS_BLE_FLOCK_NONE.
 const char *lxveos_ble_flock_str(uint8_t confidence);
 
+// Counter-surveillance ("surveil") classification bitmask — which surveillance/privacy categories `d` matches.
+// A single sweep answers "what surveillance-relevant gear is near me?" by folding every passive BLE detector
+// LxveOS already has into one result. A device can (rarely) match more than one bit. Pure over the scanned
+// struct (reads d->tracker, set by the scan classifier, plus the pure Flock/Meta/Flipper/skimmer helpers).
+#define LXVEOS_SURVEIL_NONE     0x00u
+#define LXVEOS_SURVEIL_TRACKER  0x01u  // item-tracker (AirTag/Tile/SmartTag/Chipolo/PebbleBee/GoogleFMN)
+#define LXVEOS_SURVEIL_FLOCK    0x02u  // Flock Safety camera/battery (XUNTONG)
+#define LXVEOS_SURVEIL_META     0x04u  // Meta / Ray-Ban Meta glasses / Oculus (wearable camera + mic)
+#define LXVEOS_SURVEIL_FLIPPER  0x08u  // Flipper Zero (pentest multitool)
+#define LXVEOS_SURVEIL_SKIMMER  0x10u  // possible card-skimmer (default-named HC-0x BT-serial module)
+uint8_t lxveos_ble_surveil_flags(const lxveos_ble_dev_t *d);
+
+// Short label for a single surveil category BIT (LXVEOS_SURVEIL_TRACKER/FLOCK/...): "tracker"/"flock-cam"/
+// "meta-glasses"/"flipper"/"skimmer?", or NULL for 0 / an unknown bit. One bit per call.
+const char *lxveos_ble_surveil_str(uint8_t category_bit);
+
 // ── BLE HID keystroke injection (the `ble_hid_inject` op, "BadBLE") — OFFENSIVE TX, arm-gated ─────────
 // LxveOS advertises as a standard BLE HID keyboard ("LxveOS-KB"); when a target host pairs and subscribes
 // to the input report, it plays `script` as keystrokes — a Rubber-Ducky primitive over BLE, for authorized

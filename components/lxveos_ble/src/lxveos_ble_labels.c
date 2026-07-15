@@ -291,3 +291,41 @@ const char *lxveos_ble_flock_str(uint8_t confidence)
     default:                        return NULL;
     }
 }
+
+uint8_t lxveos_ble_surveil_flags(const lxveos_ble_dev_t *d)
+{
+    if (d == NULL) {
+        return LXVEOS_SURVEIL_NONE;
+    }
+    // Fold every passive detector into one bitmask. d->tracker was set by the scan-time classifier; the rest
+    // are the pure helpers above. Order-independent — a device could in principle match more than one bit.
+    uint8_t f = LXVEOS_SURVEIL_NONE;
+    if (d->tracker != LXVEOS_BLE_TRACKER_NONE) {
+        f |= LXVEOS_SURVEIL_TRACKER;
+    }
+    if (lxveos_ble_flock_confidence(d) != LXVEOS_BLE_FLOCK_NONE) {
+        f |= LXVEOS_SURVEIL_FLOCK;
+    }
+    if (lxveos_ble_is_meta(d)) {
+        f |= LXVEOS_SURVEIL_META;
+    }
+    if (lxveos_ble_flipper_color(d) != NULL) {
+        f |= LXVEOS_SURVEIL_FLIPPER;
+    }
+    if (lxveos_ble_is_skimmer(d)) {
+        f |= LXVEOS_SURVEIL_SKIMMER;
+    }
+    return f;
+}
+
+const char *lxveos_ble_surveil_str(uint8_t category_bit)
+{
+    switch (category_bit) {
+    case LXVEOS_SURVEIL_TRACKER: return "tracker";
+    case LXVEOS_SURVEIL_FLOCK:   return "flock-cam";
+    case LXVEOS_SURVEIL_META:    return "meta-glasses";
+    case LXVEOS_SURVEIL_FLIPPER: return "flipper";
+    case LXVEOS_SURVEIL_SKIMMER: return "skimmer?";
+    default:                     return NULL;
+    }
+}
