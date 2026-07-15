@@ -5,3 +5,6 @@
 ## them at boot from the RDID4 (0xD3) probe. Requires ESP-IDF >= 4.4 (we build on v6.0.2).
 dependencies:
   espressif/esp_lcd_ili9341: "^2.0"
+  # XPT2046 resistive touch (the CYD's touch controller, on its own SPI bus). Pulls esp_lcd_touch
+  # transitively. Drives the LVGL pointer indev (lxveos_gui). Requires ESP-IDF >= 4.4 (we build on v6.0.2).
+  espressif/esp_lcd_touch_xpt2046: "^1"
