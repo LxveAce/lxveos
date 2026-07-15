@@ -2,6 +2,7 @@
 // host-tested off-target (tests/host_c/test_hidmap.c). Extracted verbatim from lxveos_ble_hid.c.
 #include "lxveos_hidmap.h"
 
+#include <stddef.h>   // NULL
 #include <strings.h>  // strcasecmp
 
 #define MOD_LSHIFT 0x02
