@@ -6,6 +6,34 @@
 #include <stdio.h>
 #include <string.h>
 
+static void test_parse_mac(void)
+{
+    uint8_t m[6];
+    // canonical lower-case
+    assert(parse_mac("de:ad:be:ef:00:01", m));
+    assert(m[0] == 0xde && m[1] == 0xad && m[2] == 0xbe && m[3] == 0xef && m[4] == 0x00 && m[5] == 0x01);
+    // upper-case and mixed-case parse identically
+    assert(parse_mac("DE:AD:BE:EF:00:01", m) && m[0] == 0xde && m[5] == 0x01);
+    assert(parse_mac("De:Ad:bE:eF:0a:0B", m) && m[2] == 0xbe && m[4] == 0x0a && m[5] == 0x0b);
+    // all-zero and all-ff bounds
+    assert(parse_mac("00:00:00:00:00:00", m) && m[0] == 0x00 && m[5] == 0x00);
+    assert(parse_mac("ff:ff:ff:ff:ff:ff", m) && m[0] == 0xff && m[5] == 0xff);
+    // rejects: too few octets, too many, short octet, wrong separator, non-hex, trailing junk, empty
+    assert(!parse_mac("de:ad:be:ef:00", m));         // 5 octets
+    assert(!parse_mac("de:ad:be:ef:00:01:02", m));   // 7 octets
+    assert(!parse_mac("d:ad:be:ef:00:01", m));       // single-digit octet
+    assert(!parse_mac("de-ad-be-ef-00-01", m));      // dash separator
+    assert(!parse_mac("de:ad:be:ef:00:0g", m));      // non-hex nibble
+    assert(!parse_mac("de:ad:be:ef:00:01 ", m));     // trailing space
+    assert(!parse_mac("de:ad:be:ef:00:01x", m));     // trailing char
+    assert(!parse_mac("de:ad:be:ef:00:", m));        // trailing colon, no sixth octet
+    assert(!parse_mac("", m));                        // empty
+    assert(!parse_mac("deadbeef0001", m));           // no separators
+    // NULL args -> false, never dereferenced (must not read one past a boundary either)
+    assert(!parse_mac(NULL, m));
+    assert(!parse_mac("de:ad:be:ef:00:01", NULL));
+}
+
 static void test_parse_int_arg(void)
 {
     long v = -999;
@@ -88,6 +116,7 @@ static void test_csv_quote_field(void)
 
 int main(void)
 {
+    test_parse_mac();
     test_parse_int_arg();
     test_sanitize_copy();
     test_csv_quote_field();

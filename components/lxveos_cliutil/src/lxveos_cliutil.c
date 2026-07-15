@@ -4,6 +4,47 @@
 
 #include <stdlib.h>  // strtol
 
+// One hex digit -> 0..15, or -1 if `c` is not a hex digit. Local so parse_mac stays libc-only.
+static int hex_nibble(char c)
+{
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
+}
+
+bool parse_mac(const char *s, uint8_t out[6])
+{
+    if (s == NULL || out == NULL) {
+        return false;
+    }
+    for (int i = 0; i < 6; i++) {
+        int hi = hex_nibble(s[0]);
+        if (hi < 0) {
+            return false;  // check s[0] BEFORE touching s[1], so we never read past the NUL
+        }
+        int lo = hex_nibble(s[1]);  // s[0] is a hex digit (not '\0'), so s[1] is in bounds (>= the NUL)
+        if (lo < 0) {
+            return false;
+        }
+        out[i] = (uint8_t)((hi << 4) | lo);
+        s += 2;
+        if (i < 5) {
+            if (*s != ':') {
+                return false;  // octets 1..5 must be colon-separated
+            }
+            s++;
+        }
+    }
+    return *s == '\0';  // reject anything trailing the sixth octet
+}
+
 bool parse_int_arg(const char *s, long lo, long hi, long *out)
 {
     if (s == NULL || out == NULL) {

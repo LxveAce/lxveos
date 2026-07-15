@@ -4,10 +4,16 @@
 // lxveos_cli.c so this pure logic host-tests with no ESP-IDF toolchain (tests/host_c/test_cliutil.c).
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// Parse a MAC / BLE address "aa:bb:cc:dd:ee:ff" (upper- or lower-case hex, colon-separated) into out[6].
+// Returns false unless the whole string is EXACTLY six two-hex-digit octets separated by single colons (no
+// short octets, no wrong separator, no trailing garbage). NULL args return false.
+bool parse_mac(const char *s, uint8_t out[6]);
 
 // Parse a base-10 integer CLI argument in [lo, hi] into *out. Returns false for NULL args, a non-numeric
 // token (no digits consumed), or one out of range — so a bad GPIO / seconds arg errors with a usage hint

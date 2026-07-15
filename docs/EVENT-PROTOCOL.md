@@ -44,7 +44,7 @@ dashboard poll, not an event.
 | `hs` | `kind=pmkid\|eapol` `line`(hashcat-22000) | `capture` | one per crackable artifact; `line` is the ready-to-crack WPA*01/WPA*02 line (token-safe, ESSID hex inside), forwarded straight to Crack Lab |
 | `pcap` | `id` `bytes` | `pcap_log` | a pcap segment was written (needs storage; HW) |
 | `arm` | `state=safe\|pending\|armed\|tx_disabled` `token`(pending only) `window`(s, pending) | `arm`/`disarm` | arm state change. `tx_disabled` = offensive TX compiled out (LXVEOS_TX_DISABLE). Also printed as human prose (always), so CC tracks arm state even with the bridge off |
-| `alert` | `kind=deauth\|eviltwin\|tracker\|bleflood\|blehid\|wps` `...`(kind-specific) | `defend`/`eviltwin`/`apaudit`/`bleflood`/`btracker`/`blehid` | a detector fired |
+| `alert` | `kind=deauth\|eviltwin\|weak\|wps\|tracker\|bleflood\|blehid\|watch` `...`(kind-specific) | `defend`/`eviltwin`/`apaudit`/`bleflood`/`btracker`/`blehid`/`watch` | a detector fired |
 | `snapshot` | `aps` `open` `wps` `bles` `trackers` | `airspace` (custom) | airspace occupancy counts; `bles`/`trackers` present only when BLE is active |
 | `done` | `of=<cmd>` `n=<count>` | any listing cmd | end-of-listing marker so CC knows the batch is complete |
 
@@ -56,6 +56,7 @@ dashboard poll, not an event.
 - `tracker` (`btracker`): `addr`(mac) `vendor` (AirTag/Tile/SmartTag/Chipolo/PebbleBee/GoogleFMN)
 - `bleflood` (`bleflood`): `rate` (adv/s) `vendor`
 - `blehid` (`blehid`): `addr`(mac) `name`(hex) — a BLE HID (keyboard/mouse) device, an injection surface
+- `watch` (`watch scan`, custom): `mac`(mac, the watched target) `rssi`(dBm) `band=wifi\|ble` — a watchlisted BSSID/BLE-addr is present on this sweep. One per hit.
 
 ## Escaping / encoding rules (for the CC parser)
 - `mac` — lowercase `aa:bb:cc:dd:ee:ff`.

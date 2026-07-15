@@ -2083,6 +2083,195 @@ static int cmd_airspace(int argc, char **argv)
     return 0;
 }
 
+// --- target watchlist (custom X-3 feature) --------------------------------------------------------
+// A small persistent list of BSSIDs / BLE addresses to keep an eye out for. `watch scan` runs one
+// passive Wi-Fi + BLE sweep and flags any listed target that's on the air right now, emitting one
+// `LXVEOS/1 alert kind=watch` per hit for the CC dashboard. Listen-only — the watchlist never transmits.
+#define WATCH_MAX   16u  // unsigned: it's compared against size_t counts and printed with %u
+#define WATCH_LABEL 24   // NUL-terminated operator note; sanitized on input so it can't garble the console
+
+typedef struct {
+    uint8_t mac[6];             // target address, MSB-first (the order `scan` / `blescan` display)
+    char    label[WATCH_LABEL]; // optional operator note ("" if none)
+} watch_target_t;
+
+static watch_target_t s_watch[WATCH_MAX];
+static size_t s_watch_count;
+
+// Index of `mac` in the watchlist, or -1 if absent (exact 6-byte match, addresses stored MSB-first).
+static int watch_index_of(const uint8_t mac[6])
+{
+    for (size_t i = 0; i < s_watch_count; i++) {
+        if (memcmp(s_watch[i].mac, mac, 6) == 0) {
+            return (int)i;
+        }
+    }
+    return -1;
+}
+
+// `watch` — CUSTOM (X-3): a small persistent target watchlist.
+//   watch add <mac> [label]   add a target (mac "aa:bb:cc:dd:ee:ff", optional label)
+//   watch del <mac>           drop a target
+//   watch list                show the watchlist
+//   watch clear               empty the watchlist
+//   watch scan [ble_seconds]  passive Wi-Fi + BLE sweep; flag + alert any watched target seen now
+static int cmd_watch(int argc, char **argv)
+{
+    if (locked()) {
+        return 0;
+    }
+    const char *sub = argc >= 2 ? argv[1] : "";
+
+    if (strcmp(sub, "list") == 0) {
+        if (s_watch_count == 0) {
+            printf("watchlist empty — add a target with: watch add <mac> [label]\n");
+            return 0;
+        }
+        printf("watchlist (%u/%u):\n", (unsigned)s_watch_count, WATCH_MAX);
+        for (size_t i = 0; i < s_watch_count; i++) {
+            const uint8_t *m = s_watch[i].mac;
+            printf("  %02x:%02x:%02x:%02x:%02x:%02x  %s\n", m[0], m[1], m[2], m[3], m[4], m[5],
+                   s_watch[i].label);
+        }
+        return 0;
+    }
+
+    if (strcmp(sub, "clear") == 0) {
+        s_watch_count = 0;
+        printf("watchlist cleared\n");
+        return 0;
+    }
+
+    if (strcmp(sub, "add") == 0) {
+        uint8_t mac[6];
+        if (argc < 3 || !parse_mac(argv[2], mac)) {
+            printf("usage: watch add <mac> [label]  (mac = aa:bb:cc:dd:ee:ff)\n");
+            return 0;
+        }
+        if (watch_index_of(mac) >= 0) {
+            printf("already watching %02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3],
+                   mac[4], mac[5]);
+            return 0;
+        }
+        if (s_watch_count >= WATCH_MAX) {
+            printf("watchlist full (%u max) — remove one first (watch del <mac>)\n", WATCH_MAX);
+            return 0;
+        }
+        watch_target_t *t = &s_watch[s_watch_count];
+        memcpy(t->mac, mac, 6);
+        if (argc >= 4) {
+            sanitize_copy(t->label, sizeof(t->label), argv[3]);  // operator note — keep the console safe
+        } else {
+            t->label[0] = '\0';
+        }
+        s_watch_count++;
+        printf("watching %02x:%02x:%02x:%02x:%02x:%02x%s%s (%u/%u)\n", mac[0], mac[1], mac[2], mac[3],
+               mac[4], mac[5], t->label[0] ? " " : "", t->label, (unsigned)s_watch_count, WATCH_MAX);
+        return 0;
+    }
+
+    if (strcmp(sub, "del") == 0) {
+        uint8_t mac[6];
+        if (argc < 3 || !parse_mac(argv[2], mac)) {
+            printf("usage: watch del <mac>\n");
+            return 0;
+        }
+        int idx = watch_index_of(mac);
+        if (idx < 0) {
+            printf("not on the watchlist: %02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3],
+                   mac[4], mac[5]);
+            return 0;
+        }
+        for (size_t i = (size_t)idx; i + 1 < s_watch_count; i++) {
+            s_watch[i] = s_watch[i + 1];  // compact the array over the removed slot
+        }
+        s_watch_count--;
+        printf("stopped watching %02x:%02x:%02x:%02x:%02x:%02x (%u/%u)\n", mac[0], mac[1], mac[2], mac[3],
+               mac[4], mac[5], (unsigned)s_watch_count, WATCH_MAX);
+        return 0;
+    }
+
+    if (strcmp(sub, "scan") == 0) {
+        if (!lxveos_cap_active(LXVEOS_CAP_WIFI)) {
+            printf("wifi capability is not active on this build — cannot scan\n");
+            return 0;
+        }
+        if (s_watch_count == 0) {
+            printf("watchlist empty — add a target first (watch add <mac>)\n");
+            return 0;
+        }
+        long bsecs = 4;
+        if (argc >= 3 && !parse_int_arg(argv[2], 1, 30, &bsecs)) {
+            printf("usage: watch scan [ble_seconds 1-30]  (default 4)\n");
+            return 0;
+        }
+        bool ble = lxveos_cap_active(LXVEOS_CAP_BLE);
+        printf("watch sweep — passive Wi-Fi scan%s (listen only — no frames sent)...\n",
+               ble ? " + BLE observe" : "");
+
+        static lxveos_wifi_ap_t aps[64];
+        size_t naps = 0;
+        esp_err_t e = lxveos_wifi_scan(aps, sizeof(aps) / sizeof(aps[0]), &naps);
+        if (e != ESP_OK) {
+            printf("wifi scan failed: %s\n", esp_err_to_name(e));
+            return 0;
+        }
+        static lxveos_ble_dev_t devs[48];
+        size_t nble = 0;
+        if (ble) {
+            esp_err_t be = lxveos_ble_scan((uint32_t)bsecs, devs, sizeof(devs) / sizeof(devs[0]), &nble);
+            if (be != ESP_OK) {
+                printf("(BLE observe failed: %s — Wi-Fi only)\n", esp_err_to_name(be));
+                ble = false;
+                nble = 0;
+            }
+        }
+
+        unsigned hits = 0;
+        for (size_t i = 0; i < s_watch_count; i++) {
+            const uint8_t *tgt = s_watch[i].mac;
+            const char *band = NULL;
+            int rssi = 0;
+            // Wi-Fi APs store bssid[] MSB-first, matching the operator's typed order — compare directly.
+            for (size_t j = 0; j < naps && band == NULL; j++) {
+                if (memcmp(aps[j].bssid, tgt, 6) == 0) {
+                    band = "wifi";
+                    rssi = aps[j].rssi;
+                }
+            }
+            // BLE addr[] is little-endian; reverse to MSB-first before comparing with the target.
+            for (size_t j = 0; j < nble && band == NULL; j++) {
+                const uint8_t *a = devs[j].addr;
+                uint8_t rev[6] = {a[5], a[4], a[3], a[2], a[1], a[0]};
+                if (memcmp(rev, tgt, 6) == 0) {
+                    band = "ble";
+                    rssi = devs[j].rssi;
+                }
+            }
+            if (band != NULL) {
+                hits++;
+                printf("  PRESENT %02x:%02x:%02x:%02x:%02x:%02x %-4s %ddB  %s\n", tgt[0], tgt[1], tgt[2],
+                       tgt[3], tgt[4], tgt[5], band, rssi, s_watch[i].label);
+                if (lxveos_evt_enabled()) {
+                    char line[128];
+                    size_t n = lxveos_evt_begin(line, sizeof(line), "alert");
+                    n = lxveos_evt_kv(line, sizeof(line), n, "kind", "watch");
+                    n = lxveos_evt_kv_mac(line, sizeof(line), n, "mac", tgt);
+                    n = lxveos_evt_kv_int(line, sizeof(line), n, "rssi", rssi);
+                    n = lxveos_evt_kv(line, sizeof(line), n, "band", band);
+                    printf("%s\n", line);
+                }
+            }
+        }
+        printf("watch sweep done — %u/%u target(s) present (%u AP, %u BLE observed)\n", hits,
+               (unsigned)s_watch_count, (unsigned)naps, (unsigned)nble);
+        return 0;
+    }
+
+    printf("usage: watch add <mac> [label] | del <mac> | list | clear | scan [ble_seconds]\n");
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -2100,6 +2289,7 @@ static void register_commands(void)
         {.command = "apaudit", .help = "Passive AP security audit — flag open/WEP/legacy-WPA + WPS-enabled networks (listen only)", .func = &cmd_apaudit},
         {.command = "wardrive", .help = "Passive Wi-Fi wardrive CSV export (bssid,ssid,ch,rssi,auth per line)", .func = &cmd_wardrive},
         {.command = "airspace", .help = "Airspace occupancy summary: airspace [ble_seconds] — AP (open/WPS/hidden) + BLE (tracker) counts (listen only)", .func = &cmd_airspace},
+        {.command = "watch", .help = "Target watchlist: watch add <mac> [label] | del <mac> | list | clear | scan [ble_seconds] — flag when a watched BSSID/BLE-addr is present (listen only)", .func = &cmd_watch},
         {.command = "blescan", .help = "Passive BLE device scan (+vendor/appearance/service-UUIDs): blescan [seconds] (listen only)", .func = &cmd_blescan},
         {.command = "bleflood", .help = "Passive BLE advert-flood/spam detector: bleflood [seconds] (listen only)", .func = &cmd_bleflood},
         {.command = "btracker", .help = "Passive BLE item-tracker/stalking detector (AirTag/Tile/SmartTag/Chipolo/PebbleBee/GoogleFMN): btracker [seconds]", .func = &cmd_btracker},
