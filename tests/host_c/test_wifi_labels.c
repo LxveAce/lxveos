@@ -61,6 +61,26 @@ static void test_auth_grade(void)
     }
 }
 
+static void test_eapol_msg(void)
+{
+    // Pairwise 4-way messages (Key Type bit 0x0008 set), by the standard key-info flags.
+    assert(lxveos_wifi_eapol_msg(0x0088) == 1);  // pairwise + ACK, no MIC          -> M1
+    assert(lxveos_wifi_eapol_msg(0x0108) == 2);  // pairwise + MIC, no ACK/Secure   -> M2
+    assert(lxveos_wifi_eapol_msg(0x01C8) == 3);  // pairwise + MIC + ACK + Install  -> M3
+    assert(lxveos_wifi_eapol_msg(0x0308) == 4);  // pairwise + MIC + Secure, no ACK -> M4
+
+    // The bug this guards: a GROUP-key rekey frame (pairwise bit CLEAR) that satisfies an M-predicate must NOT
+    // be classified as a handshake message. Without the gate, MIC+Secure(+!ACK) would false-match M4, and a
+    // bare ACK would false-match M1 — inflating the m4/m1 handshake stats with non-handshake frames.
+    assert(lxveos_wifi_eapol_msg(0x0300) == 0);  // MIC + Secure, no pairwise bit -> not a 4-way msg
+    assert(lxveos_wifi_eapol_msg(0x0080) == 0);  // bare ACK, no pairwise         -> not M1
+
+    // A pairwise frame that matches no message predicate is 0 (never a false handshake count).
+    assert(lxveos_wifi_eapol_msg(0x0208) == 0);  // pairwise + Secure only
+    assert(lxveos_wifi_eapol_msg(0x0008) == 0);  // pairwise bit alone
+    assert(lxveos_wifi_eapol_msg(0x0000) == 0);
+}
+
 static void test_pwnagotchi(void)
 {
     // MAC match: only the fixed grid address de:ad:be:ef:de:ad is a Pwnagotchi; anything else isn't.
@@ -120,6 +140,7 @@ int main(void)
     test_authmode_str();
     test_is_open();
     test_auth_grade();
+    test_eapol_msg();
     test_pwnagotchi();
     printf("test_wifi_labels: all tests passed\n");
     return 0;

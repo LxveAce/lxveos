@@ -51,6 +51,35 @@ int lxveos_wifi_auth_grade(uint8_t authmode, const char **note)
     return g;
 }
 
+// ── EAPOL 4-way-handshake message classification — pure core ─────────────────────────────────────────────
+// Classify an 802.11 EAPOL-Key key-info field into a 4-way-handshake message number (1..4), or 0 if the frame
+// is not one of the four PAIRWISE handshake messages. The pairwise Key-Type bit (0x0008) is required first: a
+// GROUP-key rekey handshake carries it clear, and without this gate a group-rekey message (MIC set, ACK clear,
+// Secure clear) false-matches M4 and inflates the m4/handshake stats. lxveos_wifi.c's EAPOL capture calls this.
+uint8_t lxveos_wifi_eapol_msg(uint16_t key_info)
+{
+    if ((key_info & 0x0008u) == 0u) {   // Key Type = group (not a pairwise/PTK 4-way message)
+        return 0;
+    }
+    const bool mic     = (key_info & 0x0100u) != 0u;
+    const bool ack     = (key_info & 0x0080u) != 0u;
+    const bool install = (key_info & 0x0040u) != 0u;
+    const bool secure  = (key_info & 0x0200u) != 0u;
+    if (ack && !mic) {
+        return 1;
+    }
+    if (mic && !ack && !secure) {
+        return 2;
+    }
+    if (mic && ack && install) {
+        return 3;
+    }
+    if (mic && !ack && secure) {
+        return 4;
+    }
+    return 0;
+}
+
 // ── Pwnagotchi presence detection — pure core (ported from ESP32 Marauder "Detect Pwnagotchi", MIT) ──────
 // A Pwnagotchi beacons from the fixed grid source MAC de:ad:be:ef:de:ad, stuffing a JSON identity object into
 // the beacon's (oversized) SSID element. These helpers are the host-tested pure core: the MAC match and a

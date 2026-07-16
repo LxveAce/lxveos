@@ -302,7 +302,8 @@ static void extract_pmkid(const uint8_t *frame, int len, int kf_off, hs_ent_t *h
             frame[kd_off + q + 4] == 0xAC && frame[kd_off + q + 5] == 0x04) {
             memcpy(h->pmkid, &frame[kd_off + q + 6], 16);
             h->has_pmkid = true;
-            s_estats.pmkids++;
+            // Counted at emit time (below), not here: a PMKID whose AP never reveals its ESSID yields an
+            // uncrackable line that we drop, so `pmkids` must track EMITTED WPA*01 lines, not raw captures.
             return;
         }
         q += 2 + l;
@@ -467,20 +468,8 @@ static void eapol_rx_cb(void *buf, wifi_promiscuous_pkt_type_t type)
         return;
     }
     const uint16_t key_info = (f[kf_off + 1] << 8) | f[kf_off + 2];
-    const bool mic = (key_info & 0x0100) != 0;
-    const bool ack = (key_info & 0x0080) != 0;
-    const bool install = (key_info & 0x0040) != 0;
-    const bool secure = (key_info & 0x0200) != 0;
-    int msg = 0;
-    if (ack && !mic) {
-        msg = 1;
-    } else if (mic && !ack && !secure) {
-        msg = 2;
-    } else if (mic && ack && install) {
-        msg = 3;
-    } else if (mic && !ack && secure) {
-        msg = 4;
-    }
+    // Pairwise-gated 4-way-handshake classification (host-tested pure core) — a group-key rekey is not an M1..M4.
+    const int msg = lxveos_wifi_eapol_msg(key_info);
 
     // AP is the BSSID: FromDS => addr2 is the AP, else (ToDS) addr1 is the AP.
     const uint8_t *addr1 = f + 4;
@@ -530,6 +519,12 @@ esp_err_t lxveos_wifi_eapol_capture(uint32_t seconds, uint8_t channel, lxveos_wi
             if (!s_hs[j].used || !s_hs[j].has_pmkid) {
                 continue;
             }
+            // The ESSID is the PBKDF2 salt, so a line with an empty ESSID is uncrackable — skip it (and don't
+            // count it). The AP may reveal its SSID later; until it does this PMKID isn't a usable artifact.
+            const char *essid = essid_lookup(s_hs[j].ap);
+            if (essid[0] == '\0') {
+                continue;
+            }
             char line[160];
             int n = 0;
             n += snprintf(line + n, sizeof(line) - n, "WPA*01*");
@@ -542,12 +537,12 @@ esp_err_t lxveos_wifi_eapol_capture(uint32_t seconds, uint8_t channel, lxveos_wi
             n += snprintf(line + n, sizeof(line) - n, "%02x%02x%02x%02x%02x%02x*",
                           s_hs[j].sta[0], s_hs[j].sta[1], s_hs[j].sta[2],
                           s_hs[j].sta[3], s_hs[j].sta[4], s_hs[j].sta[5]);
-            const char *essid = essid_lookup(s_hs[j].ap);
             for (const char *e = essid; *e && n < (int)sizeof(line) - 6; e++) {
                 n += snprintf(line + n, sizeof(line) - n, "%02x", (uint8_t)*e);
             }
             snprintf(line + n, sizeof(line) - n, "***");
             emit(line);
+            s_estats.pmkids++;
         }
 
         // WPA*02 (EAPOL/MIC): pair an ANONCE source (M1/M3) with an EAPOL+MIC source (M2/M4) by replay
@@ -579,6 +574,11 @@ esp_err_t lxveos_wifi_eapol_capture(uint32_t seconds, uint8_t channel, lxveos_wi
             } else {
                 continue;  // no valid ANONCE+EAPOL pairing for this exchange
             }
+            // ESSID is the salt — an empty-ESSID exchange is uncrackable, so skip it and don't count it in mics.
+            const char *essid = essid_lookup(h->ap);
+            if (essid[0] == '\0') {
+                continue;
+            }
             static char l2[800];
             int n = snprintf(l2, sizeof(l2), "WPA*02*");
             for (int k = 0; k < 16; k++) {
@@ -588,7 +588,6 @@ esp_err_t lxveos_wifi_eapol_capture(uint32_t seconds, uint8_t channel, lxveos_wi
                           h->ap[0], h->ap[1], h->ap[2], h->ap[3], h->ap[4], h->ap[5]);
             n += snprintf(l2 + n, sizeof(l2) - n, "%02x%02x%02x%02x%02x%02x*",
                           h->sta[0], h->sta[1], h->sta[2], h->sta[3], h->sta[4], h->sta[5]);
-            const char *essid = essid_lookup(h->ap);
             for (const char *e = essid; *e && n < (int)sizeof(l2) - 4; e++) {
                 n += snprintf(l2 + n, sizeof(l2) - n, "%02x", (uint8_t)*e);
             }

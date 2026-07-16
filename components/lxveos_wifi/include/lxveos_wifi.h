@@ -55,8 +55,9 @@ typedef struct {
     uint32_t essids;        // distinct BSSID->ESSID entries learned
     uint32_t eapol_frames;  // EAPOL-Key frames seen
     uint32_t m1, m2, m3, m4;  // 4-way-handshake messages seen (by key-info classification)
-    uint32_t pmkids;        // RSN PMKIDs extracted from M1 (each yields a hashcat WPA*01 line)
-    uint32_t mics;          // M1+M2 pairs with a matching replay counter (each yields a hashcat WPA*02 line)
+    uint32_t pmkids;        // crackable WPA*01 lines emitted — one per M1 PMKID whose AP ESSID is known
+                            // (a PMKID with an unknown/empty ESSID is uncrackable, so it is dropped, not counted)
+    uint32_t mics;          // crackable WPA*02 lines emitted — one per paired handshake with a known ESSID
     uint8_t channels_swept;
 } lxveos_wifi_eapol_stats_t;
 
@@ -143,6 +144,11 @@ bool lxveos_wifi_is_open(uint8_t authmode);
 // Grades 0-2 are WEAK. `*note` (may be NULL) is set to a short human weakness reason (grades 0-2) or the
 // mode name (3+). Returns the grade.
 int lxveos_wifi_auth_grade(uint8_t authmode, const char **note);
+
+// Classify an 802.11 EAPOL-Key `key_info` field into a 4-way-handshake message number (1..4), or 0 if the
+// frame is not one of the four PAIRWISE handshake messages. Requires the pairwise Key-Type bit (0x0008) first,
+// so a GROUP-key rekey frame (which carries it clear) is never mis-counted as an M1..M4. Pure — host-tested.
+uint8_t lxveos_wifi_eapol_msg(uint16_t key_info);
 
 // ── Pwnagotchi presence detection (passive) — pure core ─────────────────────────────────────────────────
 // Ported from ESP32 Marauder's "Detect Pwnagotchi" (MIT — see CREDITS.md). A Pwnagotchi announces itself in a
