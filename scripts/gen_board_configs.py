@@ -40,6 +40,12 @@ KNOWN_TARGETS = ("esp32", "esp32s2", "esp32s3", "esp32c2", "esp32c3", "esp32c5",
 # Feature-map values allowed by the manifest's honesty rule: compiled-in (True), absent (False),
 # or runtime-unlockable hardware add-on ("addon").
 FEATURE_VALUES = (True, False, "addon")
+# Fixed (non-runtime-probe) panel drivers each get a compile-time selector (LXVEOS_DISP_DRIVER_IS_<DRIVER>)
+# so the BSP's create_panel() can #if on the concrete driver — a driver STRING can't be preprocessed. The
+# classic CYD is a runtime probe (ILI9341 vs ST7789) and needs no selector. Add a driver here AND a
+# create_panel branch when a new fixed panel gains real GPIOs; the board-config test enforces the pairing.
+# Each name must already be a valid C identifier tail (letters/digits only).
+FIXED_DISPLAY_DRIVERS = ("ST7796", "ST7789V2", "AXS15231B")
 
 
 def validate_manifest(boards, root=ROOT):
@@ -102,6 +108,12 @@ def validate_manifest(boards, root=ROOT):
                             ("hal_backend", bool(d.get("hal_backend")))):
                 if not ok:
                     errs.append(f"{p} display.present but '{key}' missing/invalid")
+            # A fixed (non-runtime-probe) driver must have a create_panel selector, else create_panel would
+            # silently fall through to the classic-CYD 0xD3 heuristic on a panel it doesn't fit.
+            drv = d.get("driver") or ""
+            if drv and not d.get("runtime_probe") and drv not in FIXED_DISPLAY_DRIVERS:
+                errs.append(f"{p} fixed display.driver {drv!r} has no create_panel selector "
+                            f"(add it to FIXED_DISPLAY_DRIVERS + a create_panel branch)")
             # optional GPIO pinout — if present it must be an object of valid pin ints (-1 = tied/none).
             pins = d.get("pins")
             if pins is not None:
@@ -184,12 +196,14 @@ def board_info_h(bid, b):
              f'#define LXVEOS_UI_PROFILE        "{b.get("ui_profile","headless")}"',
              f'#define LXVEOS_HAS_DISPLAY       {1 if present else 0}']
     if present:
+        # Compile-time driver selector for the SPI create_panel path: a fixed-driver panel can't be #if'd on
+        # the driver STRING, so emit one numeric flag per known fixed driver (create_panel #if's on them). The
+        # classic CYD is a runtime probe (ILI9341 vs ST7789) and leaves them all 0.
+        drv = d.get("driver") or ""
+        lines.append(f'#define LXVEOS_DISP_DRIVER       {s(d.get("driver"))}')
+        lines += [f'#define LXVEOS_DISP_DRIVER_IS_{fd} {1 if drv == fd else 0}'
+                  for fd in FIXED_DISPLAY_DRIVERS]
         lines += [
-            f'#define LXVEOS_DISP_DRIVER       {s(d.get("driver"))}',
-            # Compile-time driver selector for the SPI create_panel path. The classic CYD is a runtime probe
-            # (ILI9341 vs ST7789); a fixed-driver panel (the 3.5" CYD is ST7796) can't be #if'd on the driver
-            # STRING, so emit a numeric flag per fixed driver. Add more IS_<DRIVER> flags as fixed panels land.
-            f'#define LXVEOS_DISP_DRIVER_IS_ST7796 {1 if (d.get("driver") or "") == "ST7796" else 0}',
             f'#define LXVEOS_DISP_RUNTIME_PROBE {1 if d.get("runtime_probe") else 0}',
             f'#define LXVEOS_DISP_W            {d.get("native_w", 0)}',
             f'#define LXVEOS_DISP_H            {d.get("native_h", 0)}',

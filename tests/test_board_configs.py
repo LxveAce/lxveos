@@ -82,6 +82,29 @@ def test_display_boards_emit_driver_defines():
             assert "#define LXVEOS_HAS_DISPLAY       0" in h
 
 
+def test_fixed_display_drivers_have_a_selector():
+    """Every present, non-runtime-probe display driver has a matching LXVEOS_DISP_DRIVER_IS_<DRIVER>=1 selector
+    (create_panel() #if's on it) and every other selector is 0; a runtime-probe board leaves them all 0. Catches
+    a new fixed panel added to the manifest without wiring a create_panel branch — the rank-8 latent fall-through
+    where create_panel would silently run the classic-CYD 0xD3 heuristic on a panel it doesn't fit."""
+    for bid, b in BOARDS.items():
+        d = b.get("display", {})
+        if not d.get("present"):
+            continue
+        h = g.board_info_h(bid, b)
+        drv = d.get("driver") or ""
+        probe = bool(d.get("runtime_probe"))
+        for fd in g.FIXED_DISPLAY_DRIVERS:
+            want = 1 if (not probe and drv == fd) else 0
+            assert f"#define LXVEOS_DISP_DRIVER_IS_{fd} {want}" in h, \
+                f"{bid}: expected IS_{fd} {want} for driver {drv!r} (runtime_probe={probe})"
+        if not probe:
+            # A fixed board's driver MUST be one of the known selectors (else create_panel has no branch and
+            # its #else fires a compile #error). validate_manifest enforces this too — pinned here as well.
+            assert drv in g.FIXED_DISPLAY_DRIVERS, \
+                f"{bid}: fixed driver {drv!r} not in FIXED_DISPLAY_DRIVERS (create_panel would fall through)"
+
+
 def test_display_pins_emitted_when_present():
     """A display board with a `pins` block emits LXVEOS_DISP_HAS_PINS 1 plus one define per line
     matching the manifest; boards without pins emit LXVEOS_DISP_HAS_PINS 0 and no pin defines."""
@@ -211,3 +234,17 @@ def test_validation_catches_broken_board():
     errs = g.validate_manifest(bad)
     # id charset, chip!=target, bad flash size, missing csv, bad feature value, + 5 display fields
     assert len(errs) >= 8, errs
+
+
+def test_validation_catches_fixed_driver_without_selector():
+    """A present, fixed (non-runtime-probe) display driver that isn't in FIXED_DISPLAY_DRIVERS is rejected —
+    it would otherwise reach create_panel()'s #else and fail the build with a compile #error (or, before the
+    guard, silently mis-probe). A runtime-probe board with the same 'unknown' driver string is fine."""
+    base = {"chip": "esp32", "flash_size": "4MB",
+            "build": {"idf_target": "esp32", "partition_csv": "partitions/default.csv"}, "ui_profile": "x"}
+    fixed = {"B": {**base, "display": {"present": True, "driver": "ZZ9999", "native_w": 100, "native_h": 100,
+                                       "bus": "spi", "hal_backend": "esp_lcd", "runtime_probe": False}}}
+    assert any("no create_panel selector" in e for e in g.validate_manifest(fixed)), g.validate_manifest(fixed)
+    probe = {"B": {**base, "display": {"present": True, "driver": "A|B", "native_w": 100, "native_h": 100,
+                                       "bus": "spi", "hal_backend": "esp_lcd", "runtime_probe": True}}}
+    assert not any("no create_panel selector" in e for e in g.validate_manifest(probe))

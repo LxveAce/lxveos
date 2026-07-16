@@ -67,6 +67,12 @@ build_arm -DLXVEOS_TX_DISABLE  # conservative build: the emitter is stripped
     "$here/test_ir_decode.c" "$root/components/lxveos_ir/src/lxveos_ir_decode.c" -o "$out"
 "$out"
 
+# --- board panel identity: pure RDID4 0xD3 -> driver-name decision, no ESP-IDF/esp_lcd ---
+"$CC" -std=gnu11 -O1 -Wall \
+    -I"$root/components/lxveos_board/include" \
+    "$here/test_board_panel.c" "$root/components/lxveos_board/src/lxveos_board_panel.c" -o "$out"
+"$out"
+
 # --- shared-SPI3 bus refcount policy (acquire/release state machine): esp_err stub, no spi driver ---
 "$CC" -std=gnu11 -O1 -Wall \
     -I"$root/components/lxveos_spibus/include" -I"$here/stubs" \

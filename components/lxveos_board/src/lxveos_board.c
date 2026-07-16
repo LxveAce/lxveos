@@ -2,6 +2,7 @@
 // panel-identity resolution (ILI9341 vs ST7789, cached to NVS). Real esp_lcd/LVGL panel + input bring-up
 // is TODO(M0/M1); today this resolves + logs the panel and reports capabilities from board_info.h.
 #include "lxveos_board.h"
+#include "lxveos_board_panel.h"
 #include "bsp/display.h"
 #include "bsp/touch.h"
 #include "board_info.h"
@@ -42,34 +43,31 @@ const char *lxveos_ui_profile(void) { return LXVEOS_UI_PROFILE; }
 
 static char s_panel[24];  // panel driver resolved for this boot; stable for the process
 
-// Resolve the concrete panel driver for this boot. Fixed-panel boards use the generated
-// LXVEOS_DISP_DRIVER. On the CYD (LXVEOS_DISP_RUNTIME_PROBE) the ILI9341 (1-USB) and ST7789 (2-USB)
-// panels are pin-compatible, so identity is resolved once and cached to NVS; later boots read the cache
-// and skip the probe. M0: the probe is a stub returning the build-time default. TODO(M1): drive the
-// panel's RDDID / ID registers to tell ILI9341 from ST7789 before caching.
+// Resolve the concrete panel driver for this boot. Fixed-panel boards use the generated LXVEOS_DISP_DRIVER.
+// On the CYD (LXVEOS_DISP_RUNTIME_PROBE) the ILI9341 (1-USB) and ST7789 (2-USB) panels are pin-compatible,
+// so identity is resolved once by the RDID4 (0xD3) probe in create_panel() and cached to NVS; later boots
+// read the cache here and skip the probe. This function never caches the ambiguous "ILI9341|ST7789" build
+// placeholder — create_panel() is the SOLE writer of the resolved cache, so a first boot leaves s_panel as
+// a provisional placeholder that create_panel() overwrites with the real driver at display bring-up.
 static void resolve_panel(void)
 {
 #if LXVEOS_DISP_RUNTIME_PROBE
+    s_panel[0] = '\0';
     nvs_handle_t h;
-    if (nvs_open(LXVEOS_NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
-        ESP_LOGW(TAG, "panel: NVS unavailable; using build default %s", LXVEOS_DISP_DRIVER);
-        snprintf(s_panel, sizeof(s_panel), "%s", LXVEOS_DISP_DRIVER);
-        return;
-    }
-    size_t len = sizeof(s_panel);
-    if (nvs_get_str(h, LXVEOS_NVS_PANEL, s_panel, &len) == ESP_OK) {
+    if (nvs_open(LXVEOS_NVS_NS, NVS_READONLY, &h) == ESP_OK) {
+        size_t len = sizeof(s_panel);
+        esp_err_t r = nvs_get_str(h, LXVEOS_NVS_PANEL, s_panel, &len);
         nvs_close(h);
-        ESP_LOGI(TAG, "panel: %s (cached)", s_panel);
-        return;
+        if (r == ESP_OK) {
+            ESP_LOGI(TAG, "panel: %s (cached)", s_panel);
+            return;
+        }
     }
-    // First boot on this unit: probe, then cache. M0 stub = the compile-time default panel.
+    // No cache yet (first boot on this unit, or NVS unavailable): seed the "A|B" build placeholder as a
+    // provisional value. create_panel() runs the real probe and rewrites s_panel + the cache; we do NOT
+    // persist the placeholder (doing so would pin the ambiguous string forever and defeat the probe).
     snprintf(s_panel, sizeof(s_panel), "%s", LXVEOS_DISP_DRIVER);
-    esp_err_t w = nvs_set_str(h, LXVEOS_NVS_PANEL, s_panel);
-    if (w == ESP_OK) {
-        nvs_commit(h);
-    }
-    nvs_close(h);
-    ESP_LOGI(TAG, "panel: %s (build default -> cached%s)", s_panel, w == ESP_OK ? "" : ", cache write failed");
+    ESP_LOGI(TAG, "panel: %s (provisional; probe resolves at display bring-up)", s_panel);
 #else
     snprintf(s_panel, sizeof(s_panel), "%s", LXVEOS_DISP_DRIVER);
     ESP_LOGI(TAG, "panel: %s (fixed)", s_panel);
@@ -190,12 +188,31 @@ static esp_err_t bring_up_panel_io(void)
     return ESP_OK;
 }
 
+#if LXVEOS_DISP_RUNTIME_PROBE
+// Persist the runtime-resolved panel driver so the next boot's resolve_panel() reads it back and skips the
+// 0xD3 probe. Best-effort: a cache-write failure just means the next boot re-probes (same result), so it's
+// never fatal to display bring-up.
+static void cache_resolved_panel(const char *name)
+{
+    nvs_handle_t h;
+    if (nvs_open(LXVEOS_NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
+        return;
+    }
+    if (nvs_set_str(h, LXVEOS_NVS_PANEL, name) == ESP_OK) {
+        nvs_commit(h);
+    }
+    nvs_close(h);
+}
+#endif
+
 // Create the concrete esp_lcd panel on the panel-IO handle, initialise it, and paint a solid
-// proof-of-life fill. The panel driver is chosen from the RDID4 (0xD3) probe: a 1-USB CYD reads
-// 00 93 41 => ILI9341 (the managed espressif/esp_lcd_ili9341 driver); a 2-USB CYD => ST7789 (built into
-// esp_lcd). Both share the esp_lcd_panel_dev_config_t + panel-ops interface. reset_gpio_num = -1 is valid
-// (RST tied to EN on the CYD). A lit, green-filled screen is the visible "the panel is really up" signal.
-// UNVERIFIED on hardware; extra confirms which variant + tunes byte order/rotation on real glass.
+// proof-of-life fill. On a runtime-probe board (classic CYD) the driver is chosen from the RDID4 (0xD3)
+// probe: a 1-USB CYD reads 00 93 41 => ILI9341 (the managed espressif/esp_lcd_ili9341 driver); a 2-USB CYD
+// => ST7789 (built into esp_lcd). A fixed-driver board uses its LXVEOS_DISP_DRIVER_IS_<DRIVER> selector.
+// All share the esp_lcd_panel_dev_config_t + panel-ops interface. reset_gpio_num = -1 is valid (RST tied to
+// EN on the CYD). The resolved driver is published to s_panel so bsp_display_panel()/the CC status line
+// report the real panel, not the "ILI9341|ST7789" build placeholder. A lit, green-filled screen is the
+// visible "the panel is really up" signal. UNVERIFIED on hardware; extra confirms the variant on real glass.
 static esp_err_t create_panel(void)
 {
     esp_lcd_panel_dev_config_t pcfg = {
@@ -203,13 +220,9 @@ static esp_err_t create_panel(void)
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,   // CYD panels are BGR
         .bits_per_pixel = 16,
     };
-#if LXVEOS_DISP_DRIVER_IS_ST7796
-    // Fixed-driver board (3.5" CYD ESP32-3248S035R): ST7796 320x480, no runtime probe. Like the ILI9341 (and
-    // unlike the ST7789) it does not need colour inversion.
-    ESP_RETURN_ON_ERROR(esp_lcd_new_panel_st7796(s_panel_io, &pcfg, &s_panel_handle), TAG, "new st7796");
-    const bool invert = false;
-    const char *panel_name = "ST7796";
-#else
+    const char *panel_name;
+    bool invert;
+#if LXVEOS_DISP_RUNTIME_PROBE
     // Classic CYD: the RDID4 (0xD3) probe distinguishes a 1-USB ILI9341 (reads 00 93 41) from a 2-USB ST7789.
     const bool is_ili9341 = (s_probe_d3[0] == 0x00 && s_probe_d3[1] == 0x93 && s_probe_d3[2] == 0x41);
     if (is_ili9341) {
@@ -217,8 +230,20 @@ static esp_err_t create_panel(void)
     } else {
         ESP_RETURN_ON_ERROR(esp_lcd_new_panel_st7789(s_panel_io, &pcfg, &s_panel_handle), TAG, "new st7789");
     }
-    const bool invert = !is_ili9341;   // ST7789 needs inversion; ILI9341 does not
-    const char *panel_name = is_ili9341 ? "ILI9341" : "ST7789";
+    invert = !is_ili9341;   // ST7789 needs inversion; ILI9341 does not
+    panel_name = lxveos_panel_from_probe_d3(s_probe_d3);   // "ILI9341" / "ST7789" (host-tested decision)
+#elif LXVEOS_DISP_DRIVER_IS_ST7796
+    // Fixed-driver board (3.5" CYD ESP32-3248S035R): ST7796 320x480. Like the ILI9341 (and unlike the ST7789)
+    // it does not need colour inversion.
+    ESP_RETURN_ON_ERROR(esp_lcd_new_panel_st7796(s_panel_io, &pcfg, &s_panel_handle), TAG, "new st7796");
+    invert = false;
+    panel_name = "ST7796";
+#else
+    // A display board reached create_panel() with real pins but neither a runtime probe nor a wired
+    // fixed-driver constructor. Fail LOUD at compile time rather than silently running the classic-CYD 0xD3
+    // heuristic on a panel it doesn't fit (the old fall-through). Wire an esp_lcd_new_panel_* branch +
+    // LXVEOS_DISP_DRIVER_IS_<DRIVER> selector (and add the driver to FIXED_DISPLAY_DRIVERS) for that panel.
+#error "create_panel: board has display pins but no panel constructor for its fixed driver"
 #endif
     ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(s_panel_handle), TAG, "panel reset");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_init(s_panel_handle), TAG, "panel init");
@@ -226,6 +251,13 @@ static esp_err_t create_panel(void)
     esp_lcd_panel_set_gap(s_panel_handle, LXVEOS_DISP_GAP_X, LXVEOS_DISP_GAP_Y);
     esp_lcd_panel_invert_color(s_panel_handle, invert);
     esp_lcd_panel_disp_on_off(s_panel_handle, true);
+
+    // Publish the resolved driver so bsp_display_panel()/the CC status line report the truth, not the "A|B"
+    // placeholder; on a runtime-probe board cache it so the next boot skips the probe.
+    snprintf(s_panel, sizeof(s_panel), "%s", panel_name);
+#if LXVEOS_DISP_RUNTIME_PROBE
+    cache_resolved_panel(panel_name);
+#endif
 
     // Proof-of-life: paint the panel LxveAce green in DRAM-friendly 16-line horizontal bands (no full
     // framebuffer — the classic CYD has no PSRAM). Every band holds identical pixels, so reusing the one

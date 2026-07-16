@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "src/lxveos_board.c"
+    SRCS "src/lxveos_board.c" "src/lxveos_board_panel.c"
     INCLUDE_DIRS "include"
     REQUIRES lxveos_config
     PRIV_REQUIRES nvs_flash esp_lcd esp_driver_spi esp_driver_gpio esp_driver_ledc esp_lcd_ili9341
