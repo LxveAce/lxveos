@@ -79,6 +79,19 @@ void lxveos_gui_compose_arm_banner(char *buf, size_t cap, lxveos_arm_state_t sta
     snprintf(buf, cap, "%s", s);
 }
 
+uint32_t lxveos_gui_arm_banner_color(lxveos_arm_state_t state)
+{
+    // The colour half of the transmit-posture banner, kept beside compose_arm_banner so the text and colour
+    // can never drift and both the initial draw and the refresh timer read one source. 0xRRGGBB (the GUI wraps
+    // it in lv_color_hex): red ARMED (TX live), amber PENDING (two-factor in progress), brand-green SAFE.
+    switch (state) {
+    case LXVEOS_ARM_ARMED:   return 0xFF3030u;
+    case LXVEOS_ARM_PENDING: return 0xFFB020u;
+    case LXVEOS_ARM_SAFE:    return 0x39FF14u;
+    default:                 return 0x39FF14u;   // unknown -> the safe (green) colour, never a false "live" red
+    }
+}
+
 // Append one printf-formatted chunk at *off, honouring the remaining capacity. Returns false (caller stops)
 // when the buffer is full or the chunk would truncate — same bounded-write discipline as compose_menu.
 static bool detail_append(char *buf, size_t cap, size_t *off, const char *fmt, ...)

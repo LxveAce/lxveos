@@ -33,6 +33,17 @@ static void test_arm_banner(void)
     assert(guard[0] == '\0');
 }
 
+static void test_arm_banner_color(void)
+{
+    // The colour half of the banner (0xRRGGBB), shared by the initial draw and the refresh timer so text +
+    // colour never drift: red ARMED / amber PENDING / brand-green SAFE.
+    assert(lxveos_gui_arm_banner_color(LXVEOS_ARM_ARMED) == 0xFF3030u);
+    assert(lxveos_gui_arm_banner_color(LXVEOS_ARM_PENDING) == 0xFFB020u);
+    assert(lxveos_gui_arm_banner_color(LXVEOS_ARM_SAFE) == 0x39FF14u);
+    // An unknown state must never paint the "live" red — it falls back to the safe green.
+    assert(lxveos_gui_arm_banner_color((lxveos_arm_state_t)99) == 0x39FF14u);
+}
+
 // Does `hay` contain `needle`? (thin strstr wrapper, keeps the asserts readable)
 static int has(const char *hay, const char *needle)
 {
@@ -210,6 +221,7 @@ static void test_menu_bounds(void)
 int main(void)
 {
     test_arm_banner();
+    test_arm_banner_color();
     test_menu_content();
     test_detail();
     test_op_label();

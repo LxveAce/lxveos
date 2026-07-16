@@ -33,6 +33,39 @@ static const char *TAG = "lxveos_gui";
 // access is from LVGL event callbacks, which run single-threaded under the LVGL port lock.
 static lv_obj_t *s_detail;
 
+// The ARM/SAFE transmit-posture banner + the arm state it currently shows. A repeating lv_timer re-reads the
+// live arm state and repaints the banner when it changes, so arming/disarming from the CLI is reflected
+// on-screen — the banner was once drawn once at boot and then went stale (a dangerous safety display). Touched
+// only from the LVGL thread (the initial draw and the timer both run under the port lock).
+static lv_obj_t *s_arm_lbl;
+static lxveos_arm_state_t s_arm_shown;
+
+// Paint the banner's text + colour for `st` and record it as shown. Caller must hold the LVGL port lock (true
+// for both the initial draw and the lv_timer handler). Text + colour come from the one host-tested source.
+static void arm_banner_apply(lxveos_arm_state_t st)
+{
+    if (s_arm_lbl == NULL) {
+        return;
+    }
+    char banner[24];
+    lxveos_gui_compose_arm_banner(banner, sizeof(banner), st);
+    lv_label_set_text(s_arm_lbl, banner);
+    lv_obj_set_style_text_color(s_arm_lbl, lv_color_hex(lxveos_gui_arm_banner_color(st)), 0);
+    s_arm_shown = st;
+}
+
+// Repeating timer: repaint the banner only when the live arm state differs from what's on-screen. lv_timers
+// run in the LVGL port task with the lock held, so this may repaint directly. The enum read is a single aligned
+// word (the CLI task writes it) — a stale-by-one-tick posture indicator is the worst case, acceptable for a UI.
+static void arm_banner_timer_cb(lv_timer_t *t)
+{
+    (void)t;
+    lxveos_arm_state_t st = lxveos_arm_state();
+    if (st != s_arm_shown) {
+        arm_banner_apply(st);
+    }
+}
+
 // Close (delete) the open detail card. Wired to its "close" button.
 static void detail_close_cb(lv_event_t *e)
 {
@@ -144,8 +177,6 @@ esp_err_t lxveos_gui_start(void)
     snprintf(hdr, sizeof(hdr), "%s  ops %u/%u/%u", lxveos_ui_profile(),
              (unsigned)ready, (unsigned)planned, (unsigned)(attachable + unavail));
     lxveos_arm_state_t arm = lxveos_arm_state();
-    char banner[24];
-    lxveos_gui_compose_arm_banner(banner, sizeof(banner), arm);
 
     // All LVGL object calls run under the port lock.
     lvgl_port_lock(0);
@@ -164,13 +195,11 @@ esp_err_t lxveos_gui_start(void)
 
     // ARM/SAFE banner — top-centre, coloured by state so the unit's transmit posture is unmissable:
     // red when ARMED (offensive TX permitted), amber while a two-factor arm is PENDING, brand-green SAFE.
-    uint32_t arm_color = (arm == LXVEOS_ARM_ARMED)   ? 0xFF3030
-                       : (arm == LXVEOS_ARM_PENDING) ? 0xFFB020
-                                                     : 0x39FF14;
-    lv_obj_t *arm_lbl = lv_label_create(scr);
-    lv_label_set_text(arm_lbl, banner);
-    lv_obj_set_style_text_color(arm_lbl, lv_color_hex(arm_color), 0);
-    lv_obj_align(arm_lbl, LV_ALIGN_TOP_MID, 0, 5);
+    // Created here, then repainted by arm_banner_timer_cb whenever the arm state changes (see above) so it
+    // never goes stale after a CLI arm/disarm.
+    s_arm_lbl = lv_label_create(scr);
+    lv_obj_align(s_arm_lbl, LV_ALIGN_TOP_MID, 0, 5);
+    arm_banner_apply(arm);   // initial text + colour from the one host-tested mapping
 
     // Tappable capability list (grouped by category) fills the area below the header. Built from CORE widgets
     // only — a scrollable lv_obj with flex-column layout, one clickable lv_obj row per op (+ an lv_label child)
@@ -215,6 +244,11 @@ esp_err_t lxveos_gui_start(void)
         lv_label_set_text(row_lbl, row_txt);
         lv_obj_set_style_text_color(row_lbl, lv_color_hex(0xCFCFCF), 0);
     }
+
+    // Keep the transmit-posture banner live: a 500ms timer repaints it when the arm state changes (armed /
+    // disarmed from the CLI). Imperceptible for a safety indicator, negligible load, and it no-ops until the
+    // state actually differs. Created under the port lock alongside the rest of the widget tree.
+    lv_timer_create(arm_banner_timer_cb, 500, NULL);
     lvgl_port_unlock();
 
     ESP_LOGI(TAG, "LVGL up: %dx%d, launcher + tappable capability list drawn (%u ops ready)", caps.width,
