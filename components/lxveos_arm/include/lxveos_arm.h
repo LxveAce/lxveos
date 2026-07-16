@@ -31,6 +31,11 @@ bool lxveos_arm_tx_compiled(void);
 lxveos_arm_state_t lxveos_arm_state(void);
 const char *lxveos_arm_state_name(lxveos_arm_state_t s);
 
+// The confirm window in whole seconds (the time an operator has to echo the token back after `arm`). The one
+// source of truth for that number — callers format their prose/events from this instead of hardcoding it, so
+// the advertised window can never drift from the enforced timeout.
+uint32_t lxveos_arm_confirm_window_s(void);
+
 // Begin arming. On success fills *token with a one-time confirm code the operator must echo back within the
 // confirm window. ESP_ERR_NOT_SUPPORTED if TX is not compiled in. Moves state SAFE/ARMED -> PENDING.
 esp_err_t lxveos_arm_request(uint32_t *token);

@@ -87,6 +87,23 @@ int main(void)
     CHECK(lxveos_arm_can_emit() == false);
     CHECK(lxveos_arm_state() == LXVEOS_ARM_SAFE);
 
+    // The advertised confirm window is the single source of truth AND matches the enforced timeout: a confirm
+    // exactly at `window` seconds still succeeds, one second past it times out. Guards the wire value (window=)
+    // and the human prose from ever drifting from CONFIRM_WINDOW_US.
+    const uint32_t win = lxveos_arm_confirm_window_s();
+    CHECK(win == 30);
+    g_now_us = 1000 * SEC;
+    CHECK(lxveos_arm_request(&tok) == ESP_OK);
+    g_now_us += (int64_t)win * SEC;            // exactly `win` seconds later — still inside the window
+    CHECK(lxveos_arm_confirm(tok) == ESP_OK);
+    CHECK(lxveos_arm_state() == LXVEOS_ARM_ARMED);
+    lxveos_arm_disarm();
+    g_now_us = 2000 * SEC;
+    CHECK(lxveos_arm_request(&tok) == ESP_OK);
+    g_now_us += (int64_t)(win + 1) * SEC;      // one second past the window -> timeout
+    CHECK(lxveos_arm_confirm(tok) == ESP_ERR_TIMEOUT);
+    CHECK(lxveos_arm_state() == LXVEOS_ARM_SAFE);
+
     // Disarm is always available and idempotent.
     CHECK(lxveos_arm_request(&tok) == ESP_OK);
     lxveos_arm_disarm();

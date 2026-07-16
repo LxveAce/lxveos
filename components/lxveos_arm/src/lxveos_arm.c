@@ -45,6 +45,11 @@ const char *lxveos_arm_state_name(lxveos_arm_state_t s)
     }
 }
 
+uint32_t lxveos_arm_confirm_window_s(void)
+{
+    return (uint32_t)(CONFIRM_WINDOW_US / 1000000LL);
+}
+
 esp_err_t lxveos_arm_request(uint32_t *token)
 {
     if (!lxveos_arm_tx_compiled()) {
@@ -61,7 +66,7 @@ esp_err_t lxveos_arm_request(uint32_t *token)
     s_pending_us = now;
     s_state = LXVEOS_ARM_PENDING;
     *token = t;
-    ESP_LOGW(TAG, "arm requested — confirm within 30s");
+    ESP_LOGW(TAG, "arm requested — confirm within %us", (unsigned)lxveos_arm_confirm_window_s());
     return ESP_OK;
 }
 

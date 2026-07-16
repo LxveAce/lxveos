@@ -1835,10 +1835,10 @@ static int cmd_arm(int argc, char **argv)
         printf("arm request failed: %s\n", esp_err_to_name(e));
         return 0;
     }
-    printf("arm requested. Confirm within 30s:  arm %u\n", (unsigned)token);
+    const unsigned win = (unsigned)lxveos_arm_confirm_window_s();   // one source of truth (lxveos_arm)
+    printf("arm requested. Confirm within %us:  arm %u\n", win, (unsigned)token);
     if (lxveos_evt_enabled()) {
-        // window=30 mirrors CONFIRM_WINDOW_US in lxveos_arm.c (and the prose above).
-        printf("LXVEOS/1 arm state=pending token=%u window=30\n", (unsigned)token);
+        printf("LXVEOS/1 arm state=pending token=%u window=%u\n", (unsigned)token, win);
     }
     return 0;
 }
