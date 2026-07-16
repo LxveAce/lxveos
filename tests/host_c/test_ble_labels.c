@@ -46,6 +46,22 @@ static void test_tracker_str(void)
     assert(lxveos_ble_tracker_str(99) == NULL);
 }
 
+static void test_tracker_latch(void)
+{
+    // First sighting: NONE latch + a positive detection sets it.
+    assert(lxveos_ble_tracker_latch(LXVEOS_BLE_TRACKER_NONE, LXVEOS_BLE_TRACKER_APPLE_FINDMY) ==
+           LXVEOS_BLE_TRACKER_APPLE_FINDMY);
+    // The bug this guards: a later signature-less advert (classifies NONE) must NOT erase the detection.
+    assert(lxveos_ble_tracker_latch(LXVEOS_BLE_TRACKER_APPLE_FINDMY, LXVEOS_BLE_TRACKER_NONE) ==
+           LXVEOS_BLE_TRACKER_APPLE_FINDMY);
+    // A fresh positive sighting supersedes (re-detect / different signature wins over the stale one).
+    assert(lxveos_ble_tracker_latch(LXVEOS_BLE_TRACKER_APPLE_FINDMY, LXVEOS_BLE_TRACKER_TILE) ==
+           LXVEOS_BLE_TRACKER_TILE);
+    // NONE over NONE stays NONE (a plain device is never spuriously flagged).
+    assert(lxveos_ble_tracker_latch(LXVEOS_BLE_TRACKER_NONE, LXVEOS_BLE_TRACKER_NONE) ==
+           LXVEOS_BLE_TRACKER_NONE);
+}
+
 static void test_appearance_str(void)
 {
     char buf[32];
@@ -338,6 +354,7 @@ int main(void)
     test_company_name();
     test_service_name();
     test_tracker_str();
+    test_tracker_latch();
     test_appearance_str();
     test_flipper_color();
     test_meta();

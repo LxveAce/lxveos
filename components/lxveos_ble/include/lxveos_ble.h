@@ -103,6 +103,11 @@ const char *lxveos_ble_service_name(uint16_t uuid16);
 // "SmartTag", or NULL for LXVEOS_BLE_TRACKER_NONE. Used by the passive tracker/stalking detector.
 const char *lxveos_ble_tracker_str(uint8_t tracker);
 
+// Merge a new sighting's tracker classification into a de-dup slot's latched value: a positive detection is
+// kept across the scan window (returns `current` when this sighting classified NONE), so a signature-less
+// repeat advert from the same address cannot erase a real tracker detection. `sighting` wins when positive.
+uint8_t lxveos_ble_tracker_latch(uint8_t current, uint8_t sighting);
+
 // Write a short human label for a GAP appearance value into `buf` (category = value >> 6): common consumer
 // categories (Phone/Watch/Computer/Audio/Heart-Rate/…) are named, HID (cat 15) resolves its keyboard/mouse
 // subcategory, and anything not in the known set falls through to "appr:0x<hex>" — never mis-labelled.

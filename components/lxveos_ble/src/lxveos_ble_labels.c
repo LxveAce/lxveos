@@ -81,6 +81,15 @@ const char *lxveos_ble_tracker_str(uint8_t tracker)
     }
 }
 
+uint8_t lxveos_ble_tracker_latch(uint8_t current, uint8_t sighting)
+{
+    // A passive scan can see several adverts from one address in a window (an ADV_IND carrying the tracker
+    // signature, plus a passively-overheard SCAN_RSP that carries only a name). Classifying each sighting and
+    // overwriting would let a later signature-less frame erase a real detection, so a positive detection is
+    // latched: keep it unless this sighting is itself positive (a fresh positive supersedes, e.g. re-detect).
+    return (sighting != LXVEOS_BLE_TRACKER_NONE) ? sighting : current;
+}
+
 // GAP appearance category -> short label. Categories are the high 10 bits (value >> 6); the low 6 bits are
 // a subcategory (only resolved for HID). Table follows the Bluetooth SIG assigned-numbers appearance list.
 void lxveos_ble_appearance_str(uint16_t appearance, char *buf, size_t buflen)

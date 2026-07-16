@@ -316,7 +316,12 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg)
                     }
                     slot->svc_uuid_count = n;
                 }
-                slot->tracker = classify_tracker(&fields);
+                // Latch the tracker classification instead of overwriting it: a passive scan can overhear
+                // several frames from one address in a window (the ADV_IND carrying the signature, plus a
+                // SCAN_RSP that carries only a name), and a signature-less frame must not erase a real
+                // detection. rssi is the one field kept as latest; every detection flag above latches
+                // last-non-empty by construction, and this keeps tracker consistent with them.
+                slot->tracker = lxveos_ble_tracker_latch(slot->tracker, classify_tracker(&fields));
             }
         }
         return 0;
