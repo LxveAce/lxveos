@@ -84,9 +84,10 @@ def test_display_boards_emit_driver_defines():
 
 def test_fixed_display_drivers_have_a_selector():
     """Every present, non-runtime-probe display driver has a matching LXVEOS_DISP_DRIVER_IS_<DRIVER>=1 selector
-    (create_panel() #if's on it) and every other selector is 0; a runtime-probe board leaves them all 0. Catches
-    a new fixed panel added to the manifest without wiring a create_panel branch — the rank-8 latent fall-through
-    where create_panel would silently run the classic-CYD 0xD3 heuristic on a panel it doesn't fit."""
+    and every other selector is 0; a runtime-probe board leaves them all 0. Catches a new fixed panel added to
+    the manifest without a selector define — the rank-8 latent fall-through where create_panel would otherwise
+    silently run the classic-CYD 0xD3 heuristic on a panel it doesn't fit. (A listed driver that has a selector
+    but no create_panel() branch is caught separately, at C-compile, by create_panel()'s #else #error.)"""
     for bid, b in BOARDS.items():
         d = b.get("display", {})
         if not d.get("present"):

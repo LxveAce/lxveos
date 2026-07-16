@@ -43,7 +43,9 @@ FEATURE_VALUES = (True, False, "addon")
 # Fixed (non-runtime-probe) panel drivers each get a compile-time selector (LXVEOS_DISP_DRIVER_IS_<DRIVER>)
 # so the BSP's create_panel() can #if on the concrete driver — a driver STRING can't be preprocessed. The
 # classic CYD is a runtime probe (ILI9341 vs ST7789) and needs no selector. Add a driver here AND a
-# create_panel branch when a new fixed panel gains real GPIOs; the board-config test enforces the pairing.
+# create_panel branch when a new fixed panel gains real GPIOs. Two separate gates cover this: validate_manifest
+# + the board-config test enforce driver->selector (a manifest driver missing from this list fails CI), while
+# create_panel()'s #else fires a compile-time #error if a HAS_PINS board's selector has no matching branch.
 # Each name must already be a valid C identifier tail (letters/digits only).
 FIXED_DISPLAY_DRIVERS = ("ST7796", "ST7789V2", "AXS15231B")
 
