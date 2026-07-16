@@ -85,7 +85,7 @@ _MUST_BE_IMPLEMENTED = {
     "deauth_detect", "pwnagotchi_detect", "evil_twin_detect", "wifi_security_audit", "wifi_wardrive",
     "ble_scan", "ble_wardrive", "ble_flood_detect", "ble_tracker_detect", "flipper_detect",
     "meta_detect", "skimmer_detect", "flock_detect", "surveil_scan", "ble_hid_detect",
-    "evil_portal", "karma_ap",
+    "evil_portal", "karma_ap", "airspace_summary", "target_watch",
 }
 
 # The interference-emitter class (RF jammer / deauth-flood / beacon-flood / BLE advert-spam) is a FIXED
@@ -119,6 +119,33 @@ def test_interference_emitters_are_never_implemented():
         "interference emitter flagged implemented=true — boundary-excluded, no authored TX loops "
         f"(SAFEGUARDS-LOG jammer-tx): {live}"
     )
+
+
+def test_every_implemented_op_is_in_exactly_one_guard_set():
+    """Completeness: every op flagged implemented=true in the catalog must be classified by EXACTLY ONE honesty
+    guard set (must-be-implemented / must-stay-unvalidated / interference-emitters). This is the invariant that
+    would have caught airspace_summary + target_watch sitting outside every set — a new implemented=true op added
+    without a guard now fails loudly instead of silently escaping the verify-never-fake checks."""
+    cat = _catalog()
+    guards = {
+        "_MUST_BE_IMPLEMENTED": _MUST_BE_IMPLEMENTED,
+        "_MUST_STAY_UNVALIDATED": _MUST_STAY_UNVALIDATED,
+        "_INTERFERENCE_EMITTERS": _INTERFERENCE_EMITTERS,
+    }
+    unclassified, multi = [], []
+    for slug, implemented in cat.items():
+        if not implemented:
+            continue
+        members = [name for name, members_set in guards.items() if slug in members_set]
+        if not members:
+            unclassified.append(slug)
+        elif len(members) > 1:
+            multi.append(f"{slug} in {members}")
+    assert not unclassified, (
+        f"implemented=true op(s) outside every honesty-guard set (add to the right set in this file): "
+        f"{sorted(unclassified)}"
+    )
+    assert not multi, f"implemented=true op(s) classified into more than one guard set: {multi}"
 
 
 def test_cli_numeric_args_use_validated_parsing_not_atoi():
