@@ -74,17 +74,16 @@ static int pn532_read_response(uint8_t *data, uint8_t data_cap)
     if (i2c_master_receive(s_dev, buf, sizeof(buf), 100) != ESP_OK) {
         return -1;
     }
-    // buf[0] = status; frame = 00 00 FF LEN LCS TFI CMD+1 payload... DCS 00
-    if (buf[1] != 0x00 || buf[2] != 0x00 || buf[3] != 0xFF) {
+    // buf[0] = ready-status; the frame (00 00 FF LEN LCS TFI CMD+1 payload... DCS 00) starts at buf[1]. Validate
+    // preamble + LEN/LCS + DCS + postamble with the host-tested checker — the old inline check verified only the
+    // preamble and LCS, so a bus-corrupted payload (good LCS, wrong DCS) was accepted as a valid response.
+    if (!lxveos_pn532_frame_valid(buf + 1, sizeof(buf) - 1)) {
+        return -1;
+    }
+    if (buf[6] != PN532_TFI_RDR) {   // frame_valid sums the TFI but doesn't check its value — verify it here
         return -1;
     }
     uint8_t len = buf[4];
-    if ((uint8_t)(buf[4] + buf[5]) != 0) {   // LCS
-        return -1;
-    }
-    if (buf[6] != PN532_TFI_RDR) {
-        return -1;
-    }
     int dlen = (int)len - 2;                  // minus TFI + response-command byte
     if (dlen < 0) {
         dlen = 0;
