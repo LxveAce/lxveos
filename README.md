@@ -83,7 +83,7 @@ authorized-use terms; the acceptance is stored in NVS, so it's a one-time gate p
 | `disarm` | hard-disarm — return to SAFE (offensive TX not permitted) |
 | `evilportal [ssid\|karma\|template <id>\|templates\|creds\|stop]` | **offensive (needs `arm`)** — rogue AP + captive credential-capture portal (DNS auto-pop, retained-credential readout) |
 | `badble "<duckyscript>" \| stop \| status` | **offensive (needs `arm`)** — BLE HID keystroke injection ("BadBLE") |
-| `ir recv <rx_gpio> [s] \| send <tx_gpio> \| show` | IR capture + replay via RMT (universal-remote); `send` transmits a captured frame. Needs an IR receiver/emitter |
+| `ir recv <rx_gpio> [s] \| send <tx_gpio> \| show` | IR capture + replay via RMT (universal-remote); `send` transmits a captured frame; `recv`/`show` also **decode** the capture when it's NEC (incl. the held-button repeat code + 16-bit extended addressing) or Sony SIRC (12/15/20-bit), printing `proto addr=… cmd=…` — an unrecognized signal (e.g. RC5/RC6 Manchester, A/C remotes) still records + replays as raw symbols. Needs an IR receiver/emitter |
 | `subghz begin <sclk> <miso> <mosi> <cs> \| rssi <mhz> \| capture <gdo0> <mhz> [s] \| replay <gdo0> \| end` | CC1101 sub-GHz — RSSI + OOK capture (receive) plus **arm-gated `replay`** (offensive OOK re-emit). Add-on module |
 | `nrf24 begin <sck> <miso> <mosi> <csn> <ce> \| scan \| sniff \| mousejack <text> \| end` | nRF24L01+ 2.4 GHz — channel scan + address sniff (receive) plus **arm-gated `mousejack`** keystroke injection. Add-on module |
 | `nfc begin <sda> <scl> \| read [seconds] \| clone <8hexUID> \| end` | PN532 NFC — read a card UID (receive) plus **arm-gated `clone`** (write a spoofed UID to a Gen2 magic card). Add-on module |

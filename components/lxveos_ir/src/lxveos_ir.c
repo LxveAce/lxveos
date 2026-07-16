@@ -198,3 +198,27 @@ uint32_t lxveos_ir_capture_symbols(void)
 {
     return (uint32_t)s_count;
 }
+
+bool lxveos_ir_decode_last(lxveos_ir_decoded_t *out)
+{
+    if (out == NULL || s_count == 0) {
+        return false;
+    }
+    // Flatten the retained RMT symbols to a mark/space duration train. RMT runs at 1 MHz here (see
+    // IR_RESOLUTION_HZ), so each duration field is already in microseconds. A zero duration marks the end
+    // of the captured frame (RMT pads the last symbol's unused half with 0).
+    uint16_t dur[2 * IR_MAX_SYMBOLS];
+    const size_t cap = sizeof(dur) / sizeof(dur[0]);
+    size_t n = 0;
+    for (size_t i = 0; i < s_count && n + 2 <= cap; i++) {
+        if (s_symbols[i].duration0 == 0) {
+            break;
+        }
+        dur[n++] = (uint16_t)s_symbols[i].duration0;
+        if (s_symbols[i].duration1 == 0) {
+            break;
+        }
+        dur[n++] = (uint16_t)s_symbols[i].duration1;
+    }
+    return lxveos_ir_decode(dur, n, out);
+}

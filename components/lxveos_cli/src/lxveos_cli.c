@@ -2020,6 +2020,25 @@ static int cmd_badble(int argc, char **argv)
 // works on any build once the hardware is wired. `ir recv <rx_gpio> [seconds]` captures one signal; `ir
 // send <tx_gpio>` replays it; `ir show` reports the stored capture. Not an arm-gated offensive op (IR
 // light, single-signal replay — a benign utility, not an RF attack).
+// Print the decoded form of the last IR capture if NEC/Sony recognized it. Returns true when it printed a
+// decode line. Shared by `ir recv` and `ir show`; an unrecognized capture still records/replays as raw symbols.
+static bool print_ir_decode(void)
+{
+    lxveos_ir_decoded_t dec;
+    if (!lxveos_ir_decode_last(&dec)) {
+        return false;
+    }
+    const char *p = lxveos_ir_proto_str(dec.proto);
+    if (dec.proto == LXVEOS_IR_PROTO_NEC_REPEAT) {
+        printf("  decoded: %s (held button)\n", p ? p : "?");
+        return true;
+    }
+    printf("  decoded: %s addr=0x%0*x cmd=0x%02x (%u-bit%s)\n",
+           p ? p : "?", dec.addr_ext ? 4 : 2, (unsigned)dec.address, (unsigned)dec.command,
+           (unsigned)dec.bits, dec.addr_ext ? ", ext-addr" : "");
+    return true;
+}
+
 static int cmd_ir(int argc, char **argv)
 {
     if (locked()) {
@@ -2041,6 +2060,7 @@ static int cmd_ir(int argc, char **argv)
         if (e == ESP_OK) {
             printf("captured %u IR symbols%s — 'ir send <tx_gpio>' to replay\n",
                    (unsigned)inf.symbols, inf.truncated ? " (truncated — signal longer than buffer)" : "");
+            print_ir_decode();   // NEC/Sony address/command, when recognized
         } else if (e == ESP_ERR_TIMEOUT) {
             printf("no IR signal received (check the receiver wiring / GPIO)\n");
         } else if (e == ESP_ERR_INVALID_ARG) {
@@ -2072,6 +2092,9 @@ static int cmd_ir(int argc, char **argv)
     if (argc >= 2 && strcmp(argv[1], "show") == 0) {
         if (lxveos_ir_have_capture()) {
             printf("stored IR capture: %u symbols\n", (unsigned)lxveos_ir_capture_symbols());
+            if (!print_ir_decode()) {
+                printf("  (protocol not recognized — NEC/Sony only; still replayable as raw symbols)\n");
+            }
         } else {
             printf("no IR capture stored\n");
         }

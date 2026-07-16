@@ -61,6 +61,12 @@ build_arm -DLXVEOS_TX_DISABLE  # conservative build: the emitter is stripped
     "$here/test_ble_labels.c" "$root/components/lxveos_ble/src/lxveos_ble_labels.c" -o "$out"
 "$out"
 
+# --- IR NEC/Sony protocol decode: pure durations->proto/addr/cmd, esp_err stub for lxveos_ir.h, no RMT ---
+"$CC" -std=gnu11 -O1 -Wall \
+    -I"$root/components/lxveos_ir/include" -I"$here/stubs" \
+    "$here/test_ir_decode.c" "$root/components/lxveos_ir/src/lxveos_ir_decode.c" -o "$out"
+"$out"
+
 # --- shared-SPI3 bus refcount policy (acquire/release state machine): esp_err stub, no spi driver ---
 "$CC" -std=gnu11 -O1 -Wall \
     -I"$root/components/lxveos_spibus/include" -I"$here/stubs" \
