@@ -8,12 +8,12 @@ hardware supports them. It builds on the great open ESP32 security firmware — 
 Bruce and others — with proper credit and **without competing** with them: permissively-licensed code is reused
 directly, copyleft work is learned from clean-room (ideas, not code). See [`CREDITS.md`](CREDITS.md).
 
-> ⚠️ **Status: M0 — builds clean in CI, not yet hardware-validated.** All five M0 Tier-1 boards compile against ESP-IDF
-> v6.0.2 in CI (a fast host-side manifest gate, then the full 5-board build matrix). **What exists in code today:** the
+> ⚠️ **Status: M0 — builds clean in CI, not yet hardware-validated.** All six M0 Tier-1 boards compile against ESP-IDF
+> v6.0.2 in CI (a fast host-side manifest gate, then the full 6-board build matrix). **What exists in code today:** the
 > serial control console + the full operation suite — passive Wi-Fi/BLE recon, defensive detectors, wardrive CSV logging,
 > and the **labelled, arm-gated offensive ops** (evil-portal/karma credential capture, BLE HID injection, sub-GHz OOK
 > replay, nRF24 MouseJack, NFC UID clone) — plus a capability registry, the CYD panel-identity probe, an LVGL launcher
-> shell, and ILI9341/ST7789 panel drivers. **What is NOT done:** none of it has been flashed to or bench-validated on a
+> shell, and ILI9341/ST7789/ST7796 panel drivers. **What is NOT done:** none of it has been flashed to or bench-validated on a
 > physical device yet, and on-device input/storage bring-up (and per-board display pinouts beyond the CYD) is still
 > pending. Read "exists in code / CI-built" as distinct from "validated on silicon" — nothing here claims to work on a
 > device until bench-validated.
@@ -41,9 +41,9 @@ support (see [Core decisions](#core-decisions) below). The rest of the map, all 
   probed result to NVS so later boots skip the probe is planned; M0 caches the build-time default.)
 
 ## M0 Tier-1 boards
-`cyd_2432S028_classic` (runtime ILI9341/ST7789 probe) · `bare_esp32_headless` · `m5stickc_plus2` ·
-`m5cardputer_v1` · `jc3248w535_s3_qspi`. Spans classic+S3 / none–2MB–8MB PSRAM / SPI+QSPI / resistive+capacitive
-+ matrix-keyboard + buttons + headless.
+`cyd_2432S028_classic` (runtime ILI9341/ST7789 probe) · `cyd_3248S035_r` (CYD 3.5″ / ST7796 panel) ·
+`bare_esp32_headless` · `m5stickc_plus2` · `m5cardputer_v1` · `jc3248w535_s3_qspi`. Spans classic+S3 /
+none–2MB–8MB PSRAM / SPI+QSPI / resistive+capacitive + matrix-keyboard + buttons + headless.
 
 ## Serial control surface (M0)
 Every board — headless or not — boots into a serial console (`esp_console` REPL) over its default UART / USB-Serial-JTAG.
@@ -138,7 +138,7 @@ You can validate the manifest + generated configs **without ESP-IDF** (pure Pyth
 python scripts/gen_board_configs.py --check   # manifest valid (CI gate; writes nothing)
 python -m pytest tests/                        # board-config pipeline unit tests
 ```
-CI (`.github/workflows/build-matrix.yml`) runs that fast host-side `validate` gate first, then builds all five
+CI (`.github/workflows/build-matrix.yml`) runs that fast host-side `validate` gate first, then builds all six
 M0 boards with ESP-IDF v6.0.2 — currently green. Still TODO on the build side: a flash/IRAM `size` gate and
 on-device (`pytest-embedded` / Unity) tests once hardware bring-up lands.
 
