@@ -8,15 +8,9 @@
 #include "lxveos_arm.h"
 #include "lxveos_ops.h"
 
-// Compose the capability menu into `buf` (bounded by `cap`): a category header whenever the category changes,
-// then one line per op — a status glyph ([+] ready / [.] planned / [~] attachable add-on / [x] unavailable),
-// the op slug, and a policy tag ((arm) / (upstream)). Data comes straight from the op catalog.
-void lxveos_gui_compose_menu(char *buf, size_t cap);
-
 // Compose the one-line list-button label for a single op into `buf` (bounded by `cap`): the status glyph
-// ([+]/[.]/[~]/[x]), the slug, and the policy tag ((arm)/(upstream)) — the same per-op rendering compose_menu
-// puts on each line, factored out so the GUI can build a tappable button per op (B12d interactive launcher).
-// A NULL op yields a short placeholder.
+// ([+]/[.]/[~]/[x]), the slug, and the policy tag ((arm)/(upstream)) — the per-op rendering the GUI puts on
+// each tappable row (B12d interactive launcher). A NULL op yields a short placeholder.
 void lxveos_gui_compose_op_label(char *buf, size_t cap, const lxveos_op_t *op);
 
 // Compose the ARM/SAFE banner text for the given arm state into `buf` (bounded by `cap`). Pure mapping of the

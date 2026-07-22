@@ -1,6 +1,7 @@
 // lxveos_gui_menu — pure text composition for the on-device GUI (see lxveos_gui_menu.h). No LVGL / esp_lcd,
-// so the menu + arm-banner string building is host-unit-tested off-target. Extracted verbatim from
-// lxveos_gui.c (compose_menu) plus the new arm banner; behaviour-preserving.
+// so the per-op label, arm-banner and detail-card string building is host-unit-tested off-target. The GUI
+// (lxveos_gui.c) iterates the op catalog and wraps each label in an LVGL row; the headless serial catalog
+// dump lives in the `features` CLI command (lxveos_cli.c).
 #include "lxveos_gui_menu.h"
 
 #include <stdarg.h>
@@ -8,38 +9,6 @@
 #include <stdio.h>
 
 #include "lxveos_ops.h"
-
-void lxveos_gui_compose_menu(char *buf, size_t cap)
-{
-    if (cap == 0) {
-        return;
-    }
-    buf[0] = '\0';
-    size_t n = lxveos_ops_count();
-    size_t off = 0;
-    lxveos_opcat_t last = LXVEOS_OPCAT_COUNT;
-    for (size_t i = 0; i < n; i++) {
-        const lxveos_op_t *op = lxveos_ops_get(i);
-        if (op == NULL) {
-            continue;
-        }
-        if (op->category != last) {
-            last = op->category;
-            int w = snprintf(buf + off, cap - off, "%s%s\n", (i ? "\n" : ""), lxveos_opcat_name(last));
-            if (w < 0 || (size_t)w >= cap - off) {
-                break;
-            }
-            off += (size_t)w;
-        }
-        char lbl[64];
-        lxveos_gui_compose_op_label(lbl, sizeof(lbl), op);
-        int w = snprintf(buf + off, cap - off, " %s\n", lbl);
-        if (w < 0 || (size_t)w >= cap - off) {
-            break;
-        }
-        off += (size_t)w;
-    }
-}
 
 void lxveos_gui_compose_op_label(char *buf, size_t cap, const lxveos_op_t *op)
 {
@@ -93,7 +62,7 @@ uint32_t lxveos_gui_arm_banner_color(lxveos_arm_state_t state)
 }
 
 // Append one printf-formatted chunk at *off, honouring the remaining capacity. Returns false (caller stops)
-// when the buffer is full or the chunk would truncate — same bounded-write discipline as compose_menu.
+// when the buffer is full or the chunk would truncate — the bounded-write discipline the detail card is built on.
 static bool detail_append(char *buf, size_t cap, size_t *off, const char *fmt, ...)
 {
     va_list ap;

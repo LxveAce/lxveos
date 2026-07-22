@@ -1,6 +1,6 @@
 // Host-side unit test for lxveos_gui_menu — the on-device GUI's pure text composition (no LVGL / esp_lcd).
-// Covers the ARM/SAFE banner mapping and the capability-menu builder. The menu is driven off the real op
-// catalog (lxveos_ops.c) + capability registry (lxveos_caps.c), compiled here against the host stubs
+// Covers the ARM/SAFE banner mapping, the per-op list-button label and the op detail card. These are driven
+// off the real op catalog (lxveos_ops.c) + capability registry (lxveos_caps.c), compiled here against the host stubs
 // (esp_log.h + a fixture sdkconfig.h that models a Wi-Fi board with a sub-GHz add-on). Built + run by
 // tests/host_c/run.sh. Aborts (non-zero exit) on the first failed assertion.
 #include "lxveos_gui_menu.h"
@@ -48,49 +48,6 @@ static void test_arm_banner_color(void)
 static int has(const char *hay, const char *needle)
 {
     return strstr(hay, needle) != NULL;
-}
-
-static void test_menu_content(void)
-{
-    // Fixture board (stubs/sdkconfig.h): Wi-Fi built in, sub-GHz attachable, everything else absent.
-    lxveos_caps_probe();
-    assert(lxveos_cap_active(LXVEOS_CAP_WIFI));
-    assert(!lxveos_cap_active(LXVEOS_CAP_SUBGHZ));
-    assert(lxveos_cap_is_addon(LXVEOS_CAP_SUBGHZ));
-
-    char menu[4000];
-    lxveos_gui_compose_menu(menu, sizeof(menu));
-
-    // Every category header the catalog uses shows up.
-    assert(has(menu, "recon"));
-    assert(has(menu, "attack"));
-    assert(has(menu, "defense"));
-    assert(has(menu, "logging"));
-    assert(has(menu, "misc"));
-
-    // Known slugs land in the menu.
-    assert(has(menu, "wifi_ap_scan"));
-    assert(has(menu, "subghz_scan"));
-
-    // All four status glyphs appear on this fixture: Wi-Fi ops ready [+] and planned [.], sub-GHz add-on
-    // ops attachable [~], and the caps this board can't host (BLE/NFC/IR/...) unavailable [x].
-    assert(has(menu, "[+]"));   // wifi_ap_scan is implemented + WIFI active
-    assert(has(menu, "[.]"));   // wps_attack planned (WIFI active, not implemented)
-    assert(has(menu, "[~]"));   // subghz_* attachable add-on
-    assert(has(menu, "[x]"));   // ble_scan etc. unavailable
-
-    // Honesty regression: 5 GHz scan is physically impossible on 2.4 GHz-only ESP32/S3 silicon, so it must
-    // report "unavailable" [x] (this board can't) — NOT "planned" [.] (coming soon). Its required cap is the
-    // never-active LXVEOS_CAP_WIFI_5GHZ. Before the fix this rendered "[.] wifi_5ghz_scan".
-    assert(has(menu, "[x] wifi_5ghz_scan"));
-
-    // A ready Wi-Fi op sits on the same line as the [+] glyph and slug.
-    assert(has(menu, "[+] wifi_ap_scan"));
-    // Policy tags render: offensive ops carry (arm), the DoS class carries (upstream).
-    assert(has(menu, "(arm)"));        // e.g. evil_portal / karma_ap
-    assert(has(menu, "(upstream)"));   // e.g. deauth_burst / beacon_flood
-    // ...and a plain recon op carries no policy tag (no stray tag bleed).
-    assert(has(menu, "wifi_ap_scan\n"));
 }
 
 // Find a catalog op by slug (NULL if absent).
@@ -160,7 +117,7 @@ static void test_detail(void)
 static void test_op_label(void)
 {
     // The per-op list-button label the interactive launcher (B12d) puts on each tappable row: glyph + slug +
-    // policy tag, no leading space / newline (that's compose_menu's framing). Fixture: Wi-Fi built in, sub-GHz add-on.
+    // policy tag, no leading space / newline. Fixture: Wi-Fi built in, sub-GHz add-on.
     lxveos_caps_probe();
     char lbl[64];
 
@@ -180,11 +137,6 @@ static void test_op_label(void)
     lxveos_gui_compose_op_label(lbl, sizeof(lbl), find_op("wifi_5ghz_scan"));
     assert(strcmp(lbl, "[x] wifi_5ghz_scan") == 0);
 
-    // The label is exactly what compose_menu wraps per line (so the list rows match the text menu).
-    char menu[4000];
-    lxveos_gui_compose_menu(menu, sizeof(menu));
-    assert(has(menu, "[+] evil_portal (arm)"));
-
     // NULL op -> placeholder; cap 0 -> no write.
     lxveos_gui_compose_op_label(lbl, sizeof(lbl), NULL);
     assert(strcmp(lbl, "(none)") == 0);
@@ -193,39 +145,12 @@ static void test_op_label(void)
     assert(z == 'Q');
 }
 
-static void test_menu_bounds(void)
-{
-    // Small buffer: the builder must truncate cleanly — always NUL-terminated, never writing past `cap`.
-    // Wrap the target in a sentinel-guarded array and confirm the guard byte is untouched.
-    lxveos_caps_probe();
-    char arena[80];
-    memset(arena, 'G', sizeof(arena));
-    const size_t cap = 40;
-    lxveos_gui_compose_menu(arena, cap);
-    assert(strlen(arena) < cap);          // fits, terminated inside cap
-    for (size_t i = cap; i < sizeof(arena); i++) {
-        assert(arena[i] == 'G');          // nothing written past cap
-    }
-
-    // cap==0 is a documented no-op (must not dereference buf[0]).
-    char z = 'Q';
-    lxveos_gui_compose_menu(&z, 0);
-    assert(z == 'Q');
-
-    // cap==1 gives an empty, terminated string.
-    char one[1] = {'X'};
-    lxveos_gui_compose_menu(one, sizeof(one));
-    assert(one[0] == '\0');
-}
-
 int main(void)
 {
     test_arm_banner();
     test_arm_banner_color();
-    test_menu_content();
     test_detail();
     test_op_label();
-    test_menu_bounds();
     printf("test_gui_menu: all tests passed\n");
     return 0;
 }
