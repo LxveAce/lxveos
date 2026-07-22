@@ -139,8 +139,11 @@ python scripts/gen_board_configs.py --check   # manifest valid (CI gate; writes 
 python -m pytest tests/                        # board-config pipeline unit tests
 ```
 CI (`.github/workflows/build-matrix.yml`) runs that fast host-side `validate` gate first, then builds all six
-M0 boards with ESP-IDF v6.0.2 — currently green. Still TODO on the build side: a flash/IRAM `size` gate and
-on-device (`pytest-embedded` / Unity) tests once hardware bring-up lands.
+M0 boards with ESP-IDF v6.0.2. Each board build is additionally gated by `scripts/check_deps.py` (managed-
+dependency pins in `scripts/expected_deps.txt` vs the freshly resolved lock — fails on drift) and
+`scripts/size_report.py` (app image vs its partition slot — fails on overflow, warns over a soft budget);
+IRAM/DRAM overflow already fails the build at link time. Currently green. The one build-side gate still TODO is
+on-device (`pytest-embedded` / Unity) tests, once hardware bring-up lands.
 
 ## License
 MIT © 2026 LxveAce / LxveLabs. Third-party components retain their own licenses — see `THIRD-PARTY-LICENSES.md`.
