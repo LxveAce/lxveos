@@ -8,6 +8,7 @@ run in CI before the build matrix as a fast gate, and locally with `python -m py
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -17,9 +18,10 @@ import gen_board_configs as g  # noqa: E402
 
 BOARDS = json.loads((ROOT / "cyd_boards.json").read_text(encoding="utf-8"))["boards"]
 
-# The M0 Tier-1 fleet the README + CI matrix commit to.
-M0_TIER1 = {"bare_esp32_headless", "cyd_2432S028_classic", "m5stickc_plus2",
-            "m5cardputer_v1", "jc3248w535_s3_qspi"}
+# The M0 Tier-1 fleet the manifest + README + CI matrix commit to. Kept EQUAL to all three by
+# test_m0_tier1_fleet_is_consistent (below) — a board added to one place but not the others fails there.
+M0_TIER1 = {"bare_esp32_headless", "cyd_2432S028_classic", "cyd_3248S035_r",
+            "m5stickc_plus2", "m5cardputer_v1", "jc3248w535_s3_qspi"}
 
 
 def test_manifest_is_valid():
@@ -27,8 +29,35 @@ def test_manifest_is_valid():
     assert errs == [], "cyd_boards.json validation failed:\n" + "\n".join(errs)
 
 
-def test_m0_tier1_boards_present():
-    assert M0_TIER1 <= set(BOARDS), f"missing M0 boards: {M0_TIER1 - set(BOARDS)}"
+def _ci_matrix_boards() -> set[str]:
+    """Board ids the CI build matrix builds (`- { board: <id>, target: … }` rows in build-matrix.yml)."""
+    text = (ROOT / ".github" / "workflows" / "build-matrix.yml").read_text(encoding="utf-8")
+    return set(re.findall(r"\bboard:\s*([A-Za-z0-9_]+)", text))
+
+
+def _readme_tier1_boards() -> set[str]:
+    """Board ids the README's `## M0 Tier-1 boards` section lists (they're the only backtick-quoted tokens
+    in that section). Reads the section verbatim so a README edit that adds/drops a board is caught."""
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    m = re.search(r"^##\s*M0 Tier-1 boards\s*$(.*?)(?=^##\s|\Z)", text, re.DOTALL | re.MULTILINE)
+    section = m.group(1) if m else ""
+    return set(re.findall(r"`([A-Za-z0-9_]+)`", section))
+
+
+def test_m0_tier1_fleet_is_consistent():
+    """The M0 Tier-1 fleet is declared in four places — M0_TIER1 here, the board manifest
+    (cyd_boards.json), the CI build matrix, and the README. They must be EQUAL, not merely overlapping, so
+    a board added to (or dropped from) one place but not the others fails here in seconds rather than
+    drifting silently — the failure names exactly which side is out of sync."""
+    manifest = set(BOARDS)
+    ci = _ci_matrix_boards()
+    readme = _readme_tier1_boards()
+    assert manifest == M0_TIER1, \
+        f"manifest ≠ M0_TIER1: only-manifest={manifest - M0_TIER1}, only-M0_TIER1={M0_TIER1 - manifest}"
+    assert ci == M0_TIER1, \
+        f"CI matrix ≠ M0_TIER1: only-CI={ci - M0_TIER1}, only-M0_TIER1={M0_TIER1 - ci}"
+    assert readme == M0_TIER1, \
+        f"README ≠ M0_TIER1: only-README={readme - M0_TIER1}, only-M0_TIER1={M0_TIER1 - readme}"
 
 
 def test_referenced_partition_csvs_exist():

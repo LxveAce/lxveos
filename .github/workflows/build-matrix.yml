@@ -1,7 +1,7 @@
 name: build-matrix
 # Regenerates board inputs from cyd_boards.json and builds every board with ESP-IDF v6.0.2. A fast
 # host-side `validate` job (no ESP-IDF) gates the matrix: it validates the manifest and runs the
-# board-config unit tests, so a manifest typo fails in seconds instead of after five parallel toolchain
+# board-config unit tests, so a manifest typo fails in seconds instead of after six parallel toolchain
 # builds. Each board's build produces a single-file flashable image (merge-bin) uploaded as an artifact,
 # so any machine can flash a device without an ESP-IDF toolchain. The validate job also runs a host-C unit
 # test of the arm-gate safety state machine (no ESP-IDF needed). Each built board is then run through
