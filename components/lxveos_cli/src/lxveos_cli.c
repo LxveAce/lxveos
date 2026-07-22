@@ -2597,7 +2597,8 @@ static int cmd_airspace(int argc, char **argv)
 }
 
 // --- target watchlist (custom X-3 feature) --------------------------------------------------------
-// A small persistent list of BSSIDs / BLE addresses to keep an eye out for. `watch scan` runs one
+// A small in-RAM list of BSSIDs / BLE addresses to keep an eye out for (not NVS-backed — it clears on
+// reboot). `watch scan` runs one
 // passive Wi-Fi + BLE sweep and flags any listed target that's on the air right now, emitting one
 // `LXVEOS/1 alert kind=watch` per hit for the CC dashboard. Listen-only — the watchlist never transmits.
 #define WATCH_MAX   16u  // unsigned: it's compared against size_t counts and printed with %u
@@ -2622,7 +2623,7 @@ static int watch_index_of(const uint8_t mac[6])
     return -1;
 }
 
-// `watch` — CUSTOM (X-3): a small persistent target watchlist.
+// `watch` — CUSTOM (X-3): a small in-RAM target watchlist (cleared on reboot; not NVS-backed).
 //   watch add <mac> [label]   add a target (mac "aa:bb:cc:dd:ee:ff", optional label)
 //   watch del <mac>           drop a target
 //   watch list                show the watchlist
