@@ -36,23 +36,30 @@ The `status` line is **always** available regardless of `bridge` state — it is
 | type | fields | source | notes |
 |---|---|---|---|
 | `bridge` | `state=on\|off` | `bridge` | emission toggle ack |
+| `status` | `board` `chip` `ui` `fw` `panel` `caps`(hex bitmask) `ops=<ready>/<planned>/<unavailable>` `heap` `arm=safe\|pending\|armed\|tx_disabled` `tx=0\|1` | `status` | **always available — not gated by `bridge`** (the dashboard poll). `caps` decodes by bit to wifi/ble/bt_classic/display/storage/gps/ir/subghz/nrf24/nfc; `arm`/`tx` are also emitted here so CC tracks arm state from the poll alone |
 | `ap` | `bssid`(mac) `ssid`(hex) `ch` `rssi` `auth` | `scan` | one per AP found |
 | `sta` | `mac`(mac) `ap`(mac) `rssi` `frames` `essid`(hex) | `stations` | client station; `ap` = associated BSSID, `essid` its ESSID if a beacon was also seen, `frames` = data frames observed |
 | `probe` | `ssid`(hex) `seen` `rssi` | `probes` | one per directed SSID a nearby device is hunting for; `seen` = probe-request frames. No client MAC — the passive probe scan aggregates by SSID, not by device |
 | `ble` | `addr`(mac) `type` `rssi` `name`(hex) `company` `fp` `appr` `tracker` | `blescan` | addr is MSB-first; `company`/`fp`/`appr`/`tracker`/`name` present only when the advert carried them. `company` = numeric Bluetooth-SIG company ID (names can contain spaces); `tracker` = item-tracker class (0 = none) |
 | `hs` | `kind=pmkid\|eapol` `line`(hashcat-22000) | `capture` | one per crackable artifact; `line` is the ready-to-crack WPA*01/WPA*02 line (token-safe, ESSID hex inside), forwarded straight to Crack Lab |
-| `pcap` | `id` `bytes` | `pcap_log` | a pcap segment was written (needs storage; HW) |
+| `pcap` _(PLANNED)_ | `id` `bytes` | `pcap_log` | **Not emitted yet** — the `pcap_log` op is scaffolded but unavailable (needs SD storage; see the `TODO(M1)` in `lxveos_cli.c`). The shape is fixed here so CC can consume it unchanged when it ships. |
 | `arm` | `state=safe\|pending\|armed\|tx_disabled` `token`(pending only) `window`(s, pending) | `arm`/`disarm` | arm state change. `tx_disabled` = offensive TX compiled out (LXVEOS_TX_DISABLE). Also printed as human prose (always), so CC tracks arm state even with the bridge off |
-| `alert` | `kind=deauth\|eviltwin\|weak\|wps\|tracker\|bleflood\|blehid\|watch` `...`(kind-specific) | `defend`/`eviltwin`/`apaudit`/`bleflood`/`btracker`/`blehid`/`watch` | a detector fired |
+| `alert` | `kind=deauth\|pwnagotchi\|eviltwin\|weak\|wps\|tracker\|flipper\|meta\|skimmer\|flock\|surveil\|bleflood\|blehid\|watch` `...`(kind-specific) | `defend`/`pwnwatch`/`eviltwin`/`apaudit`/`btracker`/`flipper`/`meta`/`skimmer`/`flock`/`surveil`/`bleflood`/`blehid`/`watch` | a detector fired; `kind` selects the field set below |
 | `snapshot` | `aps` `open` `wps` `bles` `trackers` | `airspace` (custom) | airspace occupancy counts; `bles`/`trackers` present only when BLE is active |
 | `done` | `of=<cmd>` `n=<count>` | any listing cmd | end-of-listing marker so CC knows the batch is complete |
 
 ### `alert` kind-specific fields (the detector that fires it in parentheses)
 - `deauth` (`defend`): `bssid`(mac, busiest source) `count`(total deauth+disassoc) `deauth` `disassoc`. Fired only when count > 0.
+- `pwnagotchi` (`pwnwatch`): `count`(Pwnagotchi beacons seen) `handshakes`(total handshakes those beacons advertise having captured). Fired when count > 0.
 - `eviltwin` (`eviltwin`): `ssid`(hex) `bssids`(count advertising this ESSID) `open`(open BSSIDs) `enc`(encrypted BSSIDs). One per flagged ESSID.
 - `weak` (`apaudit`): `bssid`(mac) `ssid`(hex) `grade`(0=open 1=WEP 2=legacy-WPA) `wps`(=1 if also WPS). One per weak-encryption AP.
 - `wps` (`apaudit`): `bssid`(mac) `ssid`(hex) `grade`(3=WPA2 4=WPA3 …) `wps`(=1). One per WPS-advertising AP that is otherwise adequately encrypted.
 - `tracker` (`btracker`): `addr`(mac) `vendor` (AirTag/Tile/SmartTag/Chipolo/PebbleBee/GoogleFMN)
+- `flipper` (`flipper`): `count`(Flipper Zero devices seen via their BLE service UUID)
+- `meta` (`meta`): `count`(Meta / Ray-Ban + Oculus devices seen via BLE)
+- `skimmer` (`skimmer`): `count`(card-skimmer heuristic hits — HC-0x BT-serial modules). Heuristic — verify in person.
+- `flock` (`flock`): `count`(Flock-camera heuristic hits) `likely`(the subset rated likely, not merely possible). Heuristic/experimental.
+- `surveil` (`surveil`): `count`(total surveillance-relevant devices) `tracker` `flock` `meta` `flipper` `skimmer`(per-category subcounts). One summary per sweep, emitted only when count > 0.
 - `bleflood` (`bleflood`): `rate` (adv/s) `vendor`
 - `blehid` (`blehid`): `addr`(mac) `name`(hex) — a BLE HID (keyboard/mouse) device, an injection surface
 - `watch` (`watch scan`, custom): `mac`(mac, the watched target) `rssi`(dBm) `band=wifi\|ble` — a watchlisted BSSID/BLE-addr is present on this sweep. One per hit.
