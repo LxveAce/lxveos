@@ -22,7 +22,7 @@ typedef enum {
     LXVEOS_CAP_DISPLAY,
     LXVEOS_CAP_STORAGE,
     LXVEOS_CAP_GPS,
-    LXVEOS_CAP_IR,
+    LXVEOS_CAP_IR_RX,   // IR receive/decode. Kept at the old LXVEOS_CAP_IR bit so the bridge cap-mask ABI holds.
     LXVEOS_CAP_SUBGHZ,
     LXVEOS_CAP_NRF24,
     LXVEOS_CAP_NFC,
@@ -30,6 +30,12 @@ typedef enum {
     // sets CONFIG_LXVEOS_HAS_WIFI_5GHZ and this bit is never active — a 5 GHz op honestly reports "unavailable"
     // (this silicon can't) rather than "planned" (coming soon). A future dual-band board (ESP32-C5/C6) declares it.
     LXVEOS_CAP_WIFI_5GHZ,
+    // IR transmit is a capability distinct from IR receive: a board can carry an IR demodulator (RX) without an
+    // IR LED (TX), or the reverse, so the two directions can't be honestly advertised from one bit. Appended here
+    // rather than beside IR_RX so every existing cap keeps its bit position — the Cyber Controller bridge decodes
+    // the `status` line's caps= mask BY POSITION, so inserting mid-enum would misread every later cap on a
+    // version-skewed pairing. A board that does both sets ir_rx AND ir_tx in cyd_boards.json.
+    LXVEOS_CAP_IR_TX,
     LXVEOS_CAP_COUNT
 } lxveos_cap_t;
 

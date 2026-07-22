@@ -7,7 +7,7 @@
       "display": { "present": false },
       "input": [],
       "ui_profile": "headless",
-      "features": { "wifi": true, "ble": true, "bt_classic": true, "gps": "addon", "subghz": "addon", "nrf24": "addon", "nfc": "addon", "ir": "addon", "storage": "addon" },
+      "features": { "wifi": true, "ble": true, "bt_classic": true, "gps": "addon", "subghz": "addon", "nrf24": "addon", "nfc": "addon", "ir_rx": "addon", "ir_tx": "addon", "storage": "addon" },
       "build": { "idf_target": "esp32", "partition_csv": "partitions/partitions_4mb_single.csv", "optimize": "size" },
       "firmware_variant_map": { "lxveos": "bare_esp32_headless" },
       "provenance": "verified-on-hw",
@@ -91,7 +91,7 @@
         { "class": "imu", "controller": "MPU6886", "bus": "i2c", "addr_or_cs": null, "maps_to_lvgl": "none", "_note": "accel/gyro -> app events; addr unverified" }
       ],
       "ui_profile": "button_gui",
-      "features": { "wifi": true, "ble": true, "bt_classic": true, "display": true, "ir": true },
+      "features": { "wifi": true, "ble": true, "bt_classic": true, "display": true, "ir_rx": true, "ir_tx": true },
       "build": { "idf_target": "esp32", "psram": true, "partition_csv": "partitions/partitions_8mb_ota.csv", "optimize": "size" },
       "quirks": [ "gpio_power_hold: firmware MUST hold the power-latch GPIO high or the unit powers off (no AXP192 PMIC)" ],
       "firmware_variant_map": { "lxveos": "m5stickc_plus2", "marauder": "m5stickc_plus2" },
@@ -110,7 +110,7 @@
         { "class": "keymatrix", "controller": "74HC138", "bus": "gpio", "pins": null, "maps_to_lvgl": "keypad", "_note": "3-to-8 decoder GPIO scan (verified). ADV variant uses TCA8418 I2C -> separate board id." }
       ],
       "ui_profile": "keypad_gui",
-      "features": { "wifi": true, "ble": true, "display": true, "ir": true, "storage": true },
+      "features": { "wifi": true, "ble": true, "display": true, "ir_rx": true, "ir_tx": true, "storage": true },
       "build": { "idf_target": "esp32s3", "psram": false, "partition_csv": "partitions/partitions_8mb_ota.csv", "optimize": "size" },
       "quirks": [ "no_psram: S3 FN8 has NO PSRAM despite some spec tables -> tight heap, lite UI, careful capture buffers" ],
       "firmware_variant_map": { "lxveos": "m5cardputer_v1", "marauder": "m5cardputer", "bruce": "cardputer" },

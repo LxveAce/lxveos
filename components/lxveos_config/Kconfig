@@ -26,8 +26,12 @@ menu "LxveOS"
         bool "GPS (wardrive coords + time)"
         default n
 
-    config LXVEOS_HAS_IR
-        bool "IR capture/replay (on gear you own)"
+    config LXVEOS_HAS_IR_RX
+        bool "IR receive/decode (demodulator, on gear you own)"
+        default n
+
+    config LXVEOS_HAS_IR_TX
+        bool "IR transmit (IR LED replay, on gear you own)"
         default n
 
     config LXVEOS_HAS_SUBGHZ
@@ -52,8 +56,12 @@ menu "LxveOS"
         bool "GPS is an attachable add-on on this board"
         default n
 
-    config LXVEOS_ADDON_IR
-        bool "IR is an attachable add-on on this board"
+    config LXVEOS_ADDON_IR_RX
+        bool "IR receive is an attachable add-on on this board"
+        default n
+
+    config LXVEOS_ADDON_IR_TX
+        bool "IR transmit is an attachable add-on on this board"
         default n
 
     config LXVEOS_ADDON_SUBGHZ

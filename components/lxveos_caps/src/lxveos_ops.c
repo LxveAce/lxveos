@@ -27,7 +27,7 @@ static const lxveos_op_t OPS[] = {
     {"ble_scan",       "BLE device scan",       LXVEOS_OPCAT_RECON,   LXVEOS_CAP_BLE,     "Marauder", true},
     {"subghz_scan",    "Sub-GHz scan",          LXVEOS_OPCAT_RECON,   LXVEOS_CAP_SUBGHZ,  "Flipper",  false},
     {"nfc_read",       "NFC tag read",          LXVEOS_OPCAT_RECON,   LXVEOS_CAP_NFC,     "Flipper",  false},
-    {"ir_recv",        "IR receive/decode",     LXVEOS_OPCAT_RECON,   LXVEOS_CAP_IR,      "Flipper",  false},
+    {"ir_recv",        "IR receive/decode",     LXVEOS_OPCAT_RECON,   LXVEOS_CAP_IR_RX,   "Flipper",  false},
     // ── Attack ────────────────────────────────────────────────────────────────────────────────────
     // Hub-built offensive: protocol-level attacks (NOT jammers/floods), authorized-lab. Each row flips
     // to "ready" as its driver lands; the TX these author is protocol traffic (portal/PIN/replay/HID/
@@ -67,7 +67,7 @@ static const lxveos_op_t OPS[] = {
     {"pcap_log",       "PCAP capture to SD",    LXVEOS_OPCAT_LOGGING, LXVEOS_CAP_STORAGE, "Marauder", false},
     {"wardrive_log",   "GPS wardrive log",      LXVEOS_OPCAT_LOGGING, LXVEOS_CAP_GPS,     "Marauder", false},
     // ── Misc ──────────────────────────────────────────────────────────────────────────────────────
-    {"ir_send",        "IR transmit",           LXVEOS_OPCAT_MISC,    LXVEOS_CAP_IR,      "Flipper",  false},
+    {"ir_send",        "IR transmit",           LXVEOS_OPCAT_MISC,    LXVEOS_CAP_IR_TX,   "Flipper",  false},
     {"nrf24_scan",     "nRF24 channel scan",    LXVEOS_OPCAT_MISC,    LXVEOS_CAP_NRF24,   "multi",    false},
 };
 

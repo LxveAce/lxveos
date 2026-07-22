@@ -19,11 +19,12 @@ static const char *const CAP_NAMES[LXVEOS_CAP_COUNT] = {
     [LXVEOS_CAP_DISPLAY]    = "display",
     [LXVEOS_CAP_STORAGE]    = "storage",
     [LXVEOS_CAP_GPS]        = "gps",
-    [LXVEOS_CAP_IR]         = "ir",
+    [LXVEOS_CAP_IR_RX]      = "ir_rx",
     [LXVEOS_CAP_SUBGHZ]     = "subghz",
     [LXVEOS_CAP_NRF24]      = "nrf24",
     [LXVEOS_CAP_NFC]        = "nfc",
     [LXVEOS_CAP_WIFI_5GHZ]  = "wifi_5ghz",
+    [LXVEOS_CAP_IR_TX]      = "ir_tx",
 };
 
 #define CAP_BIT(c) ((lxveos_cap_mask_t)1u << (c))
@@ -53,8 +54,11 @@ static lxveos_cap_mask_t builtin_mask(void)
 #ifdef CONFIG_LXVEOS_HAS_GPS
     m |= CAP_BIT(LXVEOS_CAP_GPS);
 #endif
-#ifdef CONFIG_LXVEOS_HAS_IR
-    m |= CAP_BIT(LXVEOS_CAP_IR);
+#ifdef CONFIG_LXVEOS_HAS_IR_RX
+    m |= CAP_BIT(LXVEOS_CAP_IR_RX);
+#endif
+#ifdef CONFIG_LXVEOS_HAS_IR_TX
+    m |= CAP_BIT(LXVEOS_CAP_IR_TX);
 #endif
 #ifdef CONFIG_LXVEOS_HAS_SUBGHZ
     m |= CAP_BIT(LXVEOS_CAP_SUBGHZ);
@@ -85,8 +89,11 @@ static lxveos_cap_mask_t addon_mask(void)
 #ifdef CONFIG_LXVEOS_ADDON_GPS
     m |= CAP_BIT(LXVEOS_CAP_GPS);
 #endif
-#ifdef CONFIG_LXVEOS_ADDON_IR
-    m |= CAP_BIT(LXVEOS_CAP_IR);
+#ifdef CONFIG_LXVEOS_ADDON_IR_RX
+    m |= CAP_BIT(LXVEOS_CAP_IR_RX);
+#endif
+#ifdef CONFIG_LXVEOS_ADDON_IR_TX
+    m |= CAP_BIT(LXVEOS_CAP_IR_TX);
 #endif
 #ifdef CONFIG_LXVEOS_ADDON_SUBGHZ
     m |= CAP_BIT(LXVEOS_CAP_SUBGHZ);
