@@ -122,11 +122,63 @@ static void test_unknown_and_null(void)
     assert(lxveos_ir_proto_str(LXVEOS_IR_PROTO_UNKNOWN) == NULL);
 }
 
+// The encoder is the inverse of the decoder, so the strongest check is a round-trip: encode a command, decode
+// the durations it produced, and require the decode to reproduce the original fields exactly.
+static void test_encode_roundtrip(void)
+{
+    uint16_t buf[80];
+    size_t n = 0;
+    lxveos_ir_decoded_t in, dec;
+
+    // NEC, standard 8-bit address
+    in = (lxveos_ir_decoded_t){LXVEOS_IR_PROTO_NEC, 0x04, 0x08, 32, false};
+    assert(lxveos_ir_encode(&in, buf, sizeof(buf) / sizeof(buf[0]), &n));
+    assert(lxveos_ir_decode(buf, n, &dec));
+    assert(dec.proto == LXVEOS_IR_PROTO_NEC && dec.address == 0x04 && dec.command == 0x08
+           && dec.bits == 32 && dec.addr_ext == false);
+
+    // NEC, extended 16-bit address (0x34 ^ 0x12 != 0xFF, so it stays extended through the round-trip)
+    in = (lxveos_ir_decoded_t){LXVEOS_IR_PROTO_NEC, 0x1234, 0x56, 32, true};
+    assert(lxveos_ir_encode(&in, buf, 80, &n) && lxveos_ir_decode(buf, n, &dec));
+    assert(dec.proto == LXVEOS_IR_PROTO_NEC && dec.address == 0x1234 && dec.command == 0x56
+           && dec.addr_ext == true);
+
+    // NEC boundary commands (the inverted-byte integrity check must still pass)
+    in = (lxveos_ir_decoded_t){LXVEOS_IR_PROTO_NEC, 0x00, 0xFF, 32, false};
+    assert(lxveos_ir_encode(&in, buf, 80, &n) && lxveos_ir_decode(buf, n, &dec));
+    assert(dec.address == 0x00 && dec.command == 0xFF);
+
+    // NEC repeat code
+    in = (lxveos_ir_decoded_t){LXVEOS_IR_PROTO_NEC_REPEAT, 0, 0, 0, false};
+    assert(lxveos_ir_encode(&in, buf, 80, &n) && n == 2);
+    assert(lxveos_ir_decode(buf, n, &dec) && dec.proto == LXVEOS_IR_PROTO_NEC_REPEAT);
+
+    // Sony, all three canonical bit lengths
+    const int slens[] = {12, 15, 20};
+    for (int i = 0; i < 3; i++) {
+        in = (lxveos_ir_decoded_t){LXVEOS_IR_PROTO_SONY, 0x0A, 0x15, (uint8_t)slens[i], false};
+        assert(lxveos_ir_encode(&in, buf, 80, &n));
+        assert(lxveos_ir_decode(buf, n, &dec));
+        assert(dec.proto == LXVEOS_IR_PROTO_SONY && dec.address == 0x0A && dec.command == 0x15
+               && dec.bits == slens[i]);
+    }
+
+    // rejections: unsupported proto, a non-canonical Sony length, a too-small buffer, and NULL args
+    in = (lxveos_ir_decoded_t){LXVEOS_IR_PROTO_UNKNOWN, 0, 0, 0, false};
+    assert(!lxveos_ir_encode(&in, buf, 80, &n));
+    in = (lxveos_ir_decoded_t){LXVEOS_IR_PROTO_SONY, 0, 0, 13, false};
+    assert(!lxveos_ir_encode(&in, buf, 80, &n));
+    in = (lxveos_ir_decoded_t){LXVEOS_IR_PROTO_NEC, 0x04, 0x08, 32, false};
+    assert(!lxveos_ir_encode(&in, buf, 4, &n));  // buffer too small for a NEC frame
+    assert(!lxveos_ir_encode(NULL, buf, 80, &n));
+}
+
 int main(void)
 {
     test_nec();
     test_sony();
     test_unknown_and_null();
+    test_encode_roundtrip();
     printf("test_ir_decode: all tests passed\n");
     return 0;
 }

@@ -66,6 +66,13 @@ typedef struct {
 // no radio, no allocation — this is the host-tested core (tests/host_c/test_ir_decode.c).
 bool lxveos_ir_decode(const uint16_t *durations, size_t n, lxveos_ir_decoded_t *out);
 
+// Encode a decoded command back into a mark/space duration train (microseconds), the inverse of
+// lxveos_ir_decode, so decode(encode(x)) == x. Writes into out[0..cap) and sets *n_out to the count. Returns
+// false if in/out/n_out is NULL, the proto is UNKNOWN/unsupported, the Sony bit count is not 12/15/20, or the
+// buffer is too small (NEC needs 67 slots, NEC-repeat 2, Sony 26/32/42 for a 12/15/20-bit frame). This is the
+// pure duration generator only; actually driving an IR LED (lxveos_ir_replay) stays HW-gated. Host-tested.
+bool lxveos_ir_encode(const lxveos_ir_decoded_t *in, uint16_t *out, size_t cap, size_t *n_out);
+
 // Short protocol label ("NEC"/"NEC-repeat"/"Sony"), or NULL for LXVEOS_IR_PROTO_UNKNOWN.
 const char *lxveos_ir_proto_str(lxveos_ir_proto_t proto);
 

@@ -1,4 +1,4 @@
-// lxveos_ir_decode — pure IR protocol decode (NEC / Sony SIRC), split out of lxveos_ir.c so it can be
+// lxveos_ir_decode — pure IR protocol decode + encode (NEC / Sony SIRC), split out of lxveos_ir.c so it can be
 // host-unit-tested (tests/host_c/test_ir_decode.c) without the ESP-IDF RMT driver. It works on a flat mark/
 // space duration train (microseconds); the RMT-coupled glue that produces that train from a live capture
 // (lxveos_ir_decode_last) stays in lxveos_ir.c. libc-only, no allocation.
@@ -137,6 +137,68 @@ bool lxveos_ir_decode(const uint16_t *durations, size_t n, lxveos_ir_decoded_t *
     out->bits = 0;
     out->addr_ext = false;
     return false;
+}
+
+// Inverse of lxveos_ir_decode: build the mark/space duration train for a decoded command. Emits the exact
+// canonical timings the decoder centres its tolerance windows on, so decode(encode(x)) == x for every
+// supported command. NEC frames carry a trailing stop mark (the decoder reads only the lead-in + 32 bit
+// pairs and ignores it).
+bool lxveos_ir_encode(const lxveos_ir_decoded_t *in, uint16_t *out, size_t cap, size_t *n_out)
+{
+    if (in == NULL || out == NULL || n_out == NULL) {
+        return false;
+    }
+    size_t n = 0;
+    switch (in->proto) {
+    case LXVEOS_IR_PROTO_NEC_REPEAT:
+        if (cap < 2) {
+            return false;
+        }
+        out[n++] = 9000;   // 9 ms lead mark
+        out[n++] = 2250;   // 2.25 ms space = the repeat code (no payload)
+        break;
+    case LXVEOS_IR_PROTO_NEC: {
+        // 32 payload bits, LSB-first: addr, addr-inverse (or the high address byte when extended), cmd, ~cmd.
+        uint8_t cmd = (uint8_t)(in->command & 0xFFu);
+        uint8_t addr_lo = (uint8_t)(in->address & 0xFFu);
+        uint8_t addr_hi = in->addr_ext ? (uint8_t)((in->address >> 8) & 0xFFu) : (uint8_t)~addr_lo;
+        uint32_t val = (uint32_t)addr_lo | ((uint32_t)addr_hi << 8) |
+                       ((uint32_t)cmd << 16) | ((uint32_t)(uint8_t)~cmd << 24);
+        if (cap < 2 + 64 + 1) {
+            return false;
+        }
+        out[n++] = 9000;   // 9 ms lead mark
+        out[n++] = 4500;   // 4.5 ms space
+        for (int b = 0; b < 32; b++) {
+            out[n++] = 560;                                  // bit mark
+            out[n++] = (val & (1u << b)) ? 1690 : 560;       // '1' = long space, '0' = short space
+        }
+        out[n++] = 560;    // stop mark
+        break;
+    }
+    case LXVEOS_IR_PROTO_SONY: {
+        int bits = in->bits;
+        if (bits != 12 && bits != 15 && bits != 20) {
+            return false;
+        }
+        // Low 7 bits = command, the rest = address, LSB-first across the whole word.
+        uint32_t val = ((uint32_t)in->address << 7) | (uint32_t)(in->command & 0x7Fu);
+        if (cap < 2 + (size_t)2 * (size_t)bits) {
+            return false;
+        }
+        out[n++] = 2400;   // 2.4 ms start mark
+        out[n++] = 600;    // 600 us space
+        for (int b = 0; b < bits; b++) {
+            out[n++] = (val & (1u << b)) ? 1200 : 600;       // '1' = long mark, '0' = short mark
+            out[n++] = 600;                                  // 600 us space
+        }
+        break;
+    }
+    default:
+        return false;   // UNKNOWN or an unsupported proto
+    }
+    *n_out = n;
+    return true;
 }
 
 const char *lxveos_ir_proto_str(lxveos_ir_proto_t proto)
