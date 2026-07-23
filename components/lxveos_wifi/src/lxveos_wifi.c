@@ -2,6 +2,7 @@
 // the first scan so a headless unit that never scans pays neither the ~50 KB heap nor the boot time.
 // PASSIVE scan only: the radio listens for beacons and transmits nothing.
 #include "lxveos_wifi.h"
+#include "lxveos_wifi_eapol.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -526,21 +527,10 @@ esp_err_t lxveos_wifi_eapol_capture(uint32_t seconds, uint8_t channel, lxveos_wi
                 continue;
             }
             char line[160];
-            int n = 0;
-            n += snprintf(line + n, sizeof(line) - n, "WPA*01*");
-            for (int k = 0; k < 16; k++) {
-                n += snprintf(line + n, sizeof(line) - n, "%02x", s_hs[j].pmkid[k]);
+            if (lxveos_hc22000_pmkid(line, sizeof(line), s_hs[j].pmkid, s_hs[j].ap,
+                                     s_hs[j].sta, essid) == 0) {
+                continue;  // defensive: a 0 return (only on an empty ESSID) means uncrackable
             }
-            n += snprintf(line + n, sizeof(line) - n, "*%02x%02x%02x%02x%02x%02x*",
-                          s_hs[j].ap[0], s_hs[j].ap[1], s_hs[j].ap[2],
-                          s_hs[j].ap[3], s_hs[j].ap[4], s_hs[j].ap[5]);
-            n += snprintf(line + n, sizeof(line) - n, "%02x%02x%02x%02x%02x%02x*",
-                          s_hs[j].sta[0], s_hs[j].sta[1], s_hs[j].sta[2],
-                          s_hs[j].sta[3], s_hs[j].sta[4], s_hs[j].sta[5]);
-            for (const char *e = essid; *e && n < (int)sizeof(line) - 6; e++) {
-                n += snprintf(line + n, sizeof(line) - n, "%02x", (uint8_t)*e);
-            }
-            snprintf(line + n, sizeof(line) - n, "***");
             emit(line);
             s_estats.pmkids++;
         }
@@ -580,26 +570,10 @@ esp_err_t lxveos_wifi_eapol_capture(uint32_t seconds, uint8_t channel, lxveos_wi
                 continue;
             }
             static char l2[800];
-            int n = snprintf(l2, sizeof(l2), "WPA*02*");
-            for (int k = 0; k < 16; k++) {
-                n += snprintf(l2 + n, sizeof(l2) - n, "%02x", mic[k]);
+            if (lxveos_hc22000_eapol(l2, sizeof(l2), mic, h->ap, h->sta, essid, anonce,
+                                     eapol, eapol_len, messagepair) == 0) {
+                continue;  // defensive: uncrackable (empty ESSID)
             }
-            n += snprintf(l2 + n, sizeof(l2) - n, "*%02x%02x%02x%02x%02x%02x*",
-                          h->ap[0], h->ap[1], h->ap[2], h->ap[3], h->ap[4], h->ap[5]);
-            n += snprintf(l2 + n, sizeof(l2) - n, "%02x%02x%02x%02x%02x%02x*",
-                          h->sta[0], h->sta[1], h->sta[2], h->sta[3], h->sta[4], h->sta[5]);
-            for (const char *e = essid; *e && n < (int)sizeof(l2) - 4; e++) {
-                n += snprintf(l2 + n, sizeof(l2) - n, "%02x", (uint8_t)*e);
-            }
-            n += snprintf(l2 + n, sizeof(l2) - n, "*");
-            for (int k = 0; k < 32; k++) {
-                n += snprintf(l2 + n, sizeof(l2) - n, "%02x", anonce[k]);
-            }
-            n += snprintf(l2 + n, sizeof(l2) - n, "*");
-            for (int k = 0; k < eapol_len && n < (int)sizeof(l2) - 6; k++) {
-                n += snprintf(l2 + n, sizeof(l2) - n, "%02x", eapol[k]);
-            }
-            snprintf(l2 + n, sizeof(l2) - n, "*%s", messagepair);
             emit(l2);
             s_estats.mics++;
         }
