@@ -124,6 +124,15 @@ const char *lxveos_ble_flipper_color(const lxveos_ble_dev_t *d);
 // what catches Meta's own anchor 0xFD5F. Ported from ESP32 Marauder "Meta Detect". Host-tested.
 bool lxveos_ble_is_meta(const lxveos_ble_dev_t *d);
 
+// Classify a BLE advertiser as a known item-tracker (LXVEOS_BLE_TRACKER_*), or NONE. Pure — takes the raw
+// advert surfaces the signatures live in: `mfg_data` (Apple Find My = Apple company ID 0x004C + the
+// Offline-Finding type byte 0x12), the advertised 16-bit service UUIDs (Tile / SmartTag / Chipolo / PebbleBee),
+// and the 0xFEAA service DATA (Google Find My Network = frame byte 0x40, which is what tells it apart from an
+// Eddystone beacon). The NimBLE-side glue in lxveos_ble.c extracts these from the parsed advert. Host-tested.
+uint8_t lxveos_ble_classify_tracker(const uint8_t *mfg_data, size_t mfg_data_len,
+                                    const uint16_t *svc_uuids, size_t num_svc_uuids,
+                                    const uint8_t *svc_data, size_t svc_data_len);
+
 // True if `d`'s advertised local name is EXACTLY a default HC-0x BT-serial module name (HC-03/05/06) — the
 // stock modules cheap skimmers reuse. A narrow "possible skimmer / default-named module" heuristic (also flags
 // legit hobby modules; BLE-only, so classic-BT skimmers are missed). Ported from ESP32 Marauder "Detect Card

@@ -90,6 +90,61 @@ uint8_t lxveos_ble_tracker_latch(uint8_t current, uint8_t sighting)
     return (sighting != LXVEOS_BLE_TRACKER_NONE) ? sighting : current;
 }
 
+// True if the advert carries the 16-bit UUID `want` in EITHER its service DATA (AD 0x16 — the first two bytes
+// of svc_data) or its advertised service-class UUID list (AD 0x02/0x03) — item-trackers put their identifying
+// UUID in one or the other. Mirrors the original adv_has_service_uuid16; local so the classifier stays libc-only.
+static bool adv_carries_uuid16(const uint16_t *svc_uuids, size_t num_svc_uuids,
+                               const uint8_t *svc_data, size_t svc_data_len, uint16_t want)
+{
+    if (svc_data != NULL && svc_data_len >= 2) {
+        uint16_t u = (uint16_t)(svc_data[0] | ((uint16_t)svc_data[1] << 8));
+        if (u == want) {
+            return true;
+        }
+    }
+    for (size_t i = 0; svc_uuids != NULL && i < num_svc_uuids; i++) {
+        if (svc_uuids[i] == want) {
+            return true;
+        }
+    }
+    return false;
+}
+
+uint8_t lxveos_ble_classify_tracker(const uint8_t *mfg_data, size_t mfg_data_len,
+                                    const uint16_t *svc_uuids, size_t num_svc_uuids,
+                                    const uint8_t *svc_data, size_t svc_data_len)
+{
+    // Apple Find My: Apple company ID (mfg_data[0..1]) + the Offline-Finding type byte (mfg_data[2] == 0x12).
+    if (mfg_data != NULL && mfg_data_len >= 3) {
+        uint16_t cid = (uint16_t)(mfg_data[0] | ((uint16_t)mfg_data[1] << 8));
+        if (cid == LXVEOS_BLE_CID_APPLE && mfg_data[2] == LXVEOS_BLE_APPLE_TYPE_FINDMY) {
+            return LXVEOS_BLE_TRACKER_APPLE_FINDMY;
+        }
+    }
+    if (adv_carries_uuid16(svc_uuids, num_svc_uuids, svc_data, svc_data_len, LXVEOS_BLE_SVC_TILE)) {
+        return LXVEOS_BLE_TRACKER_TILE;
+    }
+    if (adv_carries_uuid16(svc_uuids, num_svc_uuids, svc_data, svc_data_len, LXVEOS_BLE_SVC_SMARTTAG)) {
+        return LXVEOS_BLE_TRACKER_SMARTTAG;
+    }
+    if (adv_carries_uuid16(svc_uuids, num_svc_uuids, svc_data, svc_data_len, LXVEOS_BLE_SVC_CHIPOLO)) {
+        return LXVEOS_BLE_TRACKER_CHIPOLO;
+    }
+    if (adv_carries_uuid16(svc_uuids, num_svc_uuids, svc_data, svc_data_len, LXVEOS_BLE_SVC_PEBBLEBEE)) {
+        return LXVEOS_BLE_TRACKER_PEBBLEBEE;
+    }
+    // Google Find My Network: 0xFEAA service DATA whose frame-type byte (svc_data[2]) is 0x40. 0xFEAA is shared
+    // with Eddystone (frame types 0x00/0x10/0x20/0x30), so the frame byte is what keeps a plain Eddystone
+    // beacon from being mislabelled. svc_data = [uuid_lo][uuid_hi][frame][...].
+    if (svc_data != NULL && svc_data_len >= 3) {
+        uint16_t u = (uint16_t)(svc_data[0] | ((uint16_t)svc_data[1] << 8));
+        if (u == LXVEOS_BLE_SVC_GOOGLE_FMN && svc_data[2] == LXVEOS_BLE_GOOGLE_FMN_FRAME) {
+            return LXVEOS_BLE_TRACKER_GOOGLE_FMN;
+        }
+    }
+    return LXVEOS_BLE_TRACKER_NONE;
+}
+
 // GAP appearance category -> short label. Categories are the high 10 bits (value >> 6); the low 6 bits are
 // a subcategory (only resolved for HID). Table follows the Bluetooth SIG assigned-numbers appearance list.
 void lxveos_ble_appearance_str(uint16_t appearance, char *buf, size_t buflen)

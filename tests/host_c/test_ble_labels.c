@@ -349,12 +349,66 @@ static void test_surveil(void)
     assert(lxveos_ble_surveil_flags(NULL) == LXVEOS_SURVEIL_NONE);
 }
 
+static void test_classify_tracker(void)
+{
+    // Apple Find My: Apple company ID (4c 00, little-endian) + the Offline-Finding type byte 0x12.
+    const uint8_t apple_fmn[] = {0x4c, 0x00, 0x12, 0xaa};
+    assert(lxveos_ble_classify_tracker(apple_fmn, sizeof(apple_fmn), NULL, 0, NULL, 0)
+           == LXVEOS_BLE_TRACKER_APPLE_FINDMY);
+    // plain Apple with a non-Find-My type byte must NOT be flagged (the negative the type byte guards)
+    const uint8_t apple_other[] = {0x4c, 0x00, 0x10};
+    assert(lxveos_ble_classify_tracker(apple_other, sizeof(apple_other), NULL, 0, NULL, 0)
+           == LXVEOS_BLE_TRACKER_NONE);
+    // a non-Apple company ID that happens to carry 0x12 as its third byte -> NONE
+    const uint8_t not_apple[] = {0x99, 0x00, 0x12};
+    assert(lxveos_ble_classify_tracker(not_apple, sizeof(not_apple), NULL, 0, NULL, 0)
+           == LXVEOS_BLE_TRACKER_NONE);
+
+    // service-UUID trackers, advertised in the 16-bit UUID list (wire values, not the impl's constants)
+    const uint16_t tile[] = {0xFEED};
+    assert(lxveos_ble_classify_tracker(NULL, 0, tile, 1, NULL, 0) == LXVEOS_BLE_TRACKER_TILE);
+    const uint16_t smarttag[] = {0x1234, 0xFD5A};
+    assert(lxveos_ble_classify_tracker(NULL, 0, smarttag, 2, NULL, 0) == LXVEOS_BLE_TRACKER_SMARTTAG);
+    const uint16_t chipolo[] = {0xFE33};
+    assert(lxveos_ble_classify_tracker(NULL, 0, chipolo, 1, NULL, 0) == LXVEOS_BLE_TRACKER_CHIPOLO);
+    const uint16_t pebblebee[] = {0xFA25};
+    assert(lxveos_ble_classify_tracker(NULL, 0, pebblebee, 1, NULL, 0) == LXVEOS_BLE_TRACKER_PEBBLEBEE);
+
+    // a tracker UUID carried in the service DATA (not the UUID list) is also recognised (both surfaces)
+    const uint8_t tile_svcdata[] = {0xED, 0xFE};  // 0xFEED, little-endian
+    assert(lxveos_ble_classify_tracker(NULL, 0, NULL, 0, tile_svcdata, sizeof(tile_svcdata))
+           == LXVEOS_BLE_TRACKER_TILE);
+
+    // Google Find My Network: 0xFEAA service DATA with frame byte 0x40
+    const uint8_t fmn[] = {0xaa, 0xfe, 0x40, 0x01};
+    assert(lxveos_ble_classify_tracker(NULL, 0, NULL, 0, fmn, sizeof(fmn)) == LXVEOS_BLE_TRACKER_GOOGLE_FMN);
+    // a plain Eddystone beacon shares 0xFEAA but uses a different frame byte -> NONE (the key negative)
+    const uint8_t eddystone_uid[] = {0xaa, 0xfe, 0x00, 0x01};
+    assert(lxveos_ble_classify_tracker(NULL, 0, NULL, 0, eddystone_uid, sizeof(eddystone_uid))
+           == LXVEOS_BLE_TRACKER_NONE);
+    const uint8_t eddystone_url[] = {0xaa, 0xfe, 0x10, 0x01};
+    assert(lxveos_ble_classify_tracker(NULL, 0, NULL, 0, eddystone_url, sizeof(eddystone_url))
+           == LXVEOS_BLE_TRACKER_NONE);
+
+    // nothing matching, and short/empty buffers never over-read
+    assert(lxveos_ble_classify_tracker(NULL, 0, NULL, 0, NULL, 0) == LXVEOS_BLE_TRACKER_NONE);
+    const uint8_t short_mfg[] = {0x4c, 0x00};  // len 2 (< 3): no Apple type byte to read
+    assert(lxveos_ble_classify_tracker(short_mfg, sizeof(short_mfg), NULL, 0, NULL, 0)
+           == LXVEOS_BLE_TRACKER_NONE);
+    const uint8_t fmn_short[] = {0xaa, 0xfe};  // len 2 (< 3): can't confirm the FMN frame byte
+    assert(lxveos_ble_classify_tracker(NULL, 0, NULL, 0, fmn_short, sizeof(fmn_short))
+           == LXVEOS_BLE_TRACKER_NONE);
+    const uint16_t unrelated[] = {0x1234, 0x5678};
+    assert(lxveos_ble_classify_tracker(NULL, 0, unrelated, 2, NULL, 0) == LXVEOS_BLE_TRACKER_NONE);
+}
+
 int main(void)
 {
     test_company_name();
     test_service_name();
     test_tracker_str();
     test_tracker_latch();
+    test_classify_tracker();
     test_appearance_str();
     test_flipper_color();
     test_meta();

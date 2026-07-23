@@ -61,10 +61,11 @@ const char *lxveos_ble_addr_type_str(uint8_t addr_type)
     }
 }
 
-// The BLE SIG signature constants (company IDs, service UUIDs, tracker-advert signatures) used below by
-// classify_tracker live in lxveos_ble_internal.h. The pure value->label helpers — company_name,
-// service_name, tracker_str, appearance_str, and their tables — live in lxveos_ble_labels.c (host-tested
-// off-target in tests/host_c/test_ble_labels.c).
+// The BLE SIG signature constants (company IDs, service UUIDs, tracker-advert signatures) live in
+// lxveos_ble_internal.h. The pure value->label + classifier helpers — company_name, service_name,
+// tracker_str, classify (lxveos_ble_classify_tracker), appearance_str, and their tables — live in
+// lxveos_ble_labels.c (host-tested off-target in tests/host_c/test_ble_labels.c); classify_tracker below is
+// now just the NimBLE glue that feeds the pure one.
 
 // Read the 16-bit manufacturer company ID from a parsed advert (mfg_data[0..1], little-endian); returns
 // false if the advert carried no manufacturer-specific data.
@@ -87,58 +88,19 @@ static bool adv_is_fastpair(const struct ble_hs_adv_fields *f)
     return uuid == LXVEOS_BLE_SVC_FASTPAIR;
 }
 
-// True if the advert carries a given 16-bit UUID in EITHER its service DATA (AD 0x16) or its advertised
-// service-class UUID list (AD 0x02/0x03) — item-trackers put their identifying UUID in one or the other.
-static bool adv_has_service_uuid16(const struct ble_hs_adv_fields *f, uint16_t want)
-{
-    if (f->svc_data_uuid16 != NULL && f->svc_data_uuid16_len >= 2) {
-        uint16_t u = (uint16_t)(f->svc_data_uuid16[0] | ((uint16_t)f->svc_data_uuid16[1] << 8));
-        if (u == want) {
-            return true;
-        }
-    }
-    for (int i = 0; i < f->num_uuids16; i++) {
-        if (f->uuids16[i].value == want) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// Classify an advertiser as a known item-tracker (or NONE). Signatures verified against AirGuard: Apple
-// Find My = Apple mfg data whose first payload byte is the Offline-Finding type 0x12; Tile = service UUID
-// 0xFEED; Samsung SmartTag = service UUID 0xFD5A. Anything else is NONE (never a false tracker label).
+// Extract the advert surfaces the pure classifier needs from the NimBLE parse and delegate to it (the
+// classification itself is host-tested in lxveos_ble_labels.c). The 16-bit service-UUID list is copied out of
+// the NimBLE ble_uuid16_t array into a plain uint16 array; a 62-byte advert + scan-response holds far fewer
+// than 32 such UUIDs, so the bound never truncates a real advert.
 static uint8_t classify_tracker(const struct ble_hs_adv_fields *f)
 {
-    if (f->mfg_data != NULL && f->mfg_data_len >= 3) {
-        uint16_t cid = (uint16_t)(f->mfg_data[0] | ((uint16_t)f->mfg_data[1] << 8));
-        if (cid == LXVEOS_BLE_CID_APPLE && f->mfg_data[2] == LXVEOS_BLE_APPLE_TYPE_FINDMY) {
-            return LXVEOS_BLE_TRACKER_APPLE_FINDMY;
-        }
+    uint16_t uuids[32];
+    size_t nu = 0;
+    for (int i = 0; i < f->num_uuids16 && nu < 32; i++) {
+        uuids[nu++] = f->uuids16[i].value;
     }
-    if (adv_has_service_uuid16(f, LXVEOS_BLE_SVC_TILE)) {
-        return LXVEOS_BLE_TRACKER_TILE;
-    }
-    if (adv_has_service_uuid16(f, LXVEOS_BLE_SVC_SMARTTAG)) {
-        return LXVEOS_BLE_TRACKER_SMARTTAG;
-    }
-    if (adv_has_service_uuid16(f, LXVEOS_BLE_SVC_CHIPOLO)) {
-        return LXVEOS_BLE_TRACKER_CHIPOLO;
-    }
-    if (adv_has_service_uuid16(f, LXVEOS_BLE_SVC_PEBBLEBEE)) {
-        return LXVEOS_BLE_TRACKER_PEBBLEBEE;
-    }
-    // Google Find My Network: 0xFEAA service DATA whose first payload byte is the FMN frame type 0x40.
-    // 0xFEAA is shared with Eddystone (frame types 0x00/0x10/0x20/0x30), so the frame-type byte is what keeps
-    // a plain Eddystone beacon from being mislabelled as a tracker. Check the service DATA specifically (not
-    // the service-UUID list) — svc_data_uuid16 = [uuid_lo][uuid_hi][payload...].
-    if (f->svc_data_uuid16 != NULL && f->svc_data_uuid16_len >= 3) {
-        uint16_t u = (uint16_t)(f->svc_data_uuid16[0] | ((uint16_t)f->svc_data_uuid16[1] << 8));
-        if (u == LXVEOS_BLE_SVC_GOOGLE_FMN && f->svc_data_uuid16[2] == LXVEOS_BLE_GOOGLE_FMN_FRAME) {
-            return LXVEOS_BLE_TRACKER_GOOGLE_FMN;
-        }
-    }
-    return LXVEOS_BLE_TRACKER_NONE;
+    return lxveos_ble_classify_tracker(f->mfg_data, f->mfg_data_len, uuids, nu,
+                                       f->svc_data_uuid16, f->svc_data_uuid16_len);
 }
 
 static void on_reset(int reason)
