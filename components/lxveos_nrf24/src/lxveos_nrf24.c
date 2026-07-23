@@ -7,6 +7,7 @@
 // 2.4 GHz activity map. UNVERIFIED on hardware; extra confirms the identity read + scan on a real module.
 #include "lxveos_nrf24.h"
 #include "lxveos_arm.h"
+#include "lxveos_hidmap.h"
 #include "lxveos_radiomath.h"
 #include "lxveos_spibus.h"
 
@@ -224,26 +225,6 @@ static void nrf_cmd_buf(uint8_t cmd, const uint8_t *buf, size_t len)
     spi_device_polling_transmit(s_dev, &t);
 }
 
-// Minimal US-layout ASCII -> HID usage (letters/digits/space/enter + a few), for typed injection.
-static bool nrf_ascii_to_hid(char c, uint8_t *mod, uint8_t *key)
-{
-    *mod = 0;
-    *key = 0;
-    if (c >= 'a' && c <= 'z') { *key = 0x04 + (c - 'a'); return true; }
-    if (c >= 'A' && c <= 'Z') { *mod = 0x02; *key = 0x04 + (c - 'A'); return true; }
-    if (c >= '1' && c <= '9') { *key = 0x1E + (c - '1'); return true; }
-    switch (c) {
-    case '0': *key = 0x27; return true;
-    case ' ': *key = 0x2C; return true;
-    case '\n': *key = 0x28; return true;
-    case '-': *key = 0x2D; return true;
-    case '.': *key = 0x37; return true;
-    case '/': *key = 0x38; return true;
-    case ':': *mod = 0x02; *key = 0x33; return true;
-    default: return false;
-    }
-}
-
 esp_err_t lxveos_nrf24_sniff(uint8_t addr[5], uint8_t *channel, uint32_t timeout_ms)
 {
     if (!s_begun) {
@@ -326,7 +307,7 @@ esp_err_t lxveos_nrf24_inject_text(const uint8_t addr[5], uint8_t channel, const
 
     for (const char *p = text; *p; p++) {
         uint8_t mod, key;
-        if (!nrf_ascii_to_hid(*p, &mod, &key)) {
+        if (!ascii_to_hid(*p, &mod, &key)) {
             continue;
         }
         // Logitech Unifying unencrypted keyboard frame (10 bytes): dev-idx, 0xC1, mod, 6 keys, checksum
