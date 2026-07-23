@@ -34,7 +34,7 @@
       "build": { "idf_target": "esp32", "partition_csv": "partitions/partitions_4mb_single.csv", "optimize": "size" },
       "firmware_variant_map": { "lxveos": "cyd_2432S028_classic", "marauder": "cyd_2432S028" },
       "provenance": "datasheet-community",
-      "_note": "FLAGSHIP: 1-USB=ILI9341 vs 2-USB=ST7789 are electrically identical -> BOTH panel drivers compiled in; boot probe (0xD3->0x9341/0x7796, ST7789 heuristic) resolves it and caches to NVS."
+      "_note": "FLAGSHIP: 1-USB=ILI9341 vs 2-USB=ST7789 are electrically identical -> BOTH panel drivers compiled in; the boot probe reads RDID4 (0xD3) and resolves a 00 93 41 response to ILI9341, anything else to ST7789, then caches the result to NVS."
     },
     "cyd_3248S035_r": {
       "chip": "esp32",
