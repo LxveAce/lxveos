@@ -85,6 +85,12 @@ build_arm -DLXVEOS_TX_DISABLE  # conservative build: the emitter is stripped
     "$here/test_cfg.c" "$root/components/lxveos_cfg/src/lxveos_cfg.c" -o "$out"
 "$out"
 
+# --- PCAP header encoder (global + record, little-endian): dependency-free, no stubs needed ---
+"$CC" -std=gnu11 -O1 -Wall \
+    -I"$root/components/lxveos_pcap/include" \
+    "$here/test_pcap.c" "$root/components/lxveos_pcap/src/lxveos_pcap.c" -o "$out"
+"$out"
+
 # --- BLE value->label helpers (company/service/tracker/appearance): esp_err stub for lxveos_ble.h, no NimBLE ---
 "$CC" -std=gnu11 -O1 -Wall \
     -I"$root/components/lxveos_ble/include" -I"$root/components/lxveos_ble/src" -I"$here/stubs" \
