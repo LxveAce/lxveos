@@ -139,6 +139,11 @@ const char *lxveos_wifi_authmode_str(uint8_t authmode);
 // without pulling in esp_wifi's enum.
 bool lxveos_wifi_is_open(uint8_t authmode);
 
+// True if a MAC's first octet has the 802.11 locally-administered bit (0x02) set — the signature of a
+// randomized/spoofed address. Modern phones randomize their client MAC for privacy, so a station scan can
+// flag which clients are hiding their real hardware address. A burned-in vendor MAC has the bit clear.
+bool lxveos_mac_is_random(uint8_t first_octet);
+
 // Security-audit grade for an AP auth mode, without the caller pulling in esp_wifi's enum:
 //   0 = OPEN (no encryption) · 1 = WEP (broken) · 2 = WPA (deprecated TKIP) · 3 = WPA2 · 4 = WPA3 · 5 = other
 // Grades 0-2 are WEAK. `*note` (may be NULL) is set to a short human weakness reason (grades 0-2) or the

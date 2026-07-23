@@ -30,6 +30,11 @@ bool lxveos_wifi_is_open(uint8_t authmode)
     return (wifi_auth_mode_t)authmode == WIFI_AUTH_OPEN;
 }
 
+bool lxveos_mac_is_random(uint8_t first_octet)
+{
+    return (first_octet & 0x02u) != 0u;
+}
+
 int lxveos_wifi_auth_grade(uint8_t authmode, const char **note)
 {
     const char *n;

@@ -693,10 +693,11 @@ static int cmd_stations(int argc, char **argv)
     }
     printf("  %-17s %-17s %-18s %5s %s\n", "CLIENT", "AP", "ESSID", "FRMS", "RSSI");
     for (size_t i = 0; i < found; i++) {
-        printf("  %02x:%02x:%02x:%02x:%02x:%02x %02x:%02x:%02x:%02x:%02x:%02x %-18s %5u %4ddB\n",
+        printf("  %02x:%02x:%02x:%02x:%02x:%02x %02x:%02x:%02x:%02x:%02x:%02x %-18s %5u %4ddB%s\n",
                cs[i].sta[0], cs[i].sta[1], cs[i].sta[2], cs[i].sta[3], cs[i].sta[4], cs[i].sta[5],
                cs[i].ap[0], cs[i].ap[1], cs[i].ap[2], cs[i].ap[3], cs[i].ap[4], cs[i].ap[5],
-               cs[i].essid[0] ? cs[i].essid : "<unknown>", (unsigned)cs[i].frames, cs[i].rssi);
+               cs[i].essid[0] ? cs[i].essid : "<unknown>", (unsigned)cs[i].frames, cs[i].rssi,
+               lxveos_mac_is_random(cs[i].sta[0]) ? "  (random MAC)" : "");
     }
     if (lxveos_evt_enabled()) {
         for (size_t i = 0; i < found; i++) {
@@ -708,6 +709,9 @@ static int cmd_stations(int argc, char **argv)
             n = lxveos_evt_kv_uint(line, sizeof(line), n, "frames", cs[i].frames);
             n = lxveos_evt_kv_hex(line, sizeof(line), n, "essid",
                                   (const uint8_t *)cs[i].essid, strlen(cs[i].essid));
+            if (lxveos_mac_is_random(cs[i].sta[0])) {
+                n = lxveos_evt_kv_int(line, sizeof(line), n, "random", 1);
+            }
             printf("%s\n", line);
         }
         char done[64];

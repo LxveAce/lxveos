@@ -135,6 +135,21 @@ static void test_pwnagotchi(void)
     assert(strcmp(nq, "untermi") == 0);   // 7 chars fit in nq[8]
 }
 
+static void test_mac_is_random(void)
+{
+    // the locally-administered bit (0x02) marks a randomized/spoofed MAC
+    assert(lxveos_mac_is_random(0x02));
+    assert(lxveos_mac_is_random(0x06));
+    assert(lxveos_mac_is_random(0xDA));  // e.g. da:a1:19:... a common randomized prefix
+    assert(lxveos_mac_is_random(0xFE));
+    // a burned-in universally-administered MAC has the bit clear
+    assert(!lxveos_mac_is_random(0x00));
+    assert(!lxveos_mac_is_random(0x04));
+    assert(!lxveos_mac_is_random(0x08));
+    assert(!lxveos_mac_is_random(0x24));  // e.g. Espressif 24:0a:c4 (vendor OUI)
+    assert(!lxveos_mac_is_random(0xFC));
+}
+
 int main(void)
 {
     test_authmode_str();
@@ -142,6 +157,7 @@ int main(void)
     test_auth_grade();
     test_eapol_msg();
     test_pwnagotchi();
+    test_mac_is_random();
     printf("test_wifi_labels: all tests passed\n");
     return 0;
 }
