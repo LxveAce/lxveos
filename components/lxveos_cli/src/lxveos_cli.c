@@ -478,6 +478,19 @@ static int cmd_sniff(int argc, char **argv)
         }
     }
     printf("%s\n", any ? "" : " (none)");
+    // Bridge: one machine-readable frame-type tally for the CC dashboard (bounded builder; counts only, no
+    // payloads/PII). `dwells` = channel dwells swept; total = mgmt + data + ctrl + misc.
+    if (lxveos_evt_enabled()) {
+        char line[128];
+        size_t n = lxveos_evt_begin(line, sizeof(line), "sniff");
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "total", (unsigned long)st.total);
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "mgmt", (unsigned long)st.mgmt);
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "data", (unsigned long)st.data);
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "ctrl", (unsigned long)st.ctrl);
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "misc", (unsigned long)st.misc);
+        n = lxveos_evt_kv_uint(line, sizeof(line), n, "dwells", (unsigned long)st.channels_swept);
+        printf("%s\n", line);
+    }
     return 0;
 }
 
