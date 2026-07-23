@@ -97,6 +97,12 @@ build_arm -DLXVEOS_TX_DISABLE  # conservative build: the emitter is stripped
     "$here/test_monitor.c" "$root/components/lxveos_monitor/src/lxveos_monitor.c" -o "$out"
 "$out"
 
+# --- macro parser + passive-command allow-list (safety boundary): dependency-free, no stubs needed ---
+"$CC" -std=gnu11 -O1 -Wall \
+    -I"$root/components/lxveos_macro/include" \
+    "$here/test_macro.c" "$root/components/lxveos_macro/src/lxveos_macro.c" -o "$out"
+"$out"
+
 # --- BLE value->label helpers (company/service/tracker/appearance): esp_err stub for lxveos_ble.h, no NimBLE ---
 "$CC" -std=gnu11 -O1 -Wall \
     -I"$root/components/lxveos_ble/include" -I"$root/components/lxveos_ble/src" -I"$here/stubs" \
