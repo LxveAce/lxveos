@@ -79,6 +79,12 @@ build_arm -DLXVEOS_TX_DISABLE  # conservative build: the emitter is stripped
     "$here/test_nmea.c" "$root/components/lxveos_nmea/src/lxveos_nmea.c" -o "$out"
 "$out"
 
+# --- config export/import escaped-text codec: dependency-free, no stubs needed ---
+"$CC" -std=gnu11 -O1 -Wall \
+    -I"$root/components/lxveos_cfg/include" \
+    "$here/test_cfg.c" "$root/components/lxveos_cfg/src/lxveos_cfg.c" -o "$out"
+"$out"
+
 # --- BLE value->label helpers (company/service/tracker/appearance): esp_err stub for lxveos_ble.h, no NimBLE ---
 "$CC" -std=gnu11 -O1 -Wall \
     -I"$root/components/lxveos_ble/include" -I"$root/components/lxveos_ble/src" -I"$here/stubs" \
