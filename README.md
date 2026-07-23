@@ -109,7 +109,7 @@ boot counter.
 [Cyber Controller](https://github.com/LxveAce/cyber-controller) host can read to identify a unit: a stable versioned
 prefix plus space-separated `key=value` fields (safe slugs / hex capability mask / decimal, no embedded spaces):
 ```
-LXVEOS/1 status board=<id> chip=<esp32|esp32s3> ui=<profile> fw=<version> panel=<driver|none> caps=0x<hex> ops=<ready>/<planned>/<unavailable> heap=<bytes> arm=<safe|pending|armed> tx=<0|1>
+LXVEOS/1 status board=<id> chip=<esp32|esp32s3> ui=<profile> fw=<version> panel=<driver|none> caps=0x<hex> ops=<ready>/<planned>/<attachable+unavailable> ops_attach=<n> heap=<bytes> arm=<safe|pending|armed> tx=<0|1>
 ```
 The `arm=` field lets the host see whether a unit currently has offensive TX armed; `tx=` reports whether offensive TX is
 compiled into the build at all (`tx=0` on a `LXVEOS_TX_DISABLE` image), so the host can tell a TX-capable-but-safe unit from

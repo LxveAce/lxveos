@@ -176,10 +176,13 @@ static int cmd_sysinfo(int argc, char **argv)
 // embedded spaces). This is the seed of the M1 CC bridge protocol; M1 will emit an equivalent identity
 // line at boot, framed and outside this ack gate, for headless host auto-detection.
 //
-// `ops=<ready>/<planned>/<unavailable>` summarises the operation catalog (see `features`): how many
-// security operations this unit can run now, has planned for a capability it HAS, and can't do for lack
-// of a capability — so the host sees each unit's feature surface without issuing a second command. Unknown
-// keys are safe to append: the host parser keys on field names, so older hosts ignore `ops` transparently.
+// `ops=<ready>/<planned>/<attachable+unavailable>` summarises the operation catalog (see `features`): how
+// many security operations this unit can run now, has planned for a capability it HAS, and can't run for
+// lack of a capability. Ops that need an add-on module (attachable) fold into the 3rd number so the tuple
+// stays three fields; the additive `ops_attach=<n>` field then reports how many of that 3rd number are
+// attachable (wire the module) versus truly unavailable. So the host sees each unit's feature surface
+// without a second command. Unknown keys are safe to append: the host parser keys on field names, so older
+// hosts ignore `ops_attach` (and `ops`) transparently.
 static int cmd_status(int argc, char **argv)
 {
     (void)argc;
@@ -192,13 +195,17 @@ static int cmd_status(int argc, char **argv)
     const char *panel = bsp_display_panel();
     // tx= reports whether offensive-TX is COMPILED IN (a LXVEOS_TX_DISABLE build reports tx=0), so the CC
     // host can tell a TX-capable-but-SAFE unit from one that can never arm — both otherwise show arm=safe.
-    printf("LXVEOS/1 status board=%s chip=%s ui=%s fw=%s panel=%s caps=0x%03x ops=%u/%u/%u heap=%u arm=%s tx=%d\n",
+    printf("LXVEOS/1 status board=%s chip=%s ui=%s fw=%s panel=%s caps=0x%03x ops=%u/%u/%u ops_attach=%u "
+           "heap=%u arm=%s tx=%d\n",
            lxveos_board_id(), lxveos_board_chip(), lxveos_ui_profile(), LXVEOS_VERSION,
            (panel && panel[0]) ? panel : "none",
            (unsigned)lxveos_caps_active(),
-           // Machine contract: ops=ready/planned/not-ready. Attachable add-on ops fold into the 3rd field so
-           // the CC bridge sees the same 3-number format (and the same total) as before the attachable split.
+           // Machine contract: ops=ready/planned/(attachable+unavailable). Attachable add-on ops fold into the
+           // 3rd field so the CC bridge keeps the same 3-number format (and same total) as before the split; the
+           // additive ops_attach= field then breaks out how many of that 3rd number are attachable (wire an
+           // add-on module) versus truly unavailable, without changing the tuple older hosts parse.
            (unsigned)ops_ready, (unsigned)ops_planned, (unsigned)(ops_attach + ops_unavail),
+           (unsigned)ops_attach,
            (unsigned)esp_get_free_heap_size(), lxveos_arm_state_name(lxveos_arm_state()),
            lxveos_arm_tx_compiled() ? 1 : 0);
     return 0;

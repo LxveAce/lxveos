@@ -36,7 +36,7 @@ The `status` line is always available regardless of `bridge` state: it's the das
 | type | fields | source | notes |
 |---|---|---|---|
 | `bridge` | `state=on\|off` | `bridge` | emission toggle ack |
-| `status` | `board` `chip` `ui` `fw` `panel` `caps`(hex bitmask) `ops=<ready>/<planned>/<unavailable>` `heap` `arm=safe\|pending\|armed\|tx_disabled` `tx=0\|1` | `status` | always available, not gated by `bridge` (the dashboard poll). `caps` decodes by bit to wifi/ble/bt_classic/display/storage/gps/ir/subghz/nrf24/nfc; `arm`/`tx` are also emitted here so CC tracks arm state from the poll alone |
+| `status` | `board` `chip` `ui` `fw` `panel` `caps`(hex bitmask) `ops=<ready>/<planned>/<attachable+unavailable>` `ops_attach=<n>` (of the 3rd number, how many are attachable vs truly unavailable) `heap` `arm=safe\|pending\|armed\|tx_disabled` `tx=0\|1` | `status` | always available, not gated by `bridge` (the dashboard poll). `caps` decodes by bit to wifi/ble/bt_classic/display/storage/gps/ir/subghz/nrf24/nfc; `arm`/`tx` are also emitted here so CC tracks arm state from the poll alone |
 | `ap` | `bssid`(mac) `ssid`(hex) `ch` `rssi` `auth` | `scan` | one per AP found |
 | `sta` | `mac`(mac) `ap`(mac) `rssi` `frames` `essid`(hex) | `stations` | client station; `ap` = associated BSSID, `essid` its ESSID if a beacon was also seen, `frames` = data frames observed |
 | `probe` | `ssid`(hex) `seen` `rssi` | `probes` | one per directed SSID a nearby device is hunting for; `seen` = probe-request frames. No client MAC: the passive probe scan aggregates by SSID, not by device |
