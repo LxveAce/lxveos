@@ -67,6 +67,12 @@ build_arm -DLXVEOS_TX_DISABLE  # conservative build: the emitter is stripped
     "$here/test_wifi_essidmap.c" "$root/components/lxveos_wifi/src/lxveos_wifi_essidmap.c" -o "$out"
 "$out"
 
+# --- Wi-Fi scan analytics (evil-twin classification): dependency-free, no stubs needed ---
+"$CC" -std=gnu11 -O1 -Wall \
+    -I"$root/components/lxveos_wifi/include" \
+    "$here/test_wifi_analytics.c" "$root/components/lxveos_wifi/src/lxveos_wifi_audit.c" -o "$out"
+"$out"
+
 # --- BLE value->label helpers (company/service/tracker/appearance): esp_err stub for lxveos_ble.h, no NimBLE ---
 "$CC" -std=gnu11 -O1 -Wall \
     -I"$root/components/lxveos_ble/include" -I"$root/components/lxveos_ble/src" -I"$here/stubs" \

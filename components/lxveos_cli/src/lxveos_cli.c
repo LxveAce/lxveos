@@ -37,6 +37,7 @@
 #include "lxveos_evt.h"
 #include "lxveos_ops.h"
 #include "lxveos_wifi.h"
+#include "lxveos_wifi_audit.h"
 
 #define LXVEOS_NVS_NS      "lxveos"
 #define LXVEOS_NVS_USE_ACK "use_ack"
@@ -893,38 +894,27 @@ static int cmd_eviltwin(int argc, char **argv)
         printf("scan failed: %s\n", esp_err_to_name(e));
         return 0;
     }
+    // Build the ESP-IDF-free view the pure twin analytics work over (precompute open/encrypted per AP).
+    static lxveos_ap_view_t view[64];
+    for (size_t i = 0; i < found; i++) {
+        view[i].ssid = aps[i].ssid;
+        view[i].open = lxveos_wifi_is_open(aps[i].authmode);
+        view[i].channel = aps[i].channel;
+        view[i].rssi = aps[i].rssi;
+        view[i].bssid = aps[i].bssid;
+    }
     int flagged = 0;
     for (size_t i = 0; i < found; i++) {
-        if (aps[i].ssid[0] == '\0') {
-            continue;  // hidden SSID — nothing to compare by name
+        if (!lxveos_twin_first_of_essid(view, found, i)) {
+            continue;  // hidden, or an ESSID already reported at an earlier index
         }
-        bool first = true;  // report each distinct ESSID once (at its first occurrence)
-        for (size_t k = 0; k < i; k++) {
-            if (strcmp(aps[k].ssid, aps[i].ssid) == 0) {
-                first = false;
-                break;
-            }
-        }
-        if (!first) {
-            continue;
-        }
-        int nbssid = 0, nopen = 0, nenc = 0;
-        for (size_t j = 0; j < found; j++) {
-            if (strcmp(aps[j].ssid, aps[i].ssid) == 0) {
-                nbssid++;
-                if (lxveos_wifi_is_open(aps[j].authmode)) {
-                    nopen++;
-                } else {
-                    nenc++;
-                }
-            }
-        }
-        if (nbssid >= 2 || (nopen > 0 && nenc > 0)) {
+        lxveos_twin_verdict_t tv = lxveos_twin_analyze(view, found, aps[i].ssid);
+        if (tv.flagged) {
             flagged++;
             char ss[33];
             sanitize_copy(ss, sizeof(ss), aps[i].ssid);  // device-supplied SSID -> console-safe
-            printf("  [!] \"%s\": %d BSSIDs (%d open, %d encrypted)%s\n", ss, nbssid,
-                   nopen, nenc, (nopen > 0 && nenc > 0) ? "  <- open+encrypted twin" : "");
+            printf("  [!] \"%s\": %d BSSIDs (%d open, %d encrypted)%s\n", ss, tv.nbssid,
+                   tv.nopen, tv.nenc, (tv.nopen > 0 && tv.nenc > 0) ? "  <- open+encrypted twin" : "");
             for (size_t j = 0; j < found; j++) {
                 if (strcmp(aps[j].ssid, aps[i].ssid) == 0) {
                     printf("        %02x:%02x:%02x:%02x:%02x:%02x  ch%-2u %-6s %ddB\n",
@@ -939,9 +929,9 @@ static int cmd_eviltwin(int argc, char **argv)
                 n = lxveos_evt_kv(line, sizeof(line), n, "kind", "eviltwin");
                 n = lxveos_evt_kv_hex(line, sizeof(line), n, "ssid",
                                       (const uint8_t *)aps[i].ssid, strlen(aps[i].ssid));
-                n = lxveos_evt_kv_int(line, sizeof(line), n, "bssids", nbssid);
-                n = lxveos_evt_kv_int(line, sizeof(line), n, "open", nopen);
-                n = lxveos_evt_kv_int(line, sizeof(line), n, "enc", nenc);
+                n = lxveos_evt_kv_int(line, sizeof(line), n, "bssids", tv.nbssid);
+                n = lxveos_evt_kv_int(line, sizeof(line), n, "open", tv.nopen);
+                n = lxveos_evt_kv_int(line, sizeof(line), n, "enc", tv.nenc);
                 printf("%s\n", line);
             }
         }
