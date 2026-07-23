@@ -20,6 +20,11 @@ extern "C" {
 #define LXVEOS_CFG_VAL_MAX   64   // value buffer incl. NUL
 #define LXVEOS_CFG_ROWS_MAX  24   // rows per blob
 
+// A buffer of this size always holds the serialization of up to LXVEOS_CFG_ROWS_MAX rows: every key/value
+// byte can escape to two, plus the two separators per row and the final NUL.
+#define LXVEOS_CFG_BLOB_MAX \
+    (LXVEOS_CFG_ROWS_MAX * (2 * LXVEOS_CFG_KEY_MAX + 2 * LXVEOS_CFG_VAL_MAX + 2) + 1)
+
 typedef struct {
     char key[LXVEOS_CFG_KEY_MAX];    // NUL-terminated
     char value[LXVEOS_CFG_VAL_MAX];  // NUL-terminated

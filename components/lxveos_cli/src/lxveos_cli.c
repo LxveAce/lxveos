@@ -38,6 +38,7 @@
 #include "lxveos_ops.h"
 #include "lxveos_wifi.h"
 #include "lxveos_wifi_audit.h"
+#include "lxveos_cfg.h"
 
 #define LXVEOS_NVS_NS      "lxveos"
 #define LXVEOS_NVS_USE_ACK "use_ack"
@@ -278,17 +279,92 @@ static int cmd_reboot(int argc, char **argv)
     esp_restart();
 }
 
+// `nvs export` — serialize every operator-set `u_` key (name + value) into one escaped text blob for backup.
+// Iterates the string entries in the lxveos namespace; the internal keys (use_ack/boot_count) are not `u_`
+// so they are skipped, and the watchlist (its own NVS blob, restored by `watch`) is not included here.
+static int nvs_export_settings(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(LXVEOS_NVS_NS, NVS_READONLY, &h) != ESP_OK) {
+        printf("nvs unavailable\n");
+        return 0;
+    }
+    lxveos_cfg_row_t rows[LXVEOS_CFG_ROWS_MAX];
+    size_t nr = 0;
+    nvs_iterator_t it = NULL;
+    esp_err_t res = nvs_entry_find("nvs", LXVEOS_NVS_NS, NVS_TYPE_STR, &it);
+    while (res == ESP_OK && nr < LXVEOS_CFG_ROWS_MAX) {
+        nvs_entry_info_t info;
+        nvs_entry_info(it, &info);
+        if (strncmp(info.key, LXVEOS_NVS_USERPFX, 2) == 0) {  // only the u_ operator keys
+            char val[LXVEOS_CFG_VAL_MAX];
+            size_t vlen = sizeof(val);
+            if (nvs_get_str(h, info.key, val, &vlen) == ESP_OK) {
+                sanitize_copy(rows[nr].key, sizeof(rows[nr].key), info.key + 2);  // drop the u_ prefix
+                sanitize_copy(rows[nr].value, sizeof(rows[nr].value), val);
+                nr++;
+            }
+        }
+        res = nvs_entry_next(&it);
+    }
+    nvs_release_iterator(it);
+    nvs_close(h);
+    static char blob[LXVEOS_CFG_BLOB_MAX];
+    blob[0] = '\0';
+    lxveos_cfg_serialize(rows, nr, blob, sizeof(blob));
+    printf("config export (%u setting%s) — paste into `nvs import`:\n%s\n",
+           (unsigned)nr, nr == 1 ? "" : "s", blob);
+    return 0;
+}
+
+// `nvs import <blob>` — parse an escaped config blob (from `nvs export`) and re-apply each row as a `u_`
+// operator key. A malformed blob applies nothing (the codec rejects it wholesale), so a bad paste can never
+// half-corrupt the stored settings.
+static int nvs_import_settings(const char *blob)
+{
+    lxveos_cfg_row_t rows[LXVEOS_CFG_ROWS_MAX];
+    size_t nr = lxveos_cfg_parse(blob, strlen(blob), rows, LXVEOS_CFG_ROWS_MAX);
+    if (nr == 0) {
+        printf("import: nothing applied (empty or malformed blob)\n");
+        return 0;
+    }
+    nvs_handle_t h;
+    if (nvs_open(LXVEOS_NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
+        printf("nvs unavailable\n");
+        return 0;
+    }
+    size_t applied = 0;
+    for (size_t i = 0; i < nr; i++) {
+        char nk[16];
+        int w = snprintf(nk, sizeof(nk), LXVEOS_NVS_USERPFX "%s", rows[i].key);
+        if (w > 0 && (size_t)w < sizeof(nk) && nvs_set_str(h, nk, rows[i].value) == ESP_OK) {
+            applied++;
+        }
+    }
+    nvs_commit(h);
+    nvs_close(h);
+    printf("import: applied %u of %u setting%s\n", (unsigned)applied, (unsigned)nr, nr == 1 ? "" : "s");
+    return 0;
+}
+
 // `nvs get <key>` / `nvs set <key> <value>` — a small persistent string store for operator settings, kept
-// in the "lxveos" namespace but under a `u_` prefix so it can't touch the firmware's own keys.
+// in the "lxveos" namespace but under a `u_` prefix so it can't touch the firmware's own keys. `nvs export`
+// / `nvs import <blob>` back up and restore all of these settings at once.
 static int cmd_nvs(int argc, char **argv)
 {
     if (locked()) {
         return 0;
     }
+    if (argc == 2 && strcmp(argv[1], "export") == 0) {
+        return nvs_export_settings();
+    }
+    if (argc == 3 && strcmp(argv[1], "import") == 0) {
+        return nvs_import_settings(argv[2]);
+    }
     bool is_get = argc == 3 && strcmp(argv[1], "get") == 0;
     bool is_set = argc == 4 && strcmp(argv[1], "set") == 0;
     if (!is_get && !is_set) {
-        printf("usage: nvs get <key> | nvs set <key> <value>\n");
+        printf("usage: nvs get <key> | nvs set <key> <value> | nvs export | nvs import <blob>\n");
         return 0;
     }
     char nk[16];
@@ -2872,7 +2948,7 @@ static void register_commands(void)
         {.command = "blehid", .help = "DEFENSE: flag nearby BLE HID devices (rogue keyboards/injectors): blehid [seconds]", .func = &cmd_blehid},
         {.command = "loglevel", .help = "Set log verbosity: loglevel <tag|*> <none|error|warn|info|debug|verbose>", .func = &cmd_loglevel},
         {.command = "reboot", .help = "Restart the unit", .func = &cmd_reboot},
-        {.command = "nvs", .help = "Persistent settings: nvs get <key> | nvs set <key> <value>", .func = &cmd_nvs},
+        {.command = "nvs", .help = "Persistent settings: nvs get <key> | set <key> <value> | export | import <blob>", .func = &cmd_nvs},
     };
     for (size_t i = 0; i < sizeof(cmds) / sizeof(cmds[0]); i++) {
         ESP_ERROR_CHECK(esp_console_cmd_register(&cmds[i]));
