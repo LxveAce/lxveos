@@ -3,6 +3,7 @@
 // PASSIVE scan only: the radio listens for beacons and transmits nothing.
 #include "lxveos_wifi.h"
 #include "lxveos_wifi_eapol.h"
+#include "lxveos_wifi_essidmap.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -178,14 +179,7 @@ esp_err_t lxveos_wifi_sniff(uint32_t seconds, uint8_t channel, lxveos_wifi_sniff
 // All parsing runs in the promiscuous rx callback (Wi-Fi task) into bounded static tables; the caller's
 // task reads them only after promiscuous is disabled, so there is no concurrent access to guard. Nothing
 // is transmitted, and no payload is stored beyond the small ESSID map + 16-byte PMKIDs.
-#define LXVEOS_ESSID_MAX 24
-#define LXVEOS_HS_MAX    12
-
-typedef struct {
-    uint8_t bssid[6];
-    char ssid[33];
-    bool used;
-} essid_ent_t;
+#define LXVEOS_HS_MAX    12  // LXVEOS_ESSID_MAX + the essid entry type live in lxveos_wifi_essidmap.h now
 
 typedef struct {
     uint8_t ap[6];
@@ -220,7 +214,7 @@ typedef struct {
     bool has_m4;
 } hs_ent_t;
 
-static essid_ent_t s_essid[LXVEOS_ESSID_MAX];
+static lxveos_essid_ent_t s_essid[LXVEOS_ESSID_MAX];
 static hs_ent_t s_hs[LXVEOS_HS_MAX];
 static volatile lxveos_wifi_eapol_stats_t s_estats;
 
@@ -229,25 +223,13 @@ static bool mac_eq(const uint8_t *a, const uint8_t *b)
     return memcmp(a, b, 6) == 0;
 }
 
+// Learn an AP's ESSID from a beacon/probe-response into the shared map (the de-cloak-aware upsert lives in
+// lxveos_wifi_essidmap). Count a distinct KNOWN essid: a new non-empty entry, or a hidden entry now revealed.
 static void essid_upsert(const uint8_t *bssid, const uint8_t *ssid, int len)
 {
-    if (len < 0 || len > 32) {
-        return;
-    }
-    for (int i = 0; i < LXVEOS_ESSID_MAX; i++) {
-        if (s_essid[i].used && mac_eq(s_essid[i].bssid, bssid)) {
-            return;  // already known
-        }
-    }
-    for (int i = 0; i < LXVEOS_ESSID_MAX; i++) {
-        if (!s_essid[i].used) {
-            memcpy(s_essid[i].bssid, bssid, 6);
-            memcpy(s_essid[i].ssid, ssid, (size_t)len);
-            s_essid[i].ssid[len] = '\0';
-            s_essid[i].used = true;
-            s_estats.essids++;
-            return;
-        }
+    lxveos_essid_result_t r = lxveos_essid_upsert(s_essid, LXVEOS_ESSID_MAX, bssid, ssid, len);
+    if (r == LXVEOS_ESSID_REVEALED || (r == LXVEOS_ESSID_INSERTED && len > 0)) {
+        s_estats.essids++;
     }
 }
 
@@ -271,12 +253,7 @@ static hs_ent_t *hs_find_or_add(const uint8_t *ap, const uint8_t *sta)
 
 static const char *essid_lookup(const uint8_t *bssid)
 {
-    for (int i = 0; i < LXVEOS_ESSID_MAX; i++) {
-        if (s_essid[i].used && mac_eq(s_essid[i].bssid, bssid)) {
-            return s_essid[i].ssid;
-        }
-    }
-    return "";
+    return lxveos_essid_lookup(s_essid, LXVEOS_ESSID_MAX, bssid);
 }
 
 // Parse an M1 EAPOL-Key's key-data for the RSN PMKID KDE (dd <len> 00-0F-AC 04 <16-byte PMKID>).
