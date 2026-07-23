@@ -1036,6 +1036,13 @@ static int cmd_apaudit(int argc, char **argv)
     return 0;
 }
 
+// Shared passive-BLE scan result buffer for every BLE command (blescan, btracker, blehid, blewardrive, flipper
+// and the combined recon sweeps). The CLI is single-threaded and these never run concurrently, so one buffer
+// serves all of them — which keeps .dram0.bss small on the no-PSRAM boards, where DRAM is the tight budget (the
+// CYD 3.5" is right at the limit). Declared ahead of the first BLE command so every one of them can point at it.
+#define LXVEOS_BLE_SCAN_MAX 48
+static lxveos_ble_dev_t s_ble_scan[LXVEOS_BLE_SCAN_MAX];
+
 // `blescan [seconds]` — passive BLE device scan (the `ble_scan` catalog operation). Runs a NimBLE GAP
 // discovery in PASSIVE mode (the controller never sends a SCAN_REQ) and lists nearby advertisers with
 // address, address type, RSSI, GAP flags and local name. This scan is passive (never advertises, never
@@ -1063,9 +1070,9 @@ static int cmd_blescan(int argc, char **argv)
     }
     printf("passive BLE scan for %us (GAP observe — no scan requests, advertises nothing)...\n",
            (unsigned)secs);
-    static lxveos_ble_dev_t devs[48];
+    lxveos_ble_dev_t *devs = s_ble_scan;   // shared buffer (single-threaded CLI) — keeps DRAM small
     size_t found = 0;
-    esp_err_t e = lxveos_ble_scan(secs, devs, sizeof(devs) / sizeof(devs[0]), &found);
+    esp_err_t e = lxveos_ble_scan(secs, devs, LXVEOS_BLE_SCAN_MAX, &found);
     if (e != ESP_OK) {
         printf("ble scan failed: %s\n", esp_err_to_name(e));
         return 0;
@@ -1291,9 +1298,9 @@ static int cmd_btracker(int argc, char **argv)
         }
     }
     printf("passive BLE item-tracker scan for %us (GAP observe — advertises nothing)...\n", (unsigned)secs);
-    static lxveos_ble_dev_t devs[48];
+    lxveos_ble_dev_t *devs = s_ble_scan;   // shared buffer (single-threaded CLI) — keeps DRAM small
     size_t found = 0;
-    esp_err_t e = lxveos_ble_scan(secs, devs, sizeof(devs) / sizeof(devs[0]), &found);
+    esp_err_t e = lxveos_ble_scan(secs, devs, LXVEOS_BLE_SCAN_MAX, &found);
     if (e != ESP_OK) {
         printf("btracker scan failed: %s\n", esp_err_to_name(e));
         return 0;
@@ -1377,13 +1384,6 @@ static int cmd_wardrive(int argc, char **argv)
     printf("# %u AP(s) exported (GPS-less — host adds coordinates)\n", (unsigned)found);
     return 0;
 }
-
-// Shared passive-BLE scan result buffer for the BLE commands added here (blewardrive / flipper / future BLE
-// detectors). The CLI is single-threaded and these never run concurrently, so one buffer serves all of them —
-// which keeps .dram0.bss small on the no-PSRAM boards, where DRAM is the tight budget (the CYD 3.5" is right at
-// the limit). Older BLE commands keep their own buffers; new ones share this.
-#define LXVEOS_BLE_SCAN_MAX 48
-static lxveos_ble_dev_t s_ble_scan[LXVEOS_BLE_SCAN_MAX];
 
 // `blewardrive [seconds]` — passive BLE wardrive CSV export (the `ble_wardrive` catalog op). One passive
 // GAP-observe scan -> a machine-importable `addr,addr_type,name,rssi,vendor,tracker` CSV, mirroring the Wi-Fi
@@ -2469,11 +2469,11 @@ static int cmd_blehid(int argc, char **argv)
         return 0;
     }
     uint32_t secs = (uint32_t)secsv;
-    static lxveos_ble_dev_t devs[32];
+    lxveos_ble_dev_t *devs = s_ble_scan;   // shared buffer (single-threaded CLI) — keeps DRAM small
     size_t found = 0;
     printf("scanning %us for BLE HID devices (keyboards/mice = potential injectors/keyloggers)...\n",
            (unsigned)secs);
-    esp_err_t e = lxveos_ble_scan(secs, devs, sizeof(devs) / sizeof(devs[0]), &found);
+    esp_err_t e = lxveos_ble_scan(secs, devs, LXVEOS_BLE_SCAN_MAX, &found);
     if (e != ESP_OK) {
         printf("ble scan failed: %s\n", esp_err_to_name(e));
         return 0;
@@ -2562,8 +2562,8 @@ static int cmd_airspace(int argc, char **argv)
     size_t nble = 0;
     unsigned trackers = 0;
     if (ble) {
-        static lxveos_ble_dev_t devs[48];
-        esp_err_t be = lxveos_ble_scan((uint32_t)bsecs, devs, sizeof(devs) / sizeof(devs[0]), &nble);
+        lxveos_ble_dev_t *devs = s_ble_scan;   // shared buffer (single-threaded CLI) — keeps DRAM small
+        esp_err_t be = lxveos_ble_scan((uint32_t)bsecs, devs, LXVEOS_BLE_SCAN_MAX, &nble);
         if (be == ESP_OK) {
             for (size_t i = 0; i < nble; i++) {
                 if (devs[i].tracker) {
@@ -2730,10 +2730,10 @@ static int cmd_watch(int argc, char **argv)
             printf("wifi scan failed: %s\n", esp_err_to_name(e));
             return 0;
         }
-        static lxveos_ble_dev_t devs[48];
+        lxveos_ble_dev_t *devs = s_ble_scan;   // shared buffer (single-threaded CLI) — keeps DRAM small
         size_t nble = 0;
         if (ble) {
-            esp_err_t be = lxveos_ble_scan((uint32_t)bsecs, devs, sizeof(devs) / sizeof(devs[0]), &nble);
+            esp_err_t be = lxveos_ble_scan((uint32_t)bsecs, devs, LXVEOS_BLE_SCAN_MAX, &nble);
             if (be != ESP_OK) {
                 printf("(BLE observe failed: %s — Wi-Fi only)\n", esp_err_to_name(be));
                 ble = false;
