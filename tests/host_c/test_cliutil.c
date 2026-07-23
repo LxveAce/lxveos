@@ -143,6 +143,81 @@ static void test_csv_quote_field(void)
     csv_quote_field(NULL, 8, "x");
 }
 
+static void test_watch_pack(void)
+{
+    lxveos_watch_entry_t in[LXVEOS_WATCH_MAX];
+    lxveos_watch_entry_t out[LXVEOS_WATCH_MAX];
+    uint8_t blob[LXVEOS_WATCH_BLOB_MAX];
+
+    // empty list -> header only, and round-trips to zero entries
+    size_t n = lxveos_watch_pack(in, 0, blob, sizeof(blob));
+    assert(n == 2);
+    assert(blob[0] == LXVEOS_WATCH_BLOB_VER && blob[1] == 0);
+    assert(lxveos_watch_unpack(blob, n, out, LXVEOS_WATCH_MAX) == 0);
+
+    // a few entries round-trip exactly (mac bytes + label string, including an empty label)
+    memset(in, 0, sizeof(in));
+    memcpy(in[0].mac, "\xde\xad\xbe\xef\x00\x01", 6);
+    strcpy(in[0].label, "rogue-ap");
+    memcpy(in[1].mac, "\x00\x11\x22\x33\x44\x55", 6);
+    in[1].label[0] = '\0';  // no label
+    memcpy(in[2].mac, "\xff\xff\xff\xff\xff\xff", 6);
+    strcpy(in[2].label, "tile-tracker");
+    n = lxveos_watch_pack(in, 3, blob, sizeof(blob));
+    assert(n == 2 + 3 * LXVEOS_WATCH_REC_SZ);
+    assert(lxveos_watch_unpack(blob, n, out, LXVEOS_WATCH_MAX) == 3);
+    for (size_t i = 0; i < 3; i++) {
+        assert(memcmp(out[i].mac, in[i].mac, 6) == 0);
+        assert(strcmp(out[i].label, in[i].label) == 0);
+    }
+
+    // full 16 entries (max capacity) round-trip
+    memset(in, 0, sizeof(in));
+    for (size_t i = 0; i < LXVEOS_WATCH_MAX; i++) {
+        in[i].mac[5] = (uint8_t)i;
+        in[i].label[0] = 't';
+        in[i].label[1] = (char)('0' + i / 10);
+        in[i].label[2] = (char)('0' + i % 10);  // labels "t00".."t15"
+    }
+    n = lxveos_watch_pack(in, LXVEOS_WATCH_MAX, blob, sizeof(blob));
+    assert(n == LXVEOS_WATCH_BLOB_MAX);
+    assert(lxveos_watch_unpack(blob, n, out, LXVEOS_WATCH_MAX) == LXVEOS_WATCH_MAX);
+    for (size_t i = 0; i < LXVEOS_WATCH_MAX; i++) {
+        assert(out[i].mac[5] == (uint8_t)i);
+        assert(strcmp(out[i].label, in[i].label) == 0);
+    }
+
+    // pack clamps n > MAX to MAX; a too-small cap writes nothing
+    assert(lxveos_watch_pack(in, LXVEOS_WATCH_MAX + 5, blob, sizeof(blob)) == LXVEOS_WATCH_BLOB_MAX);
+    assert(lxveos_watch_pack(in, 3, blob, 2 + 3 * LXVEOS_WATCH_REC_SZ - 1) == 0);
+
+    // an over-long label is truncated to CAP-1 and stays NUL-terminated
+    memset(in, 0, sizeof(in));
+    memset(in[0].label, 'x', LXVEOS_WATCH_LABEL_CAP - 1);  // already full (NUL at [CAP-1])
+    n = lxveos_watch_pack(in, 1, blob, sizeof(blob));
+    assert(lxveos_watch_unpack(blob, n, out, LXVEOS_WATCH_MAX) == 1);
+    assert(strlen(out[0].label) == LXVEOS_WATCH_LABEL_CAP - 1);
+
+    // truncated blob: declared 16 but only one record's worth of bytes present -> recovers exactly 1
+    for (size_t i = 0; i < LXVEOS_WATCH_MAX; i++) {
+        in[i].mac[5] = (uint8_t)i;
+    }
+    n = lxveos_watch_pack(in, LXVEOS_WATCH_MAX, blob, sizeof(blob));
+    assert(lxveos_watch_unpack(blob, 2 + LXVEOS_WATCH_REC_SZ, out, LXVEOS_WATCH_MAX) == 1);
+    assert(out[0].mac[5] == 0);
+
+    // a caller cap smaller than the stored count is honored
+    n = lxveos_watch_pack(in, 4, blob, sizeof(blob));
+    assert(lxveos_watch_unpack(blob, n, out, 2) == 2);
+
+    // bad header / short / NULL all yield 0
+    n = lxveos_watch_pack(in, 2, blob, sizeof(blob));
+    blob[0] = 0x99;  // wrong version
+    assert(lxveos_watch_unpack(blob, n, out, LXVEOS_WATCH_MAX) == 0);
+    assert(lxveos_watch_unpack(blob, 1, out, LXVEOS_WATCH_MAX) == 0);
+    assert(lxveos_watch_unpack(NULL, 100, out, LXVEOS_WATCH_MAX) == 0);
+}
+
 int main(void)
 {
     test_parse_mac();
@@ -150,6 +225,7 @@ int main(void)
     test_parse_int_arg();
     test_sanitize_copy();
     test_csv_quote_field();
+    test_watch_pack();
     printf("test_cliutil: all assertions passed\n");
     return 0;
 }

@@ -41,6 +41,7 @@
 #define LXVEOS_NVS_NS      "lxveos"
 #define LXVEOS_NVS_USE_ACK "use_ack"
 #define LXVEOS_NVS_BOOTCNT "boot_count"
+#define LXVEOS_NVS_WATCH   "watchlist"  // blob: the persisted target watchlist (9 chars, under the 15 cap)
 // User keys from the `nvs` command are prefixed so they can never collide with the internal keys above
 // (NVS keys are capped at 15 chars, so a user key is limited to 13).
 #define LXVEOS_NVS_USERPFX "u_"
@@ -2597,17 +2598,14 @@ static int cmd_airspace(int argc, char **argv)
 }
 
 // --- target watchlist (custom X-3 feature) --------------------------------------------------------
-// A small in-RAM list of BSSIDs / BLE addresses to keep an eye out for (not NVS-backed — it clears on
-// reboot). `watch scan` runs one
-// passive Wi-Fi + BLE sweep and flags any listed target that's on the air right now, emitting one
-// `LXVEOS/1 alert kind=watch` per hit for the CC dashboard. Listen-only — the watchlist never transmits.
-#define WATCH_MAX   16u  // unsigned: it's compared against size_t counts and printed with %u
-#define WATCH_LABEL 24   // NUL-terminated operator note; sanitized on input so it can't garble the console
-
-typedef struct {
-    uint8_t mac[6];             // target address, MSB-first (the order `scan` / `blescan` display)
-    char    label[WATCH_LABEL]; // optional operator note ("" if none)
-} watch_target_t;
+// A small list of BSSIDs / BLE addresses to keep an eye out for, persisted to NVS (ns "lxveos", key
+// "watchlist") so it survives a reboot. `watch scan` runs one passive Wi-Fi + BLE sweep and flags any
+// listed target that's on the air right now, emitting one `LXVEOS/1 alert kind=watch` per hit for the CC
+// dashboard. Listen-only — the watchlist never transmits.
+// The entry type + capacity live in lxveos_cliutil (shared with the persistence codec used below).
+#define WATCH_MAX   LXVEOS_WATCH_MAX        // 16u — compared against size_t counts, printed with %u
+#define WATCH_LABEL LXVEOS_WATCH_LABEL_CAP  // 24  — NUL-terminated operator note, sanitized on input
+typedef lxveos_watch_entry_t watch_target_t;
 
 static watch_target_t s_watch[WATCH_MAX];
 static size_t s_watch_count;
@@ -2623,7 +2621,40 @@ static int watch_index_of(const uint8_t mac[6])
     return -1;
 }
 
-// `watch` — CUSTOM (X-3): a small in-RAM target watchlist (cleared on reboot; not NVS-backed).
+// Persist the live watchlist to NVS (ns "lxveos", key "watchlist") so it survives a reboot. Best-effort: a
+// full or unwritable NVS just leaves the list in-RAM-only for this session, which is no worse than before.
+static void watch_save(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(LXVEOS_NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
+        return;
+    }
+    uint8_t blob[LXVEOS_WATCH_BLOB_MAX];
+    size_t used = lxveos_watch_pack(s_watch, s_watch_count, blob, sizeof(blob));
+    if (used > 0 && nvs_set_blob(h, LXVEOS_NVS_WATCH, blob, used) == ESP_OK) {
+        nvs_commit(h);
+    }
+    nvs_close(h);
+}
+
+// Restore the persisted watchlist at startup. A missing key (first boot) or a corrupt/old blob leaves the
+// list empty rather than failing — the codec validates the header and truncates cleanly.
+static void watch_load(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(LXVEOS_NVS_NS, NVS_READONLY, &h) != ESP_OK) {
+        return;
+    }
+    uint8_t blob[LXVEOS_WATCH_BLOB_MAX];
+    size_t len = sizeof(blob);
+    esp_err_t r = nvs_get_blob(h, LXVEOS_NVS_WATCH, blob, &len);
+    nvs_close(h);
+    if (r == ESP_OK) {
+        s_watch_count = lxveos_watch_unpack(blob, len, s_watch, WATCH_MAX);
+    }
+}
+
+// `watch` — CUSTOM (X-3): a small target watchlist, persisted to NVS (survives reboot).
 //   watch add <mac> [label]   add a target (mac "aa:bb:cc:dd:ee:ff", optional label)
 //   watch del <mac>           drop a target
 //   watch list                show the watchlist
@@ -2652,6 +2683,7 @@ static int cmd_watch(int argc, char **argv)
 
     if (strcmp(sub, "clear") == 0) {
         s_watch_count = 0;
+        watch_save();
         printf("watchlist cleared\n");
         return 0;
     }
@@ -2679,6 +2711,7 @@ static int cmd_watch(int argc, char **argv)
             t->label[0] = '\0';
         }
         s_watch_count++;
+        watch_save();
         printf("watching %02x:%02x:%02x:%02x:%02x:%02x%s%s (%u/%u)\n", mac[0], mac[1], mac[2], mac[3],
                mac[4], mac[5], t->label[0] ? " " : "", t->label, (unsigned)s_watch_count, WATCH_MAX);
         return 0;
@@ -2700,6 +2733,7 @@ static int cmd_watch(int argc, char **argv)
             s_watch[i] = s_watch[i + 1];  // compact the array over the removed slot
         }
         s_watch_count--;
+        watch_save();
         printf("stopped watching %02x:%02x:%02x:%02x:%02x:%02x (%u/%u)\n", mac[0], mac[1], mac[2], mac[3],
                mac[4], mac[5], (unsigned)s_watch_count, WATCH_MAX);
         return 0;
@@ -2839,6 +2873,7 @@ esp_err_t lxveos_cli_start(void)
 {
     s_use_ack = read_use_ack();
     bump_boot_count();
+    watch_load();  // restore the persisted target watchlist (empty on first boot)
 
     ESP_LOGI(TAG, "LxveOS ready on '%s' (ui: %s, boot #%u).", lxveos_board_id(), lxveos_ui_profile(),
              (unsigned)s_boot_count);

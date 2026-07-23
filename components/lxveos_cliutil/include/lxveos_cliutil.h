@@ -40,6 +40,36 @@ void sanitize_copy(char *dst, size_t cap, const char *src);
 // truncated first if `cap` is tight); a cap < 3 (no room for `""`) yields an empty string.
 void csv_quote_field(char *dst, size_t cap, const char *src);
 
+// --- target-watchlist persistence codec ------------------------------------------------------------------
+// Pack/unpack for the CLI `watch` list so it survives a reboot via an NVS blob. Pure/libc-only, so it
+// host-tests off-target; the NVS glue that calls it lives in the CLI and is compile-checked by the board
+// matrix. The entry type is shared with the CLI so the codec packs the live list directly, no conversion.
+#define LXVEOS_WATCH_MAX        16u  // max targets held (the CLI's WATCH_MAX aliases this)
+#define LXVEOS_WATCH_LABEL_CAP  24   // NUL-terminated operator note per target (the CLI's WATCH_LABEL)
+
+typedef struct {
+    uint8_t mac[6];                    // target address, MSB-first (the order `scan` / `blescan` display)
+    char    label[LXVEOS_WATCH_LABEL_CAP];  // optional operator note ("" if none), always NUL-terminated
+} lxveos_watch_entry_t;
+
+// Wire format: [ver=1][count][count x {6 mac bytes, 24 label bytes NUL-padded}]. Fixed-width so pack/unpack
+// stay trivial and a short/corrupt blob truncates cleanly instead of misparsing a partial record.
+#define LXVEOS_WATCH_BLOB_VER   0x01u
+#define LXVEOS_WATCH_REC_SZ     (6u + LXVEOS_WATCH_LABEL_CAP)                   // 30 bytes per entry
+#define LXVEOS_WATCH_BLOB_MAX   (2u + LXVEOS_WATCH_MAX * LXVEOS_WATCH_REC_SZ)   // 482-byte max blob
+
+// Serialize the first min(n, LXVEOS_WATCH_MAX) entries into buf. Returns the byte count written (>= 2, since
+// an empty list still writes the 2-byte header), or 0 if buf is NULL, entries is NULL with n > 0, or cap is
+// too small to hold that many entries.
+size_t lxveos_watch_pack(const lxveos_watch_entry_t *entries, size_t n, uint8_t *buf, size_t cap);
+
+// Parse a blob produced by lxveos_watch_pack into entries[0..max-1]. Returns the entry count recovered
+// (<= max and <= LXVEOS_WATCH_MAX). A NULL/short blob, an unknown version byte, or a declared count larger
+// than the bytes actually present all yield only the fully-present entries (0 for a bad header), so a
+// truncated or corrupt NVS value can never over-read or load a partial record. Each returned label is
+// guaranteed NUL-terminated.
+size_t lxveos_watch_unpack(const uint8_t *buf, size_t len, lxveos_watch_entry_t *entries, size_t max);
+
 #ifdef __cplusplus
 }
 #endif

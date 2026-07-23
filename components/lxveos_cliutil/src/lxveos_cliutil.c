@@ -3,6 +3,7 @@
 #include "lxveos_cliutil.h"
 
 #include <stdlib.h>  // strtol
+#include <string.h>  // memcpy / memset
 
 // One hex digit -> 0..15, or -1 if `c` is not a hex digit. Local so parse_mac stays libc-only.
 static int hex_nibble(char c)
@@ -126,4 +127,58 @@ void csv_quote_field(char *dst, size_t cap, const char *src)
     }
     dst[o++] = '"';
     dst[o] = '\0';
+}
+
+size_t lxveos_watch_pack(const lxveos_watch_entry_t *entries, size_t n, uint8_t *buf, size_t cap)
+{
+    if (entries == NULL && n > 0) {
+        return 0;
+    }
+    if (n > LXVEOS_WATCH_MAX) {
+        n = LXVEOS_WATCH_MAX;  // never emit more entries than the format allows
+    }
+    size_t need = 2u + n * LXVEOS_WATCH_REC_SZ;
+    if (buf == NULL || cap < need) {
+        return 0;
+    }
+    buf[0] = (uint8_t)LXVEOS_WATCH_BLOB_VER;
+    buf[1] = (uint8_t)n;
+    uint8_t *p = buf + 2;
+    for (size_t i = 0; i < n; i++) {
+        memcpy(p, entries[i].mac, 6);
+        uint8_t *lbl = p + 6;
+        memset(lbl, 0, LXVEOS_WATCH_LABEL_CAP);  // zero-pad the fixed-width label field
+        for (size_t k = 0; k + 1 < LXVEOS_WATCH_LABEL_CAP && entries[i].label[k] != '\0'; k++) {
+            lbl[k] = (uint8_t)entries[i].label[k];  // copy up to CAP-1 bytes, always leaving a trailing NUL
+        }
+        p += LXVEOS_WATCH_REC_SZ;
+    }
+    return need;
+}
+
+size_t lxveos_watch_unpack(const uint8_t *buf, size_t len, lxveos_watch_entry_t *entries, size_t max)
+{
+    if (buf == NULL || entries == NULL || len < 2u) {
+        return 0;
+    }
+    if (buf[0] != (uint8_t)LXVEOS_WATCH_BLOB_VER) {
+        return 0;  // unknown format version -> treat as empty rather than guess at the layout
+    }
+    size_t declared = buf[1];
+    if (declared > LXVEOS_WATCH_MAX) {
+        declared = LXVEOS_WATCH_MAX;  // clamp a bogus count
+    }
+    size_t present = (len - 2u) / LXVEOS_WATCH_REC_SZ;  // whole records the buffer actually holds
+    size_t n = declared < present ? declared : present;  // truncation-safe: never read past the data
+    if (n > max) {
+        n = max;
+    }
+    const uint8_t *p = buf + 2;
+    for (size_t i = 0; i < n; i++) {
+        memcpy(entries[i].mac, p, 6);
+        memcpy(entries[i].label, p + 6, LXVEOS_WATCH_LABEL_CAP);
+        entries[i].label[LXVEOS_WATCH_LABEL_CAP - 1] = '\0';  // guarantee termination even if the blob lied
+        p += LXVEOS_WATCH_REC_SZ;
+    }
+    return n;
 }
