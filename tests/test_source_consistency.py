@@ -284,25 +284,37 @@ def _doc_alert_fields() -> dict[str, set[str]]:
 
 
 def _emitted_alert_fields() -> dict[str, set[str]]:
-    """For each `evt_kv(..., "kind", "K")` block, the field names of the following `evt_kv*` calls up to the
-    emitting `printf("%s\n", line)`. `"kind"` starts the block, so it is naturally excluded from the window."""
+    """For each `"kind"` kv in an alert block, the field names of the `evt_kv*` calls between it and the
+    block's end — the next `lxveos_evt_begin(` (every emitted line starts with one). Handles the
+    `weak ? "weak" : "wps"` ternary (both kinds share the block's fields) by taking every string literal
+    in the kind statement, not just one after `"kind"`."""
     out: dict[str, set[str]] = {}
-    for m in re.finditer(r'"kind",\s*"([a-z0-9_]+)"', CLI_C):
-        kind, start = m.group(1), m.end()
-        end = CLI_C.find('printf("%s\n", line)', start)
-        window = CLI_C[start:end if end != -1 else start + 1500]
-        out[kind] = set(re.findall(r'evt_kv\w*\([^;]*?"([a-z0-9_]+)"', window))
+    for m in re.finditer(r'"kind"\s*,', CLI_C):
+        stmt_end = CLI_C.find(";", m.start())
+        kinds = [k for k in re.findall(r'"([a-z0-9_]+)"', CLI_C[m.start():stmt_end]) if k != "kind"]
+        nxt = CLI_C.find("lxveos_evt_begin(", stmt_end)
+        window = CLI_C[stmt_end:nxt if nxt != -1 else stmt_end + 1200]
+        fields = set(re.findall(r'evt_kv\w*\([^;]*?"([a-z0-9_]+)"', window))
+        for k in kinds:
+            out.setdefault(k, set()).update(fields)
     return out
 
 
 def test_event_protocol_alert_fields_match_the_emitter():
-    """Every `alert` kind's documented fields (docs/EVENT-PROTOCOL.md) must equal what lxveos_cli.c emits,
-    both ways. Locks the doc↔emitter drift #11 fixed; a new alert field/kind now fails until the doc syncs."""
+    """Every `alert` KIND and its FIELDS in docs/EVENT-PROTOCOL.md must match what lxveos_cli.c emits — a
+    missing/extra kind OR field fails CI, both directions. Locks the doc↔emitter drift #11 fixed (fields)
+    and closes the whole-kind gap so a new, undocumented alert kind can't slip past either."""
     doc, emit = _doc_alert_fields(), _emitted_alert_fields()
-    # Sanity: the parsers must actually find the alert kinds (guard against a silently-empty regex passing).
-    assert len(emit) >= 12, f"emitter parse found only {len(emit)} alert kinds — regex drifted"
-    assert "tracker" in doc and "bleflood" in doc, "doc parse missed known alert kinds — regex drifted"
-    for kind in sorted(set(doc) & set(emit)):
+    # Sanity: the parsers must actually find the kinds (so an empty/broken regex can't pass vacuously).
+    assert len(emit) >= 14, f"emitter parse found only {len(emit)} alert kinds — regex drifted"
+    assert {"tracker", "bleflood", "weak", "wps"} <= set(doc), "doc parse missed known kinds — regex drifted"
+    # Whole-kind parity: every emitted alert kind is documented, and every documented kind is emitted.
+    assert set(doc) == set(emit), (
+        f"alert kinds drift — only in EVENT-PROTOCOL.md: {sorted(set(doc) - set(emit))}; "
+        f"only in the emitter: {sorted(set(emit) - set(doc))}"
+    )
+    # Field parity per kind, both directions.
+    for kind in sorted(doc):
         d, e = doc[kind], emit[kind]
         assert e <= d, f"alert kind={kind}: emitter sends {sorted(e - d)} NOT documented in EVENT-PROTOCOL.md"
         assert d <= e, f"alert kind={kind}: EVENT-PROTOCOL.md documents {sorted(d - e)} the emitter never sends"
