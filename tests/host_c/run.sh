@@ -91,6 +91,12 @@ build_arm -DLXVEOS_TX_DISABLE  # conservative build: the emitter is stripped
     "$here/test_pcap.c" "$root/components/lxveos_pcap/src/lxveos_pcap.c" -o "$out"
 "$out"
 
+# --- environment-fingerprint baseline (sorted-set BSSID/BLE diff + count-prefixed codec): dependency-free ---
+"$CC" -std=gnu11 -O1 -Wall \
+    -I"$root/components/lxveos_baseline/include" \
+    "$here/test_baseline.c" "$root/components/lxveos_baseline/src/lxveos_baseline.c" -o "$out"
+"$out"
+
 # --- monitor rotation planner (budget split + min-dwell clamp): dependency-free, no stubs needed ---
 "$CC" -std=gnu11 -O1 -Wall \
     -I"$root/components/lxveos_monitor/include" \
