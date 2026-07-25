@@ -35,6 +35,51 @@ bool lxveos_mac_is_random(uint8_t first_octet)
     return (first_octet & 0x02u) != 0u;
 }
 
+// ── OUI -> vendor enrichment (pure core, #30) ────────────────────────────────────────────────────────────
+// A small curated subset of the IEEE MA-L (24-bit) OUI registry — the chip and device vendors a BLE/Wi-Fi recon
+// scan is most likely to see (Espressif is the ESP32 itself; TI/Nordic make the common BLE radios). Each entry
+// is VERIFIED against the authoritative IEEE registry via the Wireshark `manuf` file (the same source as
+// cyber-controller's oui_table, retrieved 2026-07-23) — NOT from memory. Deliberately small (flash budget) and
+// certain-only: an unknown OUI, or any locally-administered (randomized) address, resolves to NULL and the caller
+// shows the raw hex — a vendor is never guessed. Only globally-unique 24-bit MA-L blocks are carried.
+static const struct {
+    uint32_t    oui;      // 24-bit OUI packed big-endian: mac[0]<<16 | mac[1]<<8 | mac[2]
+    const char *vendor;
+} WIFI_OUI_VENDORS[] = {
+    {0x004B12u, "Espressif"},   {0x007007u, "Espressif"},   {0x048308u, "Espressif"},
+    {0x000393u, "Apple"},       {0x000502u, "Apple"},       {0x000A27u, "Apple"},
+    {0x0000F0u, "Samsung"},     {0x0007ABu, "Samsung"},
+    {0x001A11u, "Google"},      {0x00F620u, "Google"},      {0x04006Eu, "Google"},
+    {0x28CDC1u, "RaspberryPi"}, {0x2CCF67u, "RaspberryPi"},
+    {0x0002B3u, "Intel"},       {0x000347u, "Intel"},
+    {0x007147u, "Amazon"},      {0x008621u, "Amazon"},      {0x00BB3Au, "Amazon"},
+    {0x001237u, "TI"},          {0x00124Bu, "TI"},          {0x0012D1u, "TI"},
+    {0xF4CE36u, "Nordic"},
+    {0x0003FFu, "Microsoft"},   {0x00125Au, "Microsoft"},
+    {0x009EC8u, "Xiaomi"},      {0x00C30Au, "Xiaomi"},      {0x00EC0Au, "Xiaomi"},
+    {0x00000Cu, "Cisco"},       {0x000142u, "Cisco"},       {0x000143u, "Cisco"},
+    {0x00156Du, "Ubiquiti"},    {0x002722u, "Ubiquiti"},    {0x0418D6u, "Ubiquiti"},
+};
+
+const char *lxveos_oui_vendor(const uint8_t *mac)
+{
+    if (mac == NULL) {
+        return NULL;
+    }
+    // A randomized / locally-administered address (bit 0x02 of the first octet) has no registry OUI — never
+    // attribute one to a vendor. No IEEE-assigned OUI has that bit set, so this can't hide a real match.
+    if (lxveos_mac_is_random(mac[0])) {
+        return NULL;
+    }
+    uint32_t oui = ((uint32_t)mac[0] << 16) | ((uint32_t)mac[1] << 8) | (uint32_t)mac[2];
+    for (size_t i = 0; i < sizeof(WIFI_OUI_VENDORS) / sizeof(WIFI_OUI_VENDORS[0]); i++) {
+        if (WIFI_OUI_VENDORS[i].oui == oui) {
+            return WIFI_OUI_VENDORS[i].vendor;
+        }
+    }
+    return NULL;
+}
+
 int lxveos_wifi_auth_grade(uint8_t authmode, const char **note)
 {
     const char *n;

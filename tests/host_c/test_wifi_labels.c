@@ -150,6 +150,41 @@ static void test_mac_is_random(void)
     assert(!lxveos_mac_is_random(0xFC));
 }
 
+static void test_oui_vendor(void)
+{
+    // Known vendors resolve from the first three octets; the rest of the MAC is ignored.
+    const uint8_t esp[6]    = {0x00, 0x4b, 0x12, 0x11, 0x22, 0x33};
+    const uint8_t apple[6]  = {0x00, 0x03, 0x93, 0xaa, 0xbb, 0xcc};
+    const uint8_t nordic[6] = {0xf4, 0xce, 0x36, 0x01, 0x02, 0x03};
+    const uint8_t ubnt[6]   = {0x04, 0x18, 0xd6, 0x00, 0x00, 0x01};
+    assert(strcmp(lxveos_oui_vendor(esp), "Espressif") == 0);
+    assert(strcmp(lxveos_oui_vendor(apple), "Apple") == 0);
+    assert(strcmp(lxveos_oui_vendor(nordic), "Nordic") == 0);
+    assert(strcmp(lxveos_oui_vendor(ubnt), "Ubiquiti") == 0);
+
+    // An unknown but globally-administered OUI -> NULL via the table-miss path (0x10 has the LA bit CLEAR, so
+    // the random guard passes through and the lookup loop actually runs and finds nothing).
+    const uint8_t unknown[6] = {0x10, 0x34, 0x56, 0x78, 0x9a, 0xbc};
+    assert(!lxveos_mac_is_random(unknown[0]));   // sanity: NOT randomized, so the loop is exercised
+    assert(lxveos_oui_vendor(unknown) == NULL);
+
+    // A randomized / locally-administered address -> NULL (its OUI is meaningless).
+    const uint8_t rnd[6] = {0xda, 0x4b, 0x12, 0x00, 0x00, 0x00};  // 0xda has the LA bit (0x02) set
+    assert(lxveos_mac_is_random(rnd[0]));                          // sanity: it IS randomized
+    assert(lxveos_oui_vendor(rnd) == NULL);
+    // Setting the LA bit on a real OUI's first octet still yields NULL (the random guard fires first).
+    const uint8_t esp_la[6] = {0x02, 0x4b, 0x12, 0x00, 0x00, 0x00};  // 0x00 | 0x02 -> locally administered
+    assert(lxveos_oui_vendor(esp_la) == NULL);
+
+    // Only the OUI (first 3 octets) matters: two MACs sharing an OUI resolve to the same vendor string.
+    const uint8_t esp_a[6] = {0x00, 0x4b, 0x12, 0xde, 0xad, 0xbe};
+    const uint8_t esp_b[6] = {0x00, 0x4b, 0x12, 0x00, 0x00, 0x00};
+    assert(lxveos_oui_vendor(esp_a) == lxveos_oui_vendor(esp_b));
+
+    // NULL is safe.
+    assert(lxveos_oui_vendor(NULL) == NULL);
+}
+
 int main(void)
 {
     test_authmode_str();
@@ -158,6 +193,7 @@ int main(void)
     test_eapol_msg();
     test_pwnagotchi();
     test_mac_is_random();
+    test_oui_vendor();
     printf("test_wifi_labels: all tests passed\n");
     return 0;
 }

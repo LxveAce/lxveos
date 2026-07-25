@@ -144,6 +144,13 @@ bool lxveos_wifi_is_open(uint8_t authmode);
 // flag which clients are hiding their real hardware address. A burned-in vendor MAC has the bit clear.
 bool lxveos_mac_is_random(uint8_t first_octet);
 
+// Look up the vendor for a MAC's OUI (the first 3 octets, mac[0..2]) from a small curated set of common chip and
+// device vendors. Returns a short vendor name for a KNOWN OUI, or NULL — for an unknown OUI, OR a randomized /
+// locally-administered address (mac[0] bit 0x02 set) whose OUI is meaningless. Certain-only (the same honesty
+// gate as the BLE company table): the caller shows the raw OUI hex when this returns NULL; a vendor is never
+// guessed. Data is a verified subset of the IEEE MA-L registry. `mac` must point to at least 3 octets.
+const char *lxveos_oui_vendor(const uint8_t *mac);
+
 // Security-audit grade for an AP auth mode, without the caller pulling in esp_wifi's enum:
 //   0 = OPEN (no encryption) · 1 = WEP (broken) · 2 = WPA (deprecated TKIP) · 3 = WPA2 · 4 = WPA3 · 5 = other
 // Grades 0-2 are WEAK. `*note` (may be NULL) is set to a short human weakness reason (grades 0-2) or the
