@@ -31,6 +31,7 @@ int main(void)
         // LXVEOS_TX_DISABLE build: the offensive emitter is stripped, so nothing can ever arm or emit.
         uint32_t tok = 0;
         CHECK(lxveos_arm_request(&tok) == ESP_ERR_NOT_SUPPORTED);
+        CHECK(lxveos_arm_request(NULL) == ESP_ERR_NOT_SUPPORTED);  // TX stripped: refused before the NULL check
         CHECK(lxveos_arm_state() == LXVEOS_ARM_SAFE);
         CHECK(lxveos_arm_can_emit() == false);
         printf(g_fail ? "arm host tests (TX_DISABLE): FAILED\n" : "arm host tests (TX_DISABLE): OK\n");
@@ -42,6 +43,10 @@ int main(void)
     // Fresh boot: SAFE, TX compiled in, cannot emit.
     CHECK(lxveos_arm_state() == LXVEOS_ARM_SAFE);
     CHECK(lxveos_arm_can_emit() == false);
+
+    // A NULL token pointer is rejected up front (defends the `*token` write at the tail); state stays SAFE.
+    CHECK(lxveos_arm_request(NULL) == ESP_ERR_INVALID_ARG);
+    CHECK(lxveos_arm_state() == LXVEOS_ARM_SAFE);
 
     // request -> PENDING with a nonzero one-time token; pending is not yet armed.
     g_now_us = 0;

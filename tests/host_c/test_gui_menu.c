@@ -187,6 +187,42 @@ static void test_run_hint(void)
     }
 }
 
+static void test_ops_tally(void)
+{
+    lxveos_caps_probe();
+    size_t r = 99, p = 99, a = 99, u = 99;
+    lxveos_ops_tally(&r, &p, &a, &u);
+    // Every op lands in exactly one status bucket, so the four counts partition the whole catalog.
+    assert(r + p + a + u == lxveos_ops_count());
+    // NULL outputs are safe -- each is written only when non-NULL.
+    lxveos_ops_tally(NULL, NULL, NULL, NULL);
+}
+
+static void test_op_name_helpers(void)
+{
+    // Category names + the "?" fallback for an out-of-range value (never a fabricated label).
+    assert(strcmp(lxveos_opcat_name(LXVEOS_OPCAT_RECON), "recon") == 0);
+    assert(strcmp(lxveos_opcat_name(LXVEOS_OPCAT_ATTACK), "attack") == 0);
+    assert(strcmp(lxveos_opcat_name(LXVEOS_OPCAT_DEFENSE), "defense") == 0);
+    assert(strcmp(lxveos_opcat_name(LXVEOS_OPCAT_LOGGING), "logging") == 0);
+    assert(strcmp(lxveos_opcat_name(LXVEOS_OPCAT_MISC), "misc") == 0);
+    assert(strcmp(lxveos_opcat_name((lxveos_opcat_t)-1), "?") == 0);
+    assert(strcmp(lxveos_opcat_name((lxveos_opcat_t)LXVEOS_OPCAT_COUNT), "?") == 0);
+    // Status names + fallback.
+    assert(strcmp(lxveos_op_status_name(LXVEOS_OP_READY), "ready") == 0);
+    assert(strcmp(lxveos_op_status_name(LXVEOS_OP_PLANNED), "planned") == 0);
+    assert(strcmp(lxveos_op_status_name(LXVEOS_OP_UNAVAILABLE), "unavailable") == 0);
+    assert(strcmp(lxveos_op_status_name(LXVEOS_OP_ATTACHABLE), "attachable") == 0);
+    assert(strcmp(lxveos_op_status_name((lxveos_op_status_t)-1), "?") == 0);
+    assert(strcmp(lxveos_op_status_name((lxveos_op_status_t)(LXVEOS_OP_ATTACHABLE + 1)), "?") == 0);
+    // Class names + fallback.
+    assert(strcmp(lxveos_op_class_name(LXVEOS_OPCLASS_STD), "std") == 0);
+    assert(strcmp(lxveos_op_class_name(LXVEOS_OPCLASS_OFFENSIVE), "offensive") == 0);
+    assert(strcmp(lxveos_op_class_name(LXVEOS_OPCLASS_RESTRICTED), "restricted") == 0);
+    assert(strcmp(lxveos_op_class_name((lxveos_opclass_t)-1), "?") == 0);
+    assert(strcmp(lxveos_op_class_name((lxveos_opclass_t)(LXVEOS_OPCLASS_RESTRICTED + 1)), "?") == 0);
+}
+
 int main(void)
 {
     test_arm_banner();
@@ -194,6 +230,8 @@ int main(void)
     test_detail();
     test_op_label();
     test_run_hint();
+    test_ops_tally();
+    test_op_name_helpers();
     printf("test_gui_menu: all tests passed\n");
     return 0;
 }
