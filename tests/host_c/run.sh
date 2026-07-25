@@ -142,4 +142,10 @@ build_arm -DLXVEOS_TX_DISABLE  # conservative build: the emitter is stripped
     "$root/components/lxveos_caps/src/lxveos_ops.c" "$root/components/lxveos_caps/src/lxveos_caps.c" -o "$out"
 "$out"
 
+# --- evil-portal captive DNS reply (query -> in-place A-record answer pointing at the AP gateway): dependency-free ---
+"$CC" -std=gnu11 -O1 -Wall \
+    -I"$root/components/lxveos_evilportal/src" \
+    "$here/test_evilportal_dns.c" "$root/components/lxveos_evilportal/src/lxveos_evilportal_dns.c" -o "$out"
+"$out"
+
 echo "host-c: all tests passed"
