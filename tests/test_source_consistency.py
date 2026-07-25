@@ -318,3 +318,30 @@ def test_event_protocol_alert_fields_match_the_emitter():
         d, e = doc[kind], emit[kind]
         assert e <= d, f"alert kind={kind}: emitter sends {sorted(e - d)} NOT documented in EVENT-PROTOCOL.md"
         assert d <= e, f"alert kind={kind}: EVENT-PROTOCOL.md documents {sorted(d - e)} the emitter never sends"
+
+
+# ── Registered sub-verb README coverage (Tier-4 #45) ─────────────────────────────────────────────────
+# test_every_cli_command_is_documented_in_readme checks only TOP-LEVEL verbs. Multi-verb commands
+# (subghz/nrf24/nfc/ir/nvs) advertise sub-verbs in their .help ("nvs get | set | export | import"); those
+# must be in the README too — this would have caught the nrf24 `scan [sweeps]` drift (#21) and the nvs
+# export/import that was advertised but undocumented until #45.
+
+def _cli_subverbs() -> set[str]:
+    """Sub-verbs the CLI actually branches on: the literal in each `strcmp(argv[1], "X")`. This is cleaner
+    than the .help pipe list (which also enumerates ARGUMENT values, e.g. `loglevel debug|info|…`)."""
+    return set(re.findall(r'strcmp\(argv\[1\],\s*"([a-z0-9_]+)"', CLI_C))
+
+
+def test_registered_subverbs_are_documented_in_readme():
+    """Every sub-verb the CLI accepts (`strcmp(argv[1], "X")`) must appear in the README. The sibling
+    test_every_cli_command_is_documented_in_readme only checks the TOP-LEVEL verb, so it missed the nvs
+    export/import (advertised in .help but undocumented until #45) and the nrf24 `scan [sweeps]` drift (#21).
+    A new accepted sub-verb now fails CI until it's documented."""
+    subs = _cli_subverbs()
+    # Sanity: the parse must find real sub-verbs (so an empty/broken regex can't pass vacuously).
+    assert {"export", "import", "mousejack", "decode"} <= subs, "sub-verb parse missed known sub-verbs"
+    missing = sorted(s for s in subs if not re.search(r"`[^`]*\b" + re.escape(s) + r"\b", README))
+    assert not missing, (
+        f"CLI sub-verb(s) accepted by a command (strcmp on argv[1]) but absent from the README: {missing} "
+        "— document them in the command's row"
+    )

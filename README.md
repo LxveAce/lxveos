@@ -92,7 +92,7 @@ authorized-use terms. The acceptance is stored in NVS, so it's a one-time gate p
 | `status` | one machine-readable line for the Cyber Controller host (below) |
 | `bridge` · `bridge on\|off\|status` | toggle machine-readable `LXVEOS/1 <type> k=v` event emission for the Cyber Controller bridge (off by default; recon/defense/capture/arm ops stream typed event lines when on). See `docs/EVENT-PROTOCOL.md` |
 | `loglevel <tag\|*> <level>` | change ESP-IDF log verbosity at runtime |
-| `nvs get\|set <key> [value]` | small persistent key/value store for operator settings |
+| `nvs get\|set <key> [value] \| export \| import <blob>` | small persistent key/value store for operator settings; `export` serializes all operator-set keys into one text blob and `import <blob>` restores them (backup/restore) |
 | `reboot` | restart the unit |
 
 **Offensive-TX safety (the `arm` gate).** Recon, defensive, and logging ops transmit nothing. The offensive ops
