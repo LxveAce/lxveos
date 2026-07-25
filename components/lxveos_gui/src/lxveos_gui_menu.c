@@ -107,3 +107,36 @@ void lxveos_gui_compose_detail(char *buf, size_t cap, const lxveos_op_t *op)
         break;
     }
 }
+
+void lxveos_gui_compose_run_hint(char *buf, size_t cap, const lxveos_op_t *op)
+{
+    if (cap == 0) {
+        return;
+    }
+    buf[0] = '\0';
+    if (op == NULL) {
+        return;
+    }
+    switch (lxveos_op_status(op)) {
+    case LXVEOS_OP_READY: {
+        // The launcher is read-only (tap-to-RUN is HW-gated), so a ready op runs from the serial CLI; an
+        // offensive/restricted op names its TX precondition inline so it's visible before the operator runs it.
+        lxveos_opclass_t k = lxveos_op_class(op);
+        const char *policy = (k == LXVEOS_OPCLASS_OFFENSIVE)  ? " (arm first)"
+                           : (k == LXVEOS_OPCLASS_RESTRICTED) ? " (owner/upstream TX)"
+                           : "";
+        snprintf(buf, cap, "Run from the serial CLI%s", policy);
+        break;
+    }
+    case LXVEOS_OP_ATTACHABLE:
+        snprintf(buf, cap, "Attach the %s add-on, then run from the CLI", lxveos_cap_name(op->required_cap));
+        break;
+    case LXVEOS_OP_PLANNED:
+        snprintf(buf, cap, "Planned - not in this build yet");
+        break;
+    case LXVEOS_OP_UNAVAILABLE:
+    default:
+        snprintf(buf, cap, "Unavailable - needs %s", lxveos_cap_name(op->required_cap));
+        break;
+    }
+}

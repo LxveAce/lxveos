@@ -145,12 +145,55 @@ static void test_op_label(void)
     assert(z == 'Q');
 }
 
+static void test_run_hint(void)
+{
+    // The one-line "how do I run this?" hint for the read-only launcher. Fixture: Wi-Fi built in, sub-GHz add-on
+    // — which gives an op in each status (ready / planned / attachable / unavailable) to exercise every branch.
+    lxveos_caps_probe();
+    char h[64];
+
+    // READY + STD -> run from the CLI, no TX-policy suffix.
+    lxveos_gui_compose_run_hint(h, sizeof(h), find_op("wifi_ap_scan"));
+    assert(strcmp(h, "Run from the serial CLI") == 0);
+
+    // READY + OFFENSIVE -> the arm precondition is called out inline.
+    lxveos_gui_compose_run_hint(h, sizeof(h), find_op("evil_portal"));
+    assert(strcmp(h, "Run from the serial CLI (arm first)") == 0);
+
+    // PLANNED (deauth_burst: WIFI active but unimplemented here) -> "planned", not a run line.
+    lxveos_gui_compose_run_hint(h, sizeof(h), find_op("deauth_burst"));
+    assert(strcmp(h, "Planned - not in this build yet") == 0);
+
+    // ATTACHABLE (sub-GHz add-on not wired on this fixture) -> the attach hint names the capability to wire.
+    lxveos_gui_compose_run_hint(h, sizeof(h), find_op("subghz_scan"));
+    assert(has(h, "Attach the ") && has(h, " add-on, then run from the CLI"));
+
+    // UNAVAILABLE (physically impossible on this board) -> "unavailable", names the needed cap.
+    lxveos_gui_compose_run_hint(h, sizeof(h), find_op("wifi_5ghz_scan"));
+    assert(has(h, "Unavailable - needs "));
+
+    // NULL op -> empty string; cap 0 -> no write; small cap -> truncated but NUL-terminated, nothing past cap.
+    char q = 'Q';
+    lxveos_gui_compose_run_hint(&q, 0, find_op("wifi_ap_scan"));
+    assert(q == 'Q');
+    lxveos_gui_compose_run_hint(h, sizeof(h), NULL);
+    assert(h[0] == '\0');
+    char small[10];
+    memset(small, 'G', sizeof(small));
+    lxveos_gui_compose_run_hint(small, 8, find_op("wifi_ap_scan"));
+    assert(strlen(small) < 8);
+    for (size_t i = 8; i < sizeof(small); i++) {
+        assert(small[i] == 'G');  // nothing written past cap
+    }
+}
+
 int main(void)
 {
     test_arm_banner();
     test_arm_banner_color();
     test_detail();
     test_op_label();
+    test_run_hint();
     printf("test_gui_menu: all tests passed\n");
     return 0;
 }

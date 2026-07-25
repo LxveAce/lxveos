@@ -27,3 +27,10 @@ uint32_t lxveos_gui_arm_banner_color(lxveos_arm_state_t state);
 // policy line spelling out the arm/upstream-TX requirement. Data comes from the op catalog + live caps probe;
 // this is the text the GUI shows when an op is opened (B12 indev). A NULL op yields a short placeholder.
 void lxveos_gui_compose_detail(char *buf, size_t cap, const lxveos_op_t *op);
+
+// Compose the one-line "how do I run this?" hint for an op into `buf` (bounded by `cap`). The on-device launcher
+// is READ-ONLY (tap-to-RUN is HW-gated), so a READY op is run from the serial CLI — offensive/restricted ops
+// name their arm/upstream-TX precondition inline; an ATTACHABLE op names the add-on to wire; PLANNED/UNAVAILABLE
+// ops say so (with the capability they need). A short, actionable complement to the fuller detail card. A NULL
+// op yields an empty string.
+void lxveos_gui_compose_run_hint(char *buf, size_t cap, const lxveos_op_t *op);
