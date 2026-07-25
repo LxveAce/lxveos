@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CLI_C = (ROOT / "components/lxveos_cli/src/lxveos_cli.c").read_text(encoding="utf-8")
 OPS_C = (ROOT / "components/lxveos_caps/src/lxveos_ops.c").read_text(encoding="utf-8")
 README = (ROOT / "README.md").read_text(encoding="utf-8")
+EVENT_PROTO = (ROOT / "docs/EVENT-PROTOCOL.md").read_text(encoding="utf-8")
 
 # Commands that esp_console provides itself / that are not operator commands to document.
 _BUILTIN_CMDS = {"help"}
@@ -265,3 +266,43 @@ def test_every_catalog_slug_has_a_cli_or_is_known_cli_less():
         f"catalog slug(s) with no CLI verb and not classified cli-less: {orphan} — wire a command "
         "or add to _SLUGS_WITHOUT_CLI (emitter-excluded / idf-infeasible / fleet-roadmap)"
     )
+
+
+# ── EVENT-PROTOCOL.md ↔ emitter field parity (Tier-4 #44) ────────────────────────────────────────────
+# docs/EVENT-PROTOCOL.md documents the wire the CC parser consumes; when the firmware emitter and the doc
+# drift apart, CC mistypes or drops fields (the #11 bug: the emitter sent tracker rssi/name, bleflood uniq,
+# blehid rssi that the doc never listed). This guard fails CI the moment an alert `kind`'s emitted fields
+# and its documented fields disagree — in EITHER direction — so the doc can never silently fall behind again.
+
+def _doc_alert_fields() -> dict[str, set[str]]:
+    """Parse the `alert` kind-specific bullet list (lines like: - `kind` (`detector`): `f1`(..) `f2` …).
+    A field name is the word right after a backtick (so `band=wifi|ble` yields `band`)."""
+    out: dict[str, set[str]] = {}
+    for m in re.finditer(r"^- `([a-z0-9_]+)` \(`[^`]+`(?:, custom)?\):(.*)$", EVENT_PROTO, re.M):
+        out[m.group(1)] = set(re.findall(r"`([a-z0-9_]+)", m.group(2)))
+    return out
+
+
+def _emitted_alert_fields() -> dict[str, set[str]]:
+    """For each `evt_kv(..., "kind", "K")` block, the field names of the following `evt_kv*` calls up to the
+    emitting `printf("%s\n", line)`. `"kind"` starts the block, so it is naturally excluded from the window."""
+    out: dict[str, set[str]] = {}
+    for m in re.finditer(r'"kind",\s*"([a-z0-9_]+)"', CLI_C):
+        kind, start = m.group(1), m.end()
+        end = CLI_C.find('printf("%s\n", line)', start)
+        window = CLI_C[start:end if end != -1 else start + 1500]
+        out[kind] = set(re.findall(r'evt_kv\w*\([^;]*?"([a-z0-9_]+)"', window))
+    return out
+
+
+def test_event_protocol_alert_fields_match_the_emitter():
+    """Every `alert` kind's documented fields (docs/EVENT-PROTOCOL.md) must equal what lxveos_cli.c emits,
+    both ways. Locks the doc↔emitter drift #11 fixed; a new alert field/kind now fails until the doc syncs."""
+    doc, emit = _doc_alert_fields(), _emitted_alert_fields()
+    # Sanity: the parsers must actually find the alert kinds (guard against a silently-empty regex passing).
+    assert len(emit) >= 12, f"emitter parse found only {len(emit)} alert kinds — regex drifted"
+    assert "tracker" in doc and "bleflood" in doc, "doc parse missed known alert kinds — regex drifted"
+    for kind in sorted(set(doc) & set(emit)):
+        d, e = doc[kind], emit[kind]
+        assert e <= d, f"alert kind={kind}: emitter sends {sorted(e - d)} NOT documented in EVENT-PROTOCOL.md"
+        assert d <= e, f"alert kind={kind}: EVENT-PROTOCOL.md documents {sorted(d - e)} the emitter never sends"
