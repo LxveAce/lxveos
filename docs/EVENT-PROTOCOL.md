@@ -47,7 +47,7 @@ The `status` line is always available regardless of `bridge` state: it's the das
 | `arm` | `state=safe\|pending\|armed\|tx_disabled` `token`(pending only) `window`(s, pending) | `arm`/`disarm` | arm state change. `tx_disabled` = offensive TX compiled out (LXVEOS_TX_DISABLE). Also printed as human prose (always), so CC tracks arm state even with the bridge off |
 | `alert` | `kind=deauth\|pwnagotchi\|eviltwin\|weak\|wps\|tracker\|flipper\|meta\|skimmer\|flock\|surveil\|bleflood\|blehid\|watch` `...`(kind-specific) | `defend`/`pwnwatch`/`eviltwin`/`apaudit`/`btracker`/`flipper`/`meta`/`skimmer`/`flock`/`surveil`/`bleflood`/`blehid`/`watch` | a detector fired; `kind` selects the field set below |
 | `snapshot` | `aps` `open` `wps` `bles` `trackers` | `airspace` (custom) | airspace occupancy counts; `bles`/`trackers` present only when BLE is active |
-| `done` | `of=<cmd>` `n=<count>` | any listing cmd | end-of-listing marker so CC knows the batch is complete |
+| `done` | `of=<cmd>` `n=<count>` | `scan`/`stations`/`probes`/`blescan` | end-of-listing marker so CC knows the batch is complete |
 
 ### `alert` kind-specific fields (the detector that fires it in parentheses)
 - `deauth` (`defend`): `bssid`(mac, busiest source) `count`(total deauth+disassoc) `deauth` `disassoc`. Fired only when count > 0.
@@ -55,14 +55,14 @@ The `status` line is always available regardless of `bridge` state: it's the das
 - `eviltwin` (`eviltwin`): `ssid`(hex) `bssids`(count advertising this ESSID) `open`(open BSSIDs) `enc`(encrypted BSSIDs). One per flagged ESSID.
 - `weak` (`apaudit`): `bssid`(mac) `ssid`(hex) `grade`(0=open 1=WEP 2=legacy-WPA) `wps`(=1 if also WPS). One per weak-encryption AP.
 - `wps` (`apaudit`): `bssid`(mac) `ssid`(hex) `grade`(3=WPA2 4=WPA3 …) `wps`(=1). One per WPS-advertising AP that is otherwise adequately encrypted.
-- `tracker` (`btracker`): `addr`(mac) `vendor` (AirTag/Tile/SmartTag/Chipolo/PebbleBee/GoogleFMN)
+- `tracker` (`btracker`): `addr`(mac) `vendor` (AirTag/Tile/SmartTag/Chipolo/PebbleBee/GoogleFMN) `rssi`(dBm) `name`(hex, when advertised)
 - `flipper` (`flipper`): `count`(Flipper Zero devices seen via their BLE service UUID)
 - `meta` (`meta`): `count`(Meta / Ray-Ban + Oculus devices seen via BLE)
 - `skimmer` (`skimmer`): `count`(card-skimmer heuristic hits, HC-0x BT-serial modules). Heuristic; verify in person.
 - `flock` (`flock`): `count`(Flock-camera heuristic hits) `likely`(the subset rated likely, not merely possible). Heuristic/experimental.
 - `surveil` (`surveil`): `count`(total surveillance-relevant devices) `tracker` `flock` `meta` `flipper` `skimmer`(per-category subcounts). One summary per sweep, emitted only when count > 0.
-- `bleflood` (`bleflood`): `rate` (adv/s) `vendor`
-- `blehid` (`blehid`): `addr`(mac) `name`(hex): a BLE HID (keyboard/mouse) device, an injection surface
+- `bleflood` (`bleflood`): `rate` (adv/s) `uniq`(unique advertisers this window) `vendor`
+- `blehid` (`blehid`): `addr`(mac) `rssi`(dBm) `name`(hex): a BLE HID (keyboard/mouse) device, an injection surface
 - `watch` (`watch scan`, custom): `mac`(mac, the watched target) `rssi`(dBm) `band=wifi\|ble`: a watchlisted BSSID/BLE-addr is present on this sweep. One per hit.
 
 ## Escaping / encoding rules (for the CC parser)
