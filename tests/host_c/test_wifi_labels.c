@@ -185,6 +185,55 @@ static void test_oui_vendor(void)
     assert(lxveos_oui_vendor(NULL) == NULL);
 }
 
+static void test_wigle(void)
+{
+    char caps[24];
+    // AuthMode capability brackets: open/unknown -> [ESS]; else the strongest family + [ESS] (mirrors wardrive.py).
+    lxveos_wifi_wigle_caps(WIFI_AUTH_OPEN, caps, sizeof(caps));            assert(strcmp(caps, "[ESS]") == 0);
+    lxveos_wifi_wigle_caps(WIFI_AUTH_WEP, caps, sizeof(caps));             assert(strcmp(caps, "[WEP][ESS]") == 0);
+    lxveos_wifi_wigle_caps(WIFI_AUTH_WPA_PSK, caps, sizeof(caps));         assert(strcmp(caps, "[WPA][ESS]") == 0);
+    lxveos_wifi_wigle_caps(WIFI_AUTH_WPA2_PSK, caps, sizeof(caps));        assert(strcmp(caps, "[WPA2][ESS]") == 0);
+    lxveos_wifi_wigle_caps(WIFI_AUTH_WPA_WPA2_PSK, caps, sizeof(caps));    assert(strcmp(caps, "[WPA2][ESS]") == 0);
+    lxveos_wifi_wigle_caps(WIFI_AUTH_WPA2_ENTERPRISE, caps, sizeof(caps)); assert(strcmp(caps, "[WPA2][ESS]") == 0);
+    lxveos_wifi_wigle_caps(WIFI_AUTH_WPA3_PSK, caps, sizeof(caps));        assert(strcmp(caps, "[WPA3][ESS]") == 0);
+    lxveos_wifi_wigle_caps(WIFI_AUTH_WPA2_WPA3_PSK, caps, sizeof(caps));   assert(strcmp(caps, "[WPA3][ESS]") == 0);
+    lxveos_wifi_wigle_caps(200, caps, sizeof(caps));                       assert(strcmp(caps, "[ESS]") == 0);  // unknown mode
+
+    // Channel -> centre frequency (2.4 GHz, 5 GHz, and the ch 14 exception).
+    assert(lxveos_wifi_channel_to_freq(1) == 2412);
+    assert(lxveos_wifi_channel_to_freq(6) == 2437);
+    assert(lxveos_wifi_channel_to_freq(11) == 2462);
+    assert(lxveos_wifi_channel_to_freq(13) == 2472);
+    assert(lxveos_wifi_channel_to_freq(14) == 2484);    // exception: 2484, not 2407+14*5
+    assert(lxveos_wifi_channel_to_freq(36) == 5180);
+    assert(lxveos_wifi_channel_to_freq(165) == 5825);
+    assert(lxveos_wifi_channel_to_freq(0) == 0);
+    assert(lxveos_wifi_channel_to_freq(-3) == 0);
+
+    // A full WiGLE-1.6 row (SSID pre-quoted via csv_quote_field; caller-supplied GPS strings).
+    char row[256];
+    const uint8_t bssid[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    size_t n = lxveos_wifi_wigle_row(row, sizeof(row), bssid, "\"MyNet\"", WIFI_AUTH_WPA2_PSK, 6, -50,
+                                     "2024-01-01 12:00:00", "37.123456", "-122.654321", "10.5");
+    assert(strcmp(row, "AA:BB:CC:DD:EE:FF,\"MyNet\",[WPA2][ESS],2024-01-01 12:00:00,6,2437,-50,"
+                       "37.123456,-122.654321,10.5,0,,,WIFI") == 0);
+    assert(n == strlen(row));
+
+    // GPS-less (the lxveos default): NULL first_seen + coords -> empty fields; AccuracyMeters stays 0, Type WIFI.
+    lxveos_wifi_wigle_row(row, sizeof(row), bssid, "\"MyNet\"", WIFI_AUTH_WPA2_PSK, 6, -50, NULL, NULL, NULL, NULL);
+    assert(strcmp(row, "AA:BB:CC:DD:EE:FF,\"MyNet\",[WPA2][ESS],,6,2437,-50,,,,0,,,WIFI") == 0);
+
+    // Open network -> [ESS]; the BSSID prints uppercase hex.
+    const uint8_t b2[6] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+    lxveos_wifi_wigle_row(row, sizeof(row), b2, "\"cafe\"", WIFI_AUTH_OPEN, 11, -70, NULL, NULL, NULL, NULL);
+    assert(strcmp(row, "00:11:22:33:44:55,\"cafe\",[ESS],,11,2462,-70,,,,0,,,WIFI") == 0);
+
+    // The header constant is the canonical 14-column WiGLE header.
+    assert(strcmp(LXVEOS_WIFI_WIGLE_HEADER,
+                  "MAC,SSID,AuthMode,FirstSeen,Channel,Frequency,RSSI,CurrentLatitude,CurrentLongitude,"
+                  "AltitudeMeters,AccuracyMeters,RCOIs,MfgrId,Type") == 0);
+}
+
 int main(void)
 {
     test_authmode_str();
@@ -194,6 +243,7 @@ int main(void)
     test_pwnagotchi();
     test_mac_is_random();
     test_oui_vendor();
+    test_wigle();
     printf("test_wifi_labels: all tests passed\n");
     return 0;
 }

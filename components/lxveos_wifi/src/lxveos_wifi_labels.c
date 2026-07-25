@@ -8,6 +8,7 @@
 #include "esp_wifi_types.h"
 
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 const char *lxveos_wifi_authmode_str(uint8_t authmode)
@@ -227,4 +228,65 @@ bool lxveos_wifi_pwnagotchi_parse(const char *essid, size_t essid_len, char *nam
         }
     }
     return got;
+}
+
+// ── WiGLE-1.6 wardrive CSV export (pure formatters, #31) ─────────────────────────────────────────────────
+// Emit rows a host can upload straight to wigle.net. The format mirrors cyber-controller's wardrive.py (the
+// authoritative in-repo WiGLE emitter): the capability-bracket AuthMode, the channel->frequency map, and the
+// 14-column row order. SSID quoting is the caller's csv_quote_field step (lxveos always-quotes) so this stays a
+// pure layout formatter with no cross-component dependency.
+
+void lxveos_wifi_wigle_caps(uint8_t authmode, char *buf, size_t buflen)
+{
+    if (buflen == 0) {
+        return;
+    }
+    const char *tok;
+    switch ((wifi_auth_mode_t)authmode) {
+    case WIFI_AUTH_WEP:             tok = "WEP";  break;
+    case WIFI_AUTH_WPA_PSK:         tok = "WPA";  break;
+    case WIFI_AUTH_WPA2_PSK:
+    case WIFI_AUTH_WPA_WPA2_PSK:
+    case WIFI_AUTH_WPA2_ENTERPRISE: tok = "WPA2"; break;
+    case WIFI_AUTH_WPA3_PSK:
+    case WIFI_AUTH_WPA2_WPA3_PSK:   tok = "WPA3"; break;
+    default:                        tok = NULL;   break;  // OPEN or unknown -> no encryption bracket
+    }
+    if (tok == NULL) {
+        snprintf(buf, buflen, "[ESS]");
+    } else {
+        snprintf(buf, buflen, "[%s][ESS]", tok);
+    }
+}
+
+int lxveos_wifi_channel_to_freq(int channel)
+{
+    if (channel <= 0) {
+        return 0;
+    }
+    if (channel == 14) {
+        return 2484;
+    }
+    if (channel <= 13) {
+        return 2407 + channel * 5;
+    }
+    return 5000 + channel * 5;  // 5 GHz (ch 32..177)
+}
+
+size_t lxveos_wifi_wigle_row(char *buf, size_t buflen, const uint8_t bssid[6], const char *ssid_quoted,
+                             uint8_t authmode, int channel, int rssi, const char *first_seen,
+                             const char *lat, const char *lon, const char *alt)
+{
+    if (buf == NULL || buflen == 0) {
+        return 0;
+    }
+    char caps[24];
+    lxveos_wifi_wigle_caps(authmode, caps, sizeof(caps));
+    // Column order: MAC,SSID,AuthMode,FirstSeen,Channel,Frequency,RSSI,Lat,Lon,Alt,Accuracy,RCOIs,MfgrId,Type.
+    int n = snprintf(buf, buflen, "%02X:%02X:%02X:%02X:%02X:%02X,%s,%s,%s,%d,%d,%d,%s,%s,%s,0,,,WIFI",
+                     bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5],
+                     ssid_quoted != NULL ? ssid_quoted : "", caps,
+                     first_seen != NULL ? first_seen : "", channel, lxveos_wifi_channel_to_freq(channel), rssi,
+                     lat != NULL ? lat : "", lon != NULL ? lon : "", alt != NULL ? alt : "");
+    return n < 0 ? 0 : (size_t)n;
 }

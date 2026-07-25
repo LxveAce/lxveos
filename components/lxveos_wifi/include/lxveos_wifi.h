@@ -151,6 +151,31 @@ bool lxveos_mac_is_random(uint8_t first_octet);
 // guessed. Data is a verified subset of the IEEE MA-L registry. `mac` must point to at least 3 octets.
 const char *lxveos_oui_vendor(const uint8_t *mac);
 
+// ── WiGLE-1.6 wardrive CSV export (pure formatters, #31) ──────────────────────────────────────────────
+// The column header for a WiGLE CSV file (the wigle.net wardrive import format). A file is this line preceded by
+// a "WigleWifi-1.6,..." pre-header and followed by one lxveos_wifi_wigle_row() per AP. Mirrors the authoritative
+// format cyber-controller's wardrive.py emits (the same rows wigle.net already accepts).
+#define LXVEOS_WIFI_WIGLE_HEADER \
+    "MAC,SSID,AuthMode,FirstSeen,Channel,Frequency,RSSI,CurrentLatitude,CurrentLongitude,AltitudeMeters," \
+    "AccuracyMeters,RCOIs,MfgrId,Type"
+
+// Write the WiGLE "AuthMode" capability-bracket string for a Wi-Fi authmode into `buf`: "[ESS]" for open (or an
+// unknown mode), else "[WPA3|WPA2|WPA|WEP][ESS]" for the strongest family the mode implies. Mirrors wardrive.py's
+// convention. NUL-terminated; `buf` should be >= 24 bytes (no-op if buflen is 0).
+void lxveos_wifi_wigle_caps(uint8_t authmode, char *buf, size_t buflen);
+
+// 802.11 channel -> centre frequency in MHz (2.4 GHz ch 1-14, 5 GHz ch 32+), or 0 for a non-positive channel.
+int lxveos_wifi_channel_to_freq(int channel);
+
+// Format one WiGLE-1.6 CSV row into `buf` (a wigle.net-importable AP observation). `ssid_quoted` must ALREADY be
+// CSV-quoted via csv_quote_field (lxveos always-quotes the SSID, so a comma/quote in a name can't break the row).
+// `first_seen`/`lat`/`lon`/`alt` are placed verbatim, or empty when NULL (lxveos is GPS-less by default — the host
+// or an NMEA fix supplies coordinates); AccuracyMeters is "0", RCOIs/MfgrId empty, Type "WIFI". Returns the row
+// length (snprintf semantics; a value >= buflen means it was truncated — size `buf` ~256). Pure, RX-only.
+size_t lxveos_wifi_wigle_row(char *buf, size_t buflen, const uint8_t bssid[6], const char *ssid_quoted,
+                             uint8_t authmode, int channel, int rssi, const char *first_seen,
+                             const char *lat, const char *lon, const char *alt);
+
 // Security-audit grade for an AP auth mode, without the caller pulling in esp_wifi's enum:
 //   0 = OPEN (no encryption) · 1 = WEP (broken) · 2 = WPA (deprecated TKIP) · 3 = WPA2 · 4 = WPA3 · 5 = other
 // Grades 0-2 are WEAK. `*note` (may be NULL) is set to a short human weakness reason (grades 0-2) or the
