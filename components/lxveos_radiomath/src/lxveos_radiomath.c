@@ -173,3 +173,30 @@ size_t lxveos_ook_decode(const uint16_t *durations, size_t n, char *bits, size_t
     }
     return nbits;
 }
+
+bool lxveos_ook_codeword(const char *bits, size_t nbits, lxveos_ook_codeword_t *out)
+{
+    if (out == NULL) {
+        return false;
+    }
+    out->address = 0;
+    out->button = 0;
+    out->nbits = 0;
+    out->valid = false;
+    if (bits == NULL || nbits != 24) {
+        return false;
+    }
+    uint32_t word = 0;
+    for (size_t i = 0; i < nbits; i++) {
+        char c = bits[i];
+        if (c != '0' && c != '1') {
+            return false;              // not a clean binary frame
+        }
+        word = (word << 1) | (uint32_t)(c - '0');
+    }
+    out->address = word >> 4;          // top 20 bits
+    out->button = (uint8_t)(word & 0x0Fu);
+    out->nbits = 24;
+    out->valid = true;
+    return true;
+}

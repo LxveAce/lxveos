@@ -48,3 +48,20 @@ bool lxveos_unifying_checksum_ok(const uint8_t *frame, size_t n);
 // Writes up to `bits_cap` chars (no NUL) to `bits` and returns the number of bits decoded (0 if the train is
 // too short / no clean Te / all noise). Pure: no radio, no allocation.
 size_t lxveos_ook_decode(const uint16_t *durations, size_t n, char *bits, size_t bits_cap);
+
+// A decoded fixed/learning-code OOK remote codeword. The common 315/433 MHz remotes (EV1527, and the
+// EV1527-compatible bit framing of PT2262-style encoders) send a 24-bit word: the top 20 bits are the
+// remote's address and the low 4 are the button/data nibble. (True PT2262 tri-state pin states are NOT
+// resolved here — this is the bit-level frame lxveos_ook_decode recovers, split by the 20+4 convention.)
+typedef struct {
+    uint32_t address;  // 20-bit remote address (top 20 bits of the 24-bit word)
+    uint8_t button;    // 4-bit button/data nibble (low 4 bits)
+    uint8_t nbits;     // number of bits parsed (24 for a standard frame)
+    bool valid;        // true when `bits` was a well-formed 24-bit binary codeword
+} lxveos_ook_codeword_t;
+
+// Parse the '0'/'1' bit-string lxveos_ook_decode writes into a 24-bit OOK codeword (20-bit address + 4-bit
+// button). `bits` holds `nbits` ASCII '0'/'1' chars (no NUL required). Returns true and fills *out for a
+// valid 24-bit binary frame; returns false (and sets out->valid=false) for a wrong length, a non-binary
+// char, or a NULL argument. Pure: no radio, no allocation.
+bool lxveos_ook_codeword(const char *bits, size_t nbits, lxveos_ook_codeword_t *out);

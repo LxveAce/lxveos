@@ -150,6 +150,29 @@ static void test_ook_decode(void)
     assert(lxveos_ook_decode(f1, 8, bits, 0) == 0);
 }
 
+static void test_ook_codeword(void)
+{
+    lxveos_ook_codeword_t cw;
+    // 24-bit frame: address 0xABCDE (top 20 bits) + button 0x5 -> word 0xABCDE5 = 1010 1011 1100 1101 1110 0101.
+    assert(lxveos_ook_codeword("101010111100110111100101", 24, &cw));
+    assert(cw.valid && cw.nbits == 24 && cw.address == 0xABCDEu && cw.button == 0x5u);
+
+    // All-ones frame: address 0xFFFFF, button 0xF.
+    assert(lxveos_ook_codeword("111111111111111111111111", 24, &cw));
+    assert(cw.address == 0xFFFFFu && cw.button == 0xFu);
+
+    // Wrong length -> invalid, and out->valid is cleared.
+    assert(!lxveos_ook_codeword("0101", 4, &cw) && !cw.valid);
+    assert(!lxveos_ook_codeword("1010101011001101111001011", 25, &cw));   // 25 bits
+
+    // A non-binary char anywhere -> invalid.
+    assert(!lxveos_ook_codeword("10101011110011011110010x", 24, &cw));
+
+    // NULL guards.
+    assert(!lxveos_ook_codeword(NULL, 24, &cw));
+    assert(!lxveos_ook_codeword("101010111100110111100101", 24, NULL));
+}
+
 int main(void)
 {
     test_cc1101_freq_to_word();
@@ -158,6 +181,7 @@ int main(void)
     test_mifare_bcc();
     test_unifying_checksum();
     test_ook_decode();
+    test_ook_codeword();
     printf("test_radiomath: all tests passed\n");
     return 0;
 }

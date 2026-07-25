@@ -2221,6 +2221,11 @@ static void subghz_print_decoded(void)
     }
     bits[nb] = '\0';
     printf("  OOK decode: %u bits  %s\n", (unsigned)nb, bits);
+    lxveos_ook_codeword_t cw;
+    if (lxveos_ook_codeword(bits, nb, &cw)) {
+        printf("  codeword: address=0x%05lX button=0x%X (24-bit EV1527-style)\n",
+               (unsigned long)cw.address, (unsigned)cw.button);
+    }
 }
 
 static int cmd_subghz(int argc, char **argv)
