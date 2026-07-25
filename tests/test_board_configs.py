@@ -135,6 +135,27 @@ def test_fixed_display_drivers_have_a_selector():
                 f"{bid}: fixed driver {drv!r} not in FIXED_DISPLAY_DRIVERS (create_panel would fall through)"
 
 
+def test_board_ui_profiles_are_a_known_set():
+    """Every board's `ui_profile` is one of the values the BSP actually supports — the set documented on
+    lxveos_ui_profile() in lxveos_board.h. gen_board_configs only checks the field is PRESENT (not that it's
+    known), so a typo'd profile (e.g. "touchgui") would validate and emit LXVEOS_UI_PROFILE "touchgui" — a value
+    the GUI/board code has no branch for. Deriving the allow-set from the header keeps the two in sync: add a
+    profile to the header comment and the manifest may use it; use one the header doesn't list and this fails."""
+    board_h = (ROOT / "components/lxveos_board/include/lxveos_board.h").read_text(encoding="utf-8")
+    m = re.search(r"lxveos_ui_profile\s*\(\s*void\s*\)\s*;\s*//\s*(.+)", board_h)
+    assert m, "could not find the ui_profile allow-set comment on lxveos_ui_profile() in lxveos_board.h"
+    allowed = {p.strip() for p in m.group(1).split("|")}
+    # Sanity floor (non-vacuous): the parsed set must carry the profiles the fleet actually uses, so a
+    # mis-parsed / garbage comment can't let this pass silently.
+    assert {"headless", "button_gui", "keypad_gui", "touch_gui"} <= allowed, \
+        f"ui_profile allow-set parsed from lxveos_board.h looks wrong: {sorted(allowed)}"
+    for bid, b in BOARDS.items():
+        prof = b.get("ui_profile")
+        assert prof in allowed, \
+            f"{bid}: ui_profile {prof!r} not in the supported set {sorted(allowed)} " \
+            "(add a branch + document it on lxveos_ui_profile() in lxveos_board.h, or fix the manifest)"
+
+
 def test_display_pins_emitted_when_present():
     """A display board with a `pins` block emits LXVEOS_DISP_HAS_PINS 1 plus one define per line
     matching the manifest; boards without pins emit LXVEOS_DISP_HAS_PINS 0 and no pin defines."""
