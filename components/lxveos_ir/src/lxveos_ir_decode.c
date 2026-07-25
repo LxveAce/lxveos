@@ -115,6 +115,80 @@ static bool decode_sony(const uint16_t *d, size_t n, lxveos_ir_decoded_t *out)
     return true;
 }
 
+// Philips RC5 (+ RC5X extended): 14 bits, bi-phase (Manchester) coded at an 889µs half-bit (T). Each bit is two
+// half-bits — a '1' is a space(T) then mark(T) (low->high mid-bit transition), a '0' is a mark(T) then space(T)
+// — so the mark/space train carries only runs of T (~889µs) or 2T (~1778µs). Frame, MSB first: S1 S2 T A4..A0
+// C5..C0. S1 is always 1; S2 is 1 for plain RC5 or the inverted 7th command bit for RC5X (extending commands to
+// 0..127); T is the (ignored) toggle. The receiver never captures the leading half-bit — it is S1's space half,
+// carrier only starts at S1's mark — so we prepend an implicit leading space; likewise a frame ending on a '0'
+// loses its trailing space to idle, so we append one when the reconstructed half-bit count comes out odd. The
+// per-bit inverse-phase check + the fixed 14-bit length + S1==1 keep the decode low-false-positive. Ref: the
+// public Philips RC5 protocol spec.
+#define LXVEOS_RC5_T 889u
+static bool decode_rc5(const uint16_t *d, size_t n, lxveos_ir_decoded_t *out)
+{
+    if (n < 2) {
+        return false;
+    }
+    // Reconstruct the half-bit level sequence (0 = space / carrier off, 1 = mark / carrier on). hb[0] is the
+    // implicit leading space (idle before S1's mark). d[0] is a MARK, then the levels alternate.
+    uint8_t hb[30];
+    size_t hc = 0;
+    hb[hc++] = 0u;
+    for (size_t i = 0; i < n; i++) {
+        uint8_t level = (uint8_t)((i % 2u == 0u) ? 1u : 0u);   // d[0] MARK, then alternating SPACE/MARK
+        size_t units;
+        if (near_us(d[i], LXVEOS_RC5_T, 30)) {
+            units = 1u;
+        } else if (near_us(d[i], 2u * LXVEOS_RC5_T, 30)) {
+            units = 2u;
+        } else {
+            return false;   // not a 1T / 2T RC5 duration
+        }
+        for (size_t u = 0; u < units; u++) {
+            if (hc >= sizeof(hb)) {
+                return false;   // longer than any 14-bit RC5 frame -> not RC5
+            }
+            hb[hc++] = level;
+        }
+    }
+    if (hc == 27u) {
+        hb[hc++] = 0u;   // frame ended on a '0': its trailing space fell into idle, so restore it
+    }
+    if (hc != 28u) {
+        return false;    // an RC5 frame is exactly 28 half-bits (14 bits)
+    }
+    uint16_t val = 0;
+    for (size_t k = 0; k < 14u; k++) {
+        uint8_t first = hb[2u * k];
+        uint8_t second = hb[2u * k + 1u];
+        uint8_t bit;
+        if (first == 0u && second == 1u) {
+            bit = 1u;   // space then mark = '1'
+        } else if (first == 1u && second == 0u) {
+            bit = 0u;   // mark then space = '0'
+        } else {
+            return false;   // a (mark,mark) or (space,space) pair is not valid bi-phase -> not RC5
+        }
+        val = (uint16_t)((val << 1) | bit);
+    }
+    if (((val >> 13) & 1u) != 1u) {
+        return false;   // S1 (the first start bit) is always 1
+    }
+    uint8_t s2 = (uint8_t)((val >> 12) & 1u);
+    uint8_t addr = (uint8_t)((val >> 6) & 0x1Fu);   // A4..A0
+    uint8_t cmd = (uint8_t)(val & 0x3Fu);           // C5..C0
+    if (s2 == 0u) {
+        cmd = (uint8_t)(cmd | 0x40u);   // RC5X: S2 = inverted 7th command bit -> S2 low means command 64..127
+    }
+    out->proto = LXVEOS_IR_PROTO_RC5;
+    out->address = addr;
+    out->command = cmd;
+    out->bits = 14u;
+    out->addr_ext = false;
+    return true;
+}
+
 bool lxveos_ir_decode(const uint16_t *durations, size_t n, lxveos_ir_decoded_t *out)
 {
     if (durations == NULL || out == NULL) {
@@ -129,6 +203,9 @@ bool lxveos_ir_decode(const uint16_t *durations, size_t n, lxveos_ir_decoded_t *
         return true;
     }
     if (decode_sony(durations, n, out)) {
+        return true;
+    }
+    if (decode_rc5(durations, n, out)) {
         return true;
     }
     out->proto = LXVEOS_IR_PROTO_UNKNOWN;   // a sub-decoder may have half-filled *out before rejecting
@@ -194,6 +271,41 @@ bool lxveos_ir_encode(const lxveos_ir_decoded_t *in, uint16_t *out, size_t cap, 
         }
         break;
     }
+    case LXVEOS_IR_PROTO_RC5: {
+        // Rebuild the 14-bit frame (MSB first): S1=1, S2 = inverted 7th command bit, T=0 (canonical toggle),
+        // 5 address bits, low 6 command bits. Expand to 28 half-bits ('1' -> space,mark; '0' -> mark,space),
+        // then emit what a transmitter actually puts on the wire — and what decode_rc5 reads back: drop S1's
+        // leading space half-bit (carrier only starts at its mark) and a trailing space half-bit (a '0' last
+        // bit's second half falls into idle), then run-length merge the rest into T / 2T durations from a mark.
+        uint8_t addr = (uint8_t)(in->address & 0x1Fu);
+        uint8_t cmd7 = (uint8_t)(in->command & 0x7Fu);
+        uint8_t s2 = (uint8_t)((cmd7 & 0x40u) ? 0u : 1u);   // RC5X: a 7th command bit -> S2 = 0
+        uint16_t val = (uint16_t)(((uint16_t)1u << 13)          // S1 = 1
+                                  | ((uint16_t)s2 << 12)        // S2
+                                  | ((uint16_t)addr << 6)       // A4..A0 (toggle T stays 0 at bit 11)
+                                  | (uint16_t)(cmd7 & 0x3Fu));  // C5..C0
+        uint8_t hb[28];
+        for (size_t k = 0; k < 14u; k++) {
+            uint8_t bit = (uint8_t)((val >> (13u - k)) & 1u);
+            hb[2u * k] = (uint8_t)(bit ? 0 : 1);        // first half-bit
+            hb[2u * k + 1u] = (uint8_t)(bit ? 1 : 0);   // second half-bit
+        }
+        if (cap < 27) {   // <= 27 durations (27 half-bits after dropping the implicit leading space)
+            return false;
+        }
+        size_t hi = (hb[27] == 0u) ? 27u : 28u;   // exclusive end; skip the trailing space half-bit if present
+        size_t i = 1u;                            // start past the implicit leading space (hb[0], always a space)
+        while (i < hi) {
+            uint8_t lvl = hb[i];
+            size_t run = 1u;
+            while (i + run < hi && hb[i + run] == lvl) {
+                run++;
+            }
+            out[n++] = (uint16_t)(run * LXVEOS_RC5_T);   // run is 1 or 2 -> 889 or 1778 µs
+            i += run;
+        }
+        break;
+    }
     default:
         return false;   // UNKNOWN or an unsupported proto
     }
@@ -207,6 +319,7 @@ const char *lxveos_ir_proto_str(lxveos_ir_proto_t proto)
     case LXVEOS_IR_PROTO_NEC:        return "NEC";
     case LXVEOS_IR_PROTO_NEC_REPEAT: return "NEC-repeat";
     case LXVEOS_IR_PROTO_SONY:       return "Sony";
+    case LXVEOS_IR_PROTO_RC5:        return "RC5";
     default:                         return NULL;
     }
 }

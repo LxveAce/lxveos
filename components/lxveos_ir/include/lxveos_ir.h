@@ -39,29 +39,30 @@ esp_err_t lxveos_ir_replay(int tx_gpio);
 bool lxveos_ir_have_capture(void);
 uint32_t lxveos_ir_capture_symbols(void);
 
-// ── Protocol decode (NEC / Sony SIRC) ───────────────────────────────────────────────────────────────────
+// ── Protocol decode (NEC / Sony SIRC / Philips RC5) ─────────────────────────────────────────────────────
 // The capture/replay above is protocol-agnostic (record + re-emit raw symbols). This adds an OPTIONAL pure
-// decoder that recognizes the two dominant consumer IR protocols and pulls out their address/command, so a
-// capture can be reported as "NEC addr=0x04 cmd=0x08" instead of just a symbol count. RC5/RC6 (Manchester)
-// are not decoded yet — an undecodable capture still records + replays fine.
+// decoder that recognizes the dominant consumer IR protocols and pulls out their address/command, so a
+// capture can be reported as "NEC addr=0x04 cmd=0x08" instead of just a symbol count. RC6 (Manchester) is not
+// decoded yet — an undecodable capture still records + replays fine.
 typedef enum {
     LXVEOS_IR_PROTO_UNKNOWN = 0,
     LXVEOS_IR_PROTO_NEC,         // NEC (8-bit address, or 16-bit "extended" when the address byte isn't inverted)
     LXVEOS_IR_PROTO_NEC_REPEAT,  // NEC repeat code (a held-down button), no payload
     LXVEOS_IR_PROTO_SONY,        // Sony SIRC (12 / 15 / 20-bit)
+    LXVEOS_IR_PROTO_RC5,         // Philips RC5 / RC5X (14-bit Manchester; 5-bit address, 6- or 7-bit command)
 } lxveos_ir_proto_t;
 
 typedef struct {
     lxveos_ir_proto_t proto;
-    uint16_t address;   // device/address field (NEC 8 or 16-bit; Sony the bits above the 7-bit command)
-    uint16_t command;   // command field (NEC 8-bit; Sony low 7 bits)
-    uint8_t  bits;      // payload bit count (NEC 32; Sony 12/15/20; 0 for a repeat code)
+    uint16_t address;   // device/address field (NEC 8 or 16-bit; Sony the bits above the 7-bit command; RC5 5-bit)
+    uint16_t command;   // command field (NEC 8-bit; Sony low 7 bits; RC5 6-bit, or 7-bit for an RC5X frame)
+    uint8_t  bits;      // payload bit count (NEC 32; Sony 12/15/20; RC5 14; 0 for a repeat code)
     bool     addr_ext;  // NEC only: the address byte was not its own inverse -> 16-bit extended addressing
 } lxveos_ir_decoded_t;
 
 // Decode a captured IR mark/space duration train (microseconds; durations[0] is a MARK — carrier on — then
-// alternating SPACE, MARK, …) into a protocol + address/command. Recognizes NEC (and its repeat code) and
-// Sony SIRC within timing tolerance. Returns true and fills *out on a confident decode (NEC also requires the
+// alternating SPACE, MARK, …) into a protocol + address/command. Recognizes NEC (and its repeat code),
+// Sony SIRC, and Philips RC5 within timing tolerance. Returns true and fills *out on a confident decode (NEC also requires the
 // command's inverted-byte integrity check to pass); returns false and leaves *out = UNKNOWN otherwise. Pure:
 // no radio, no allocation — this is the host-tested core (tests/host_c/test_ir_decode.c).
 bool lxveos_ir_decode(const uint16_t *durations, size_t n, lxveos_ir_decoded_t *out);
@@ -69,11 +70,12 @@ bool lxveos_ir_decode(const uint16_t *durations, size_t n, lxveos_ir_decoded_t *
 // Encode a decoded command back into a mark/space duration train (microseconds), the inverse of
 // lxveos_ir_decode, so decode(encode(x)) == x. Writes into out[0..cap) and sets *n_out to the count. Returns
 // false if in/out/n_out is NULL, the proto is UNKNOWN/unsupported, the Sony bit count is not 12/15/20, or the
-// buffer is too small (NEC needs 67 slots, NEC-repeat 2, Sony 26/32/42 for a 12/15/20-bit frame). This is the
+// buffer is too small (NEC needs 67 slots, NEC-repeat 2, Sony 26/32/42 for a 12/15/20-bit frame, RC5 up to 27).
+// This is the
 // pure duration generator only; actually driving an IR LED (lxveos_ir_replay) stays HW-gated. Host-tested.
 bool lxveos_ir_encode(const lxveos_ir_decoded_t *in, uint16_t *out, size_t cap, size_t *n_out);
 
-// Short protocol label ("NEC"/"NEC-repeat"/"Sony"), or NULL for LXVEOS_IR_PROTO_UNKNOWN.
+// Short protocol label ("NEC"/"NEC-repeat"/"Sony"/"RC5"), or NULL for LXVEOS_IR_PROTO_UNKNOWN.
 const char *lxveos_ir_proto_str(lxveos_ir_proto_t proto);
 
 // Decode the LAST stored capture (flattens the retained RMT symbols to a duration train and runs

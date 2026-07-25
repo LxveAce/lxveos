@@ -35,6 +35,37 @@ static size_t build_sony(uint16_t *d, uint32_t val, int bits)
     return k;
 }
 
+// Build a canonical Philips RC5 mark/space train for (addr, cmd, toggle) into d[]: assemble the 14-bit frame
+// (S1=1, S2 = inverted 7th command bit, toggle, 5 address bits, low 6 command bits), expand to 28 Manchester
+// half-bits ('1' = space then mark, '0' = mark then space), drop S1's implicit leading space + a '0'-last-bit's
+// trailing space, then run-length merge into 889/1778µs durations. Written straight from the RC5 spec and kept
+// separate from the source encoder, so it independently exercises the decoder and cross-checks lxveos_ir_encode.
+static size_t build_rc5(uint16_t *d, uint8_t addr, uint8_t cmd, uint8_t toggle)
+{
+    uint8_t s2 = (cmd & 0x40u) ? 0u : 1u;
+    uint16_t val = (uint16_t)(((uint16_t)1u << 13) | ((uint16_t)s2 << 12) | ((uint16_t)(toggle & 1u) << 11)
+                              | ((uint16_t)(addr & 0x1Fu) << 6) | (uint16_t)(cmd & 0x3Fu));
+    uint8_t hb[28];
+    for (int k = 0; k < 14; k++) {
+        int bit = (val >> (13 - k)) & 1u;
+        hb[2 * k] = (uint8_t)(bit ? 0 : 1);
+        hb[2 * k + 1] = (uint8_t)(bit ? 1 : 0);
+    }
+    int hi = (hb[27] == 0u) ? 27 : 28;
+    size_t k = 0;
+    int i = 1;
+    while (i < hi) {
+        int lvl = hb[i];
+        int run = 1;
+        while (i + run < hi && hb[i + run] == lvl) {
+            run++;
+        }
+        d[k++] = (uint16_t)(run * 889);
+        i += run;
+    }
+    return k;
+}
+
 static void test_nec(void)
 {
     uint16_t d[128];
@@ -104,6 +135,65 @@ static void test_sony(void)
     assert(lxveos_ir_decode(d, n, &dec) == false);
 }
 
+static void test_rc5(void)
+{
+    uint16_t d[40];
+    lxveos_ir_decoded_t dec;
+
+    // Plain RC5: address 5, command 0x35 (6-bit, bit 6 clear -> S2=1). The toggle bit must not affect addr/cmd.
+    for (int tg = 0; tg <= 1; tg++) {
+        size_t n = build_rc5(d, 5, 0x35, (uint8_t)tg);
+        assert(lxveos_ir_decode(d, n, &dec) == true);
+        assert(dec.proto == LXVEOS_IR_PROTO_RC5);
+        assert(dec.address == 5);
+        assert(dec.command == 0x35);
+        assert(dec.bits == 14);
+        assert(dec.addr_ext == false);
+        assert(strcmp(lxveos_ir_proto_str(dec.proto), "RC5") == 0);
+    }
+
+    // RC5X extended command (bit 6 set -> a 7-bit command 0x40..0x7F, carried by S2=0).
+    size_t n = build_rc5(d, 0x1F, 0x66, 0);
+    assert(lxveos_ir_decode(d, n, &dec) == true);
+    assert(dec.proto == LXVEOS_IR_PROTO_RC5 && dec.address == 0x1F && dec.command == 0x66);
+
+    // Boundary values: all-zero, and the maximum 5-bit address / 6-bit command.
+    n = build_rc5(d, 0, 0, 0);
+    assert(lxveos_ir_decode(d, n, &dec) && dec.address == 0 && dec.command == 0);
+    n = build_rc5(d, 0x1F, 0x3F, 0);
+    assert(lxveos_ir_decode(d, n, &dec) && dec.address == 0x1F && dec.command == 0x3F);
+
+    // build_rc5 and the source encoder build the same spec-defined train, so this is a cheap DRIFT guard that
+    // the two stay in step (the independent correctness check is the golden vectors below), not a second oracle.
+    uint16_t enc[40];
+    size_t en = 0;
+    lxveos_ir_decoded_t in = {LXVEOS_IR_PROTO_RC5, 5, 0x35, 14, false};
+    n = build_rc5(d, 5, 0x35, 0);
+    assert(lxveos_ir_encode(&in, enc, 40, &en));
+    assert(en == n && memcmp(d, enc, n * sizeof(uint16_t)) == 0);
+
+    // Golden vectors: literal mark/space trains produced by a SEPARATE (Python) RC5 encoder written straight
+    // from the spec — frozen here so decode is validated against a fixed external reference, not only its own
+    // inverse. golden_5_35 = addr 5 / cmd 0x35 (plain RC5); golden_1f_7f = addr 0x1F / cmd 0x7F (max RC5X).
+    static const uint16_t golden_5_35[] = {889, 889, 1778, 889, 889, 889, 889, 1778, 1778, 1778,
+                                           889, 889, 889, 889, 1778, 1778, 1778, 1778, 889};
+    assert(lxveos_ir_decode(golden_5_35, sizeof(golden_5_35) / sizeof(golden_5_35[0]), &dec) == true);
+    assert(dec.proto == LXVEOS_IR_PROTO_RC5 && dec.address == 5 && dec.command == 0x35 && dec.bits == 14);
+    static const uint16_t golden_1f_7f[] = {1778, 889, 889, 1778, 889, 889, 889, 889, 889, 889, 889, 889, 889,
+                                            889, 889, 889, 889, 889, 889, 889, 889, 889, 889, 889, 889};
+    assert(lxveos_ir_decode(golden_1f_7f, sizeof(golden_1f_7f) / sizeof(golden_1f_7f[0]), &dec) == true);
+    assert(dec.proto == LXVEOS_IR_PROTO_RC5 && dec.address == 0x1F && dec.command == 0x7F);
+
+    // A corrupted duration (neither 1T nor 2T) breaks the RC5 decode.
+    n = build_rc5(d, 5, 0x35, 0);
+    d[2] = 5000;
+    assert(lxveos_ir_decode(d, n, &dec) == false);
+
+    // A too-short all-1T train cannot form a 14-bit frame (wrong half-bit count) -> rejected, not accepted.
+    uint16_t tooshort[5] = {889, 889, 889, 889, 889};
+    assert(lxveos_ir_decode(tooshort, 5, &dec) == false);
+}
+
 static void test_unknown_and_null(void)
 {
     lxveos_ir_decoded_t dec;
@@ -163,6 +253,24 @@ static void test_encode_roundtrip(void)
                && dec.bits == slens[i]);
     }
 
+    // RC5: a plain 6-bit command, and an RC5X 7-bit command (bit 6 set), each across all 32 addresses.
+    for (int a = 0; a < 32; a++) {
+        in = (lxveos_ir_decoded_t){LXVEOS_IR_PROTO_RC5, (uint16_t)a, 0x2A, 14, false};
+        assert(lxveos_ir_encode(&in, buf, 80, &n) && lxveos_ir_decode(buf, n, &dec));
+        assert(dec.proto == LXVEOS_IR_PROTO_RC5 && dec.address == (uint16_t)a && dec.command == 0x2A
+               && dec.bits == 14);
+        in = (lxveos_ir_decoded_t){LXVEOS_IR_PROTO_RC5, (uint16_t)a, 0x71, 14, false};   // RC5X (7-bit command)
+        assert(lxveos_ir_encode(&in, buf, 80, &n) && lxveos_ir_decode(buf, n, &dec));
+        assert(dec.proto == LXVEOS_IR_PROTO_RC5 && dec.address == (uint16_t)a && dec.command == 0x71);
+    }
+    // RC5 command boundaries (last-bit '0' vs '1', which exercise the trailing-space handling both ways).
+    const uint16_t rc5cmds[] = {0x00, 0x01, 0x3E, 0x3F, 0x40, 0x7F};
+    for (int i = 0; i < 6; i++) {
+        in = (lxveos_ir_decoded_t){LXVEOS_IR_PROTO_RC5, 0x15, rc5cmds[i], 14, false};
+        assert(lxveos_ir_encode(&in, buf, 80, &n) && lxveos_ir_decode(buf, n, &dec));
+        assert(dec.proto == LXVEOS_IR_PROTO_RC5 && dec.address == 0x15 && dec.command == rc5cmds[i]);
+    }
+
     // rejections: unsupported proto, a non-canonical Sony length, a too-small buffer, and NULL args
     in = (lxveos_ir_decoded_t){LXVEOS_IR_PROTO_UNKNOWN, 0, 0, 0, false};
     assert(!lxveos_ir_encode(&in, buf, 80, &n));
@@ -170,6 +278,8 @@ static void test_encode_roundtrip(void)
     assert(!lxveos_ir_encode(&in, buf, 80, &n));
     in = (lxveos_ir_decoded_t){LXVEOS_IR_PROTO_NEC, 0x04, 0x08, 32, false};
     assert(!lxveos_ir_encode(&in, buf, 4, &n));  // buffer too small for a NEC frame
+    in = (lxveos_ir_decoded_t){LXVEOS_IR_PROTO_RC5, 5, 0x35, 14, false};
+    assert(!lxveos_ir_encode(&in, buf, 10, &n));  // buffer too small for an RC5 frame
     assert(!lxveos_ir_encode(NULL, buf, 80, &n));
 }
 
@@ -177,6 +287,7 @@ int main(void)
 {
     test_nec();
     test_sony();
+    test_rc5();
     test_unknown_and_null();
     test_encode_roundtrip();
     printf("test_ir_decode: all tests passed\n");
