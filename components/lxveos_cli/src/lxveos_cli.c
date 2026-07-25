@@ -513,8 +513,8 @@ static int cmd_sniff(int argc, char **argv)
     uint32_t secs = 8;
     uint8_t channel = 0;  // 0 = hop all channels
     if (argc >= 2) {
-        long v = strtol(argv[1], NULL, 10);
-        if (v >= 1 && v <= 60) {
+        long v = 0;
+        if (parse_int_arg(argv[1], 1, 60, &v)) {
             secs = (uint32_t)v;
         } else {
             printf("usage: sniff [seconds 1-60] [channel 1-13]  (default 8s, all channels)\n");
@@ -522,8 +522,8 @@ static int cmd_sniff(int argc, char **argv)
         }
     }
     if (argc >= 3) {
-        long c = strtol(argv[2], NULL, 10);
-        if (c >= 1 && c <= 13) {
+        long c = 0;
+        if (parse_int_arg(argv[2], 1, 13, &c)) {
             channel = (uint8_t)c;
         } else {
             printf("usage: sniff [seconds 1-60] [channel 1-13]  (default 8s, all channels)\n");
@@ -601,8 +601,8 @@ static int cmd_capture(int argc, char **argv)
     uint32_t secs = 15;
     uint8_t channel = 0;  // 0 = hop all channels
     if (argc >= 2) {
-        long v = strtol(argv[1], NULL, 10);
-        if (v >= 1 && v <= 120) {
+        long v = 0;
+        if (parse_int_arg(argv[1], 1, 120, &v)) {
             secs = (uint32_t)v;
         } else {
             printf("usage: capture [seconds 1-120] [channel 1-13]  (default 15s, all channels)\n");
@@ -610,8 +610,8 @@ static int cmd_capture(int argc, char **argv)
         }
     }
     if (argc >= 3) {
-        long c = strtol(argv[2], NULL, 10);
-        if (c >= 1 && c <= 13) {
+        long c = 0;
+        if (parse_int_arg(argv[2], 1, 13, &c)) {
             channel = (uint8_t)c;
         } else {
             printf("usage: capture [seconds 1-120] [channel 1-13]  (default 15s, all channels)\n");
@@ -659,8 +659,8 @@ static int cmd_stations(int argc, char **argv)
     uint32_t secs = 12;
     uint8_t channel = 0;  // 0 = hop all channels
     if (argc >= 2) {
-        long v = strtol(argv[1], NULL, 10);
-        if (v >= 1 && v <= 120) {
+        long v = 0;
+        if (parse_int_arg(argv[1], 1, 120, &v)) {
             secs = (uint32_t)v;
         } else {
             printf("usage: stations [seconds 1-120] [channel 1-13]  (default 12s, all channels)\n");
@@ -668,8 +668,8 @@ static int cmd_stations(int argc, char **argv)
         }
     }
     if (argc >= 3) {
-        long c = strtol(argv[2], NULL, 10);
-        if (c >= 1 && c <= 13) {
+        long c = 0;
+        if (parse_int_arg(argv[2], 1, 13, &c)) {
             channel = (uint8_t)c;
         } else {
             printf("usage: stations [seconds 1-120] [channel 1-13]  (default 12s, all channels)\n");
@@ -740,8 +740,8 @@ static int cmd_probes(int argc, char **argv)
     uint32_t secs = 12;
     uint8_t channel = 0;  // 0 = hop all channels
     if (argc >= 2) {
-        long v = strtol(argv[1], NULL, 10);
-        if (v >= 1 && v <= 120) {
+        long v = 0;
+        if (parse_int_arg(argv[1], 1, 120, &v)) {
             secs = (uint32_t)v;
         } else {
             printf("usage: probes [seconds 1-120] [channel 1-13]  (default 12s, all channels)\n");
@@ -749,8 +749,8 @@ static int cmd_probes(int argc, char **argv)
         }
     }
     if (argc >= 3) {
-        long c = strtol(argv[2], NULL, 10);
-        if (c >= 1 && c <= 13) {
+        long c = 0;
+        if (parse_int_arg(argv[2], 1, 13, &c)) {
             channel = (uint8_t)c;
         } else {
             printf("usage: probes [seconds 1-120] [channel 1-13]  (default 12s, all channels)\n");
@@ -827,8 +827,8 @@ static int cmd_defend(int argc, char **argv)
     uint32_t secs = 15;
     uint8_t channel = 0;  // 0 = hop all channels
     if (argc >= 2) {
-        long v = strtol(argv[1], NULL, 10);
-        if (v >= 1 && v <= 120) {
+        long v = 0;
+        if (parse_int_arg(argv[1], 1, 120, &v)) {
             secs = (uint32_t)v;
         } else {
             printf("usage: defend [seconds 1-120] [channel 1-13]  (default 15s, all channels)\n");
@@ -836,8 +836,8 @@ static int cmd_defend(int argc, char **argv)
         }
     }
     if (argc >= 3) {
-        long c = strtol(argv[2], NULL, 10);
-        if (c >= 1 && c <= 13) {
+        long c = 0;
+        if (parse_int_arg(argv[2], 1, 13, &c)) {
             channel = (uint8_t)c;
         } else {
             printf("usage: defend [seconds 1-120] [channel 1-13]  (default 15s, all channels)\n");
@@ -901,8 +901,8 @@ static int cmd_pwnwatch(int argc, char **argv)
     uint32_t secs = 15;
     uint8_t channel = 0;  // 0 = hop all channels
     if (argc >= 2) {
-        long v = strtol(argv[1], NULL, 10);
-        if (v >= 1 && v <= 120) {
+        long v = 0;
+        if (parse_int_arg(argv[1], 1, 120, &v)) {
             secs = (uint32_t)v;
         } else {
             printf("usage: pwnwatch [seconds 1-120] [channel 1-13]  (default 15s, all channels)\n");
@@ -910,8 +910,8 @@ static int cmd_pwnwatch(int argc, char **argv)
         }
     }
     if (argc >= 3) {
-        long c = strtol(argv[2], NULL, 10);
-        if (c >= 1 && c <= 13) {
+        long c = 0;
+        if (parse_int_arg(argv[2], 1, 13, &c)) {
             channel = (uint8_t)c;
         } else {
             printf("usage: pwnwatch [seconds 1-120] [channel 1-13]  (default 15s, all channels)\n");
@@ -1151,8 +1151,8 @@ static int cmd_blescan(int argc, char **argv)
     }
     uint32_t secs = 6;
     if (argc >= 2) {
-        long v = strtol(argv[1], NULL, 10);
-        if (v >= 1 && v <= 60) {
+        long v = 0;
+        if (parse_int_arg(argv[1], 1, 60, &v)) {
             secs = (uint32_t)v;
         } else {
             printf("usage: blescan [seconds 1-60]  (default 6)\n");
@@ -1285,8 +1285,8 @@ static int cmd_bleflood(int argc, char **argv)
     }
     uint32_t secs = 8;
     if (argc >= 2) {
-        long v = strtol(argv[1], NULL, 10);
-        if (v >= 1 && v <= 60) {
+        long v = 0;
+        if (parse_int_arg(argv[1], 1, 60, &v)) {
             secs = (uint32_t)v;
         } else {
             printf("usage: bleflood [seconds 1-60]  (default 8)\n");
@@ -1380,8 +1380,8 @@ static int cmd_btracker(int argc, char **argv)
     }
     uint32_t secs = 8;
     if (argc >= 2) {
-        long v = strtol(argv[1], NULL, 10);
-        if (v >= 1 && v <= 60) {
+        long v = 0;
+        if (parse_int_arg(argv[1], 1, 60, &v)) {
             secs = (uint32_t)v;
         } else {
             printf("usage: btracker [seconds 1-60]  (default 8)\n");
@@ -1491,8 +1491,8 @@ static int cmd_blewardrive(int argc, char **argv)
     }
     uint32_t secs = 6;
     if (argc >= 2) {
-        long v = strtol(argv[1], NULL, 10);
-        if (v >= 1 && v <= 60) {
+        long v = 0;
+        if (parse_int_arg(argv[1], 1, 60, &v)) {
             secs = (uint32_t)v;
         } else {
             printf("usage: blewardrive [seconds 1-60]  (default 6)\n");
@@ -1548,8 +1548,8 @@ static int cmd_flipper(int argc, char **argv)
     }
     uint32_t secs = 6;
     if (argc >= 2) {
-        long v = strtol(argv[1], NULL, 10);
-        if (v >= 1 && v <= 60) {
+        long v = 0;
+        if (parse_int_arg(argv[1], 1, 60, &v)) {
             secs = (uint32_t)v;
         } else {
             printf("usage: flipper [seconds 1-60]  (default 6)\n");
@@ -1607,8 +1607,8 @@ static int cmd_meta(int argc, char **argv)
     }
     uint32_t secs = 6;
     if (argc >= 2) {
-        long v = strtol(argv[1], NULL, 10);
-        if (v >= 1 && v <= 60) {
+        long v = 0;
+        if (parse_int_arg(argv[1], 1, 60, &v)) {
             secs = (uint32_t)v;
         } else {
             printf("usage: meta [seconds 1-60]  (default 6)\n");
@@ -1666,8 +1666,8 @@ static int cmd_skimmer(int argc, char **argv)
     }
     uint32_t secs = 6;
     if (argc >= 2) {
-        long v = strtol(argv[1], NULL, 10);
-        if (v >= 1 && v <= 60) {
+        long v = 0;
+        if (parse_int_arg(argv[1], 1, 60, &v)) {
             secs = (uint32_t)v;
         } else {
             printf("usage: skimmer [seconds 1-60]  (default 6)\n");
@@ -1729,8 +1729,8 @@ static int cmd_flock(int argc, char **argv)
     }
     uint32_t secs = 6;
     if (argc >= 2) {
-        long v = strtol(argv[1], NULL, 10);
-        if (v >= 1 && v <= 60) {
+        long v = 0;
+        if (parse_int_arg(argv[1], 1, 60, &v)) {
             secs = (uint32_t)v;
         } else {
             printf("usage: flock [seconds 1-60]  (default 6)\n");
@@ -1799,8 +1799,8 @@ static int cmd_surveil(int argc, char **argv)
     }
     uint32_t secs = 6;
     if (argc >= 2) {
-        long v = strtol(argv[1], NULL, 10);
-        if (v >= 1 && v <= 60) {
+        long v = 0;
+        if (parse_int_arg(argv[1], 1, 60, &v)) {
             secs = (uint32_t)v;
         } else {
             printf("usage: surveil [seconds 1-60]  (default 6)\n");
