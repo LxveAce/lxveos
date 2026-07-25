@@ -14,6 +14,8 @@
 // 16-bit service UUIDs / advert signatures.
 #define LXVEOS_BLE_SVC_FASTPAIR  0xFE2Cu  // Google Fast Pair service-data UUID
 #define LXVEOS_BLE_APPLE_TYPE_FINDMY 0x12u  // Apple mfg-data payload type byte = Offline Finding (Find My)
+#define LXVEOS_BLE_APPLE_TYPE_IBEACON 0x02u // Apple mfg-data payload type byte = iBeacon (proximity beacon)
+#define LXVEOS_BLE_IBEACON_DATA_LEN   0x15u // iBeacon "length" field = 21 payload bytes (16B UUID + 2+2 major/minor + 1B power)
 #define LXVEOS_BLE_SVC_TILE          0xFEEDu // Tile trackers
 #define LXVEOS_BLE_SVC_SMARTTAG      0xFD5Au // Samsung Galaxy SmartTag (SmartThings Find)
 #define LXVEOS_BLE_SVC_CHIPOLO       0xFE33u // Chipolo trackers

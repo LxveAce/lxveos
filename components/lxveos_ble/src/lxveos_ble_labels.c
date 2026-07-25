@@ -145,6 +145,29 @@ uint8_t lxveos_ble_classify_tracker(const uint8_t *mfg_data, size_t mfg_data_len
     return LXVEOS_BLE_TRACKER_NONE;
 }
 
+// Decode an Apple iBeacon proximity beacon from the manufacturer-specific data. The Apple iBeacon payload is a
+// fixed layout: [0..1] company 0x004C (little-endian), [2] type 0x02, [3] length 0x15 (21 payload bytes),
+// [4..19] the 16-byte proximity UUID, [20..21] major (big-endian), [22..23] minor (big-endian), [24] measured
+// TX power (int8, RSSI @ 1 m) — 25 bytes total. Strict on company + type + length so a Find My advert (type
+// 0x12) or an unrelated Apple continuity payload can't be mis-decoded. Reads no byte beyond index 24. Pure/RX.
+bool lxveos_ble_decode_ibeacon(const uint8_t *mfg_data, size_t mfg_data_len, lxveos_ble_ibeacon_t *out)
+{
+    // 4 header bytes (company + type + length) followed by the 21-byte iBeacon payload = 25 bytes minimum.
+    if (mfg_data == NULL || out == NULL || mfg_data_len < 4u + LXVEOS_BLE_IBEACON_DATA_LEN) {
+        return false;
+    }
+    uint16_t cid = (uint16_t)(mfg_data[0] | ((uint16_t)mfg_data[1] << 8));
+    if (cid != LXVEOS_BLE_CID_APPLE || mfg_data[2] != LXVEOS_BLE_APPLE_TYPE_IBEACON ||
+        mfg_data[3] != LXVEOS_BLE_IBEACON_DATA_LEN) {
+        return false;
+    }
+    memcpy(out->uuid, &mfg_data[4], 16);
+    out->major    = (uint16_t)(((uint16_t)mfg_data[20] << 8) | mfg_data[21]);
+    out->minor    = (uint16_t)(((uint16_t)mfg_data[22] << 8) | mfg_data[23]);
+    out->tx_power = (int8_t)mfg_data[24];
+    return true;
+}
+
 // GAP appearance category -> short label. Categories are the high 10 bits (value >> 6); the low 6 bits are
 // a subcategory (only resolved for HID). Table follows the Bluetooth SIG assigned-numbers appearance list.
 void lxveos_ble_appearance_str(uint16_t appearance, char *buf, size_t buflen)

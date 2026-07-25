@@ -133,6 +133,25 @@ uint8_t lxveos_ble_classify_tracker(const uint8_t *mfg_data, size_t mfg_data_len
                                     const uint16_t *svc_uuids, size_t num_svc_uuids,
                                     const uint8_t *svc_data, size_t svc_data_len);
 
+// Decoded Apple iBeacon proximity-beacon fields. iBeacon is a passive broadcast carried in a fixed 25-byte
+// Apple manufacturer-specific payload: company 0x004C, type 0x02, length 0x15, then a 16-byte proximity UUID,
+// a 2-byte major and 2-byte minor (both big-endian on the wire), and a 1-byte measured TX power (the RSSI at
+// 1 m, signed). RX-only reporting — LxveOS never transmits an iBeacon.
+typedef struct {
+    uint8_t  uuid[16];  // proximity UUID, in wire order (big-endian, as printed)
+    uint16_t major;     // major value (decoded from the big-endian wire bytes)
+    uint16_t minor;     // minor value (decoded from the big-endian wire bytes)
+    int8_t   tx_power;  // measured power @ 1 m (dBm, signed)
+} lxveos_ble_ibeacon_t;
+
+// Decode an Apple iBeacon from raw manufacturer-specific data (`mfg_data` as stored in lxveos_ble_dev_t: the
+// company ID little-endian at [0..1], then the Apple payload). Returns true and fills *out when the data is a
+// well-formed iBeacon frame — Apple company 0x004C + type byte 0x02 + length byte 0x15, with at least the 25
+// bytes the frame requires — and false otherwise (wrong company/type/length, a short buffer, or a NULL
+// argument). Pure, RX-only, host-tested; kept distinct from a Find My tracker (type 0x12, see
+// lxveos_ble_classify_tracker) by the type byte. Never transmits.
+bool lxveos_ble_decode_ibeacon(const uint8_t *mfg_data, size_t mfg_data_len, lxveos_ble_ibeacon_t *out);
+
 // True if `d`'s advertised local name is EXACTLY a default HC-0x BT-serial module name (HC-03/05/06) — the
 // stock modules cheap skimmers reuse. A narrow "possible skimmer / default-named module" heuristic (also flags
 // legit hobby modules; BLE-only, so classic-BT skimmers are missed). Ported from ESP32 Marauder "Detect Card

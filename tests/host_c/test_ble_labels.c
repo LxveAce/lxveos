@@ -402,6 +402,74 @@ static void test_classify_tracker(void)
     assert(lxveos_ble_classify_tracker(NULL, 0, unrelated, 2, NULL, 0) == LXVEOS_BLE_TRACKER_NONE);
 }
 
+static void test_decode_ibeacon(void)
+{
+    lxveos_ble_ibeacon_t b;
+    // A well-formed Apple iBeacon: company 4c 00 (LE), type 0x02, length 0x15, 16B UUID, major/minor
+    // big-endian, then the signed measured-power byte. 25 bytes total.
+    const uint8_t ib[] = {
+        0x4c, 0x00, 0x02, 0x15,
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,  // proximity UUID
+        0x12, 0x34,   // major (big-endian) = 0x1234
+        0x56, 0x78,   // minor (big-endian) = 0x5678
+        0xc5,         // measured power = -59 dBm (signed)
+    };
+    const uint8_t want_uuid[16] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                                   0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
+    assert(lxveos_ble_decode_ibeacon(ib, sizeof(ib), &b) == true);
+    assert(memcmp(b.uuid, want_uuid, 16) == 0);
+    assert(b.major == 0x1234);
+    assert(b.minor == 0x5678);
+    assert(b.tx_power == -59);
+
+    // Trailing bytes after the 25-byte frame are tolerated (real adverts may pad the AD element).
+    uint8_t ib_pad[sizeof(ib) + 3];
+    memcpy(ib_pad, ib, sizeof(ib));
+    ib_pad[sizeof(ib)] = 0xff;
+    ib_pad[sizeof(ib) + 1] = 0xee;
+    ib_pad[sizeof(ib) + 2] = 0xdd;
+    assert(lxveos_ble_decode_ibeacon(ib_pad, sizeof(ib_pad), &b) == true);
+    assert(b.major == 0x1234);
+
+    // Big-endian is honoured, not byte-swapped: 00 01 -> 1, 01 00 -> 256.
+    uint8_t ord[sizeof(ib)];
+    memcpy(ord, ib, sizeof(ib));
+    ord[20] = 0x00; ord[21] = 0x01;   // major
+    ord[22] = 0x01; ord[23] = 0x00;   // minor
+    assert(lxveos_ble_decode_ibeacon(ord, sizeof(ord), &b) == true);
+    assert(b.major == 1);
+    assert(b.minor == 256);
+
+    // Wrong company ID (not Apple) -> not an iBeacon.
+    uint8_t not_apple[sizeof(ib)];
+    memcpy(not_apple, ib, sizeof(ib));
+    not_apple[0] = 0x99;
+    not_apple[1] = 0x00;
+    assert(lxveos_ble_decode_ibeacon(not_apple, sizeof(not_apple), &b) == false);
+
+    // Apple but a Find My type byte (0x12), not iBeacon (0x02) -> false (keeps iBeacon and Find My distinct).
+    uint8_t findmy[sizeof(ib)];
+    memcpy(findmy, ib, sizeof(ib));
+    findmy[2] = 0x12;
+    assert(lxveos_ble_decode_ibeacon(findmy, sizeof(findmy), &b) == false);
+
+    // Apple + type 0x02 but the wrong length byte -> false (a real iBeacon length is always 0x15).
+    uint8_t badlen[sizeof(ib)];
+    memcpy(badlen, ib, sizeof(ib));
+    badlen[3] = 0x14;
+    assert(lxveos_ble_decode_ibeacon(badlen, sizeof(badlen), &b) == false);
+
+    // Short buffer (< 25) returns false and never reads past the given length.
+    assert(lxveos_ble_decode_ibeacon(ib, 24, &b) == false);
+    const uint8_t hdr_only[] = {0x4c, 0x00, 0x02, 0x15};
+    assert(lxveos_ble_decode_ibeacon(hdr_only, sizeof(hdr_only), &b) == false);
+
+    // NULL arguments are safe.
+    assert(lxveos_ble_decode_ibeacon(NULL, 25, &b) == false);
+    assert(lxveos_ble_decode_ibeacon(ib, sizeof(ib), NULL) == false);
+}
+
 int main(void)
 {
     test_company_name();
@@ -409,6 +477,7 @@ int main(void)
     test_tracker_str();
     test_tracker_latch();
     test_classify_tracker();
+    test_decode_ibeacon();
     test_appearance_str();
     test_flipper_color();
     test_meta();
