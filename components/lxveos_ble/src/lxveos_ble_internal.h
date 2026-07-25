@@ -23,6 +23,8 @@
 #define LXVEOS_BLE_SVC_GOOGLE_FMN    0xFEAAu // Google Find My Network (service DATA; shares 0xFEAA w/ Eddystone)
 #define LXVEOS_BLE_GOOGLE_FMN_FRAME  0x40u   // FMN service-data frame type — distinguishes it from Eddystone
                                              // beacons (frame types 0x00/0x10/0x20/0x30), avoiding false labels
+#define LXVEOS_BLE_SVC_EDDYSTONE     0xFEAAu // Eddystone beacon service-data UUID (== SVC_GOOGLE_FMN; the frame
+                                             // byte tells them apart — see lxveos_ble_decode_eddystone)
 
 // Flipper Zero BLE service UUIDs (16-bit, AD type 0x02/0x03) — one per case colour. ESP32 Marauder "Flipper
 // Sniff" matches these bytes; LxveOS matches them in the already-parsed svc_uuids[] (a proper AD-structure

@@ -168,6 +168,108 @@ bool lxveos_ble_decode_ibeacon(const uint8_t *mfg_data, size_t mfg_data_len, lxv
     return true;
 }
 
+// Eddystone-URL scheme prefixes (the byte after tx power) and the expansion codes that stand in for common TLD
+// suffixes — the Google Eddystone-URL spec's fixed tables. Used only by the URL decoder below.
+static const char *const EDDY_URL_SCHEME[] = {"http://www.", "https://www.", "http://", "https://"};
+static const char *const EDDY_URL_EXPAND[] = {
+    ".com/", ".org/", ".edu/", ".net/", ".info/", ".biz/", ".gov/",  // 0x00..0x06
+    ".com",  ".org",  ".edu",  ".net",  ".info",  ".biz",  ".gov",    // 0x07..0x0d
+};
+
+// Append NUL-terminated `s` to buf[*pos..], truncating so a final NUL always fits (never writes buf[buflen-1..]).
+static void eddy_url_append(char *buf, size_t buflen, size_t *pos, const char *s)
+{
+    while (*s != '\0' && *pos + 1 < buflen) {
+        buf[(*pos)++] = *s++;
+    }
+}
+
+// Decode an Eddystone-URL body (1-byte scheme prefix + expansion/literal bytes) into buf, NUL-terminated and
+// truncated to buflen. Expansion codes (0x00..0x0d) map to a TLD suffix; 0x20..0x7e are literal ASCII; every
+// other byte is a reserved code and is skipped.
+static void eddy_url_decode(uint8_t scheme, const uint8_t *bytes, size_t nbytes, char *buf, size_t buflen)
+{
+    if (buflen == 0) {
+        return;
+    }
+    size_t pos = 0;
+    if ((size_t)scheme < sizeof(EDDY_URL_SCHEME) / sizeof(EDDY_URL_SCHEME[0])) {
+        eddy_url_append(buf, buflen, &pos, EDDY_URL_SCHEME[scheme]);
+    }
+    for (size_t i = 0; i < nbytes; i++) {
+        uint8_t b = bytes[i];
+        if ((size_t)b < sizeof(EDDY_URL_EXPAND) / sizeof(EDDY_URL_EXPAND[0])) {
+            eddy_url_append(buf, buflen, &pos, EDDY_URL_EXPAND[b]);
+        } else if (b >= 0x20 && b < 0x7f) {  // printable ASCII literal
+            if (pos + 1 < buflen) {
+                buf[pos++] = (char)b;
+            }
+        }
+        // else: reserved byte (0x0e..0x1f, 0x7f..0xff) — skipped
+    }
+    buf[pos] = '\0';  // pos <= buflen-1 by the append/literal guards above
+}
+
+// Decode a Google Eddystone frame from the service DATA. See the header for the frame-type -> field mapping. The
+// service-data shape matches classify_tracker's: [0..1] UUID (little-endian), [2] frame type, [3..] frame body.
+bool lxveos_ble_decode_eddystone(const uint8_t *svc_data, size_t svc_data_len, lxveos_ble_eddystone_t *out)
+{
+    if (svc_data == NULL || out == NULL || svc_data_len < 3) {
+        return false;
+    }
+    uint16_t uuid = (uint16_t)(svc_data[0] | ((uint16_t)svc_data[1] << 8));
+    if (uuid != LXVEOS_BLE_SVC_EDDYSTONE) {
+        return false;
+    }
+    memset(out, 0, sizeof(*out));
+    out->frame_type = LXVEOS_BLE_EDDYSTONE_NONE;
+
+    switch (svc_data[2]) {
+    case LXVEOS_BLE_EDDYSTONE_UID:
+        // [2] frame, [3] tx power, [4..13] namespace (10 B), [14..19] instance (6 B). Trailing RFU bytes ignored.
+        if (svc_data_len < 20) {
+            return false;
+        }
+        out->frame_type = LXVEOS_BLE_EDDYSTONE_UID;
+        out->tx_power = (int8_t)svc_data[3];
+        memcpy(out->namespace_id, &svc_data[4], 10);
+        memcpy(out->instance_id, &svc_data[14], 6);
+        return true;
+    case LXVEOS_BLE_EDDYSTONE_URL:
+        // [2] frame, [3] tx power, [4] scheme prefix, [5..] encoded URL bytes.
+        if (svc_data_len < 5) {
+            return false;
+        }
+        out->frame_type = LXVEOS_BLE_EDDYSTONE_URL;
+        out->tx_power = (int8_t)svc_data[3];
+        eddy_url_decode(svc_data[4], &svc_data[5], svc_data_len - 5, out->url, sizeof(out->url));
+        return true;
+    case LXVEOS_BLE_EDDYSTONE_TLM:
+        // [2] frame, [3] version, [4..5] vbatt mV BE, [6..7] temp 8.8 BE, [8..11] adv count BE, [12..15] uptime BE.
+        if (svc_data_len < 16) {
+            return false;
+        }
+        out->frame_type = LXVEOS_BLE_EDDYSTONE_TLM;
+        out->vbatt_mv   = (uint16_t)(((uint16_t)svc_data[4] << 8) | svc_data[5]);
+        out->temp_c_256 = (int16_t)(((uint16_t)svc_data[6] << 8) | svc_data[7]);
+        out->adv_count  = ((uint32_t)svc_data[8] << 24) | ((uint32_t)svc_data[9] << 16) |
+                          ((uint32_t)svc_data[10] << 8) | (uint32_t)svc_data[11];
+        out->uptime_ds  = ((uint32_t)svc_data[12] << 24) | ((uint32_t)svc_data[13] << 16) |
+                          ((uint32_t)svc_data[14] << 8) | (uint32_t)svc_data[15];
+        return true;
+    case LXVEOS_BLE_EDDYSTONE_EID:
+        // [2] frame, [3] tx power, [4..11] ephemeral ID (rotating — deliberately not exposed).
+        if (svc_data_len < 4) {
+            return false;
+        }
+        out->frame_type = LXVEOS_BLE_EDDYSTONE_EID;
+        out->tx_power = (int8_t)svc_data[3];
+        return true;
+    default:
+        return false;  // unknown/reserved frame (incl. 0x40 = Find My Network, a tracker, not an Eddystone beacon)
+    }
+}
+
 // GAP appearance category -> short label. Categories are the high 10 bits (value >> 6); the low 6 bits are
 // a subcategory (only resolved for HID). Table follows the Bluetooth SIG assigned-numbers appearance list.
 void lxveos_ble_appearance_str(uint16_t appearance, char *buf, size_t buflen)

@@ -152,6 +152,36 @@ typedef struct {
 // lxveos_ble_classify_tracker) by the type byte. Never transmits.
 bool lxveos_ble_decode_ibeacon(const uint8_t *mfg_data, size_t mfg_data_len, lxveos_ble_ibeacon_t *out);
 
+// Google Eddystone frame types (the frame byte at svc_data[2] under service UUID 0xFEAA). Eddystone shares that
+// UUID with Google Find My Network; the frame byte tells them apart (FMN = 0x40, never one of these).
+#define LXVEOS_BLE_EDDYSTONE_UID  0x00u  // 10-byte namespace + 6-byte instance identifier
+#define LXVEOS_BLE_EDDYSTONE_URL  0x10u  // compressed URL (scheme prefix + TLD-expansion codes)
+#define LXVEOS_BLE_EDDYSTONE_TLM  0x20u  // unencrypted telemetry (battery / temperature / adv-count / uptime)
+#define LXVEOS_BLE_EDDYSTONE_EID  0x30u  // ephemeral identifier (recognized; the rotating ID is not decoded)
+#define LXVEOS_BLE_EDDYSTONE_NONE 0xFFu  // not a decodable Eddystone frame
+
+// Decoded Eddystone frame. `frame_type` says which fields are populated (all others are zeroed):
+//   UID -> namespace_id + instance_id + tx_power        URL -> url + tx_power
+//   TLM -> vbatt_mv + temp_c_256 + adv_count + uptime_ds   EID -> tx_power only (the ID is ephemeral)
+typedef struct {
+    uint8_t  frame_type;        // LXVEOS_BLE_EDDYSTONE_* — which fields below are valid
+    int8_t   tx_power;          // calibrated TX power (dBm); UID/URL @0m ranging, EID range byte. 0 for TLM.
+    uint8_t  namespace_id[10];  // UID: 10-byte namespace
+    uint8_t  instance_id[6];    // UID: 6-byte instance
+    char     url[32];           // URL: decoded URL (scheme + expansions + literals), NUL-terminated, truncated to fit
+    uint16_t vbatt_mv;          // TLM: battery voltage in mV (0 = unsupported, per spec)
+    int16_t  temp_c_256;        // TLM: temperature as 8.8 fixed-point signed (deg C = temp_c_256 / 256.0)
+    uint32_t adv_count;         // TLM: advertising PDU count since power-on
+    uint32_t uptime_ds;         // TLM: time since power-on, in 0.1 s units
+} lxveos_ble_eddystone_t;
+
+// Decode a Google Eddystone frame from the raw service DATA (`svc_data` = [uuid_lo][uuid_hi][frame][...], the
+// same shape lxveos_ble_classify_tracker takes). Returns true and fills *out (frame_type + the per-type fields,
+// all others zeroed) for a well-formed UID / URL / TLM / EID frame under service UUID 0xFEAA; false otherwise
+// (wrong UUID, an unknown or too-short frame — including the 0x40 Find My Network frame, which is a tracker,
+// not an Eddystone beacon — or a NULL argument). Pure, RX-only, host-tested. Never transmits.
+bool lxveos_ble_decode_eddystone(const uint8_t *svc_data, size_t svc_data_len, lxveos_ble_eddystone_t *out);
+
 // True if `d`'s advertised local name is EXACTLY a default HC-0x BT-serial module name (HC-03/05/06) — the
 // stock modules cheap skimmers reuse. A narrow "possible skimmer / default-named module" heuristic (also flags
 // legit hobby modules; BLE-only, so classic-BT skimmers are missed). Ported from ESP32 Marauder "Detect Card

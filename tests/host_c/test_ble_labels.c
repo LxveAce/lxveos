@@ -470,6 +470,100 @@ static void test_decode_ibeacon(void)
     assert(lxveos_ble_decode_ibeacon(ib, sizeof(ib), NULL) == false);
 }
 
+static void test_decode_eddystone(void)
+{
+    lxveos_ble_eddystone_t e;
+
+    // UID frame: [aa fe] uuid, [00] frame, [ec] tx=-20, 10B namespace, 6B instance.
+    const uint8_t uid[] = {
+        0xaa, 0xfe, 0x00, 0xec,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a,  // namespace (10)
+        0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,                          // instance (6)
+    };
+    const uint8_t want_ns[10] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a};
+    const uint8_t want_inst[6] = {0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff};
+    assert(lxveos_ble_decode_eddystone(uid, sizeof(uid), &e) == true);
+    assert(e.frame_type == LXVEOS_BLE_EDDYSTONE_UID);
+    assert(e.tx_power == -20);
+    assert(memcmp(e.namespace_id, want_ns, 10) == 0);
+    assert(memcmp(e.instance_id, want_inst, 6) == 0);
+
+    // URL frame: scheme 0x00 (http://www.) + "google" + 0x00 (.com/) => http://www.google.com/
+    const uint8_t url[] = {0xaa, 0xfe, 0x10, 0xf6, 0x00, 'g', 'o', 'o', 'g', 'l', 'e', 0x00};
+    assert(lxveos_ble_decode_eddystone(url, sizeof(url), &e) == true);
+    assert(e.frame_type == LXVEOS_BLE_EDDYSTONE_URL);
+    assert(e.tx_power == -10);  // 0xf6
+    assert(strcmp(e.url, "http://www.google.com/") == 0);
+
+    // URL truncation: scheme 0x03 (https://) + 30 'a' literals overflows url[32] -> truncated + NUL-terminated.
+    uint8_t longurl[5 + 30];
+    longurl[0] = 0xaa; longurl[1] = 0xfe; longurl[2] = 0x10; longurl[3] = 0x00; longurl[4] = 0x03;
+    for (int i = 0; i < 30; i++) {
+        longurl[5 + i] = 'a';
+    }
+    assert(lxveos_ble_decode_eddystone(longurl, sizeof(longurl), &e) == true);
+    assert(strlen(e.url) == 31);                        // exactly buflen-1, NUL-terminated, no overflow
+    assert(strncmp(e.url, "https://aaaaaaaaaaaaaaaaaaaaaaa", 31) == 0);
+
+    // TLM frame: version 0x00, vbatt 3000 mV, temp 29.0C (0x1d00), adv count 100, uptime 3600 (BE throughout).
+    const uint8_t tlm[] = {
+        0xaa, 0xfe, 0x20, 0x00,
+        0x0b, 0xb8,               // vbatt = 0x0bb8 = 3000
+        0x1d, 0x00,               // temp  = 0x1d00 = 7424 -> 29.0 C
+        0x00, 0x00, 0x00, 0x64,   // adv count = 100
+        0x00, 0x00, 0x0e, 0x10,   // uptime = 3600 (0.1 s units)
+    };
+    assert(lxveos_ble_decode_eddystone(tlm, sizeof(tlm), &e) == true);
+    assert(e.frame_type == LXVEOS_BLE_EDDYSTONE_TLM);
+    assert(e.vbatt_mv == 3000);
+    assert(e.temp_c_256 == 7424);   // /256 = 29.0 C
+    assert(e.adv_count == 100);
+    assert(e.uptime_ds == 3600);
+
+    // TLM negative temperature: 0xff00 -> -256 -> -1.0 C (signed 8.8 honoured).
+    uint8_t tlm_neg[sizeof(tlm)];
+    memcpy(tlm_neg, tlm, sizeof(tlm));
+    tlm_neg[6] = 0xff; tlm_neg[7] = 0x00;
+    assert(lxveos_ble_decode_eddystone(tlm_neg, sizeof(tlm_neg), &e) == true);
+    assert(e.temp_c_256 == -256);
+
+    // EID frame: recognized; only frame_type + tx exposed (the 8-byte ephemeral ID is not decoded).
+    const uint8_t eid[] = {0xaa, 0xfe, 0x30, 0x0a, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
+    assert(lxveos_ble_decode_eddystone(eid, sizeof(eid), &e) == true);
+    assert(e.frame_type == LXVEOS_BLE_EDDYSTONE_EID);
+    assert(e.tx_power == 10);
+
+    // Wrong service UUID (not 0xFEAA) -> not Eddystone.
+    uint8_t wrong_uuid[sizeof(uid)];
+    memcpy(wrong_uuid, uid, sizeof(uid));
+    wrong_uuid[0] = 0xab;   // 0xFEAB
+    assert(lxveos_ble_decode_eddystone(wrong_uuid, sizeof(wrong_uuid), &e) == false);
+
+    // The Find My Network frame (0x40) shares 0xFEAA but is a tracker, NOT Eddystone -> false (the key negative).
+    const uint8_t fmn[] = {0xaa, 0xfe, 0x40, 0x01, 0x02, 0x03};
+    assert(lxveos_ble_decode_eddystone(fmn, sizeof(fmn), &e) == false);
+    // An unknown/reserved frame byte -> false.
+    const uint8_t unknown[] = {0xaa, 0xfe, 0x50, 0x01, 0x02, 0x03};
+    assert(lxveos_ble_decode_eddystone(unknown, sizeof(unknown), &e) == false);
+
+    // Short buffers per frame type -> false, no over-read.
+    assert(lxveos_ble_decode_eddystone(uid, 19, &e) == false);   // UID needs 20
+    assert(lxveos_ble_decode_eddystone(tlm, 15, &e) == false);   // TLM needs 16
+    const uint8_t url_short[] = {0xaa, 0xfe, 0x10, 0x00};        // URL needs the scheme byte at [4]
+    assert(lxveos_ble_decode_eddystone(url_short, sizeof(url_short), &e) == false);
+    const uint8_t two[] = {0xaa, 0xfe};                          // < 3: can't even read the frame byte
+    assert(lxveos_ble_decode_eddystone(two, sizeof(two), &e) == false);
+
+    // A URL frame with only the scheme (no body) decodes to just the scheme string.
+    const uint8_t url_scheme_only[] = {0xaa, 0xfe, 0x10, 0x00, 0x02};  // scheme 0x02 = http://
+    assert(lxveos_ble_decode_eddystone(url_scheme_only, sizeof(url_scheme_only), &e) == true);
+    assert(strcmp(e.url, "http://") == 0);
+
+    // NULL arguments are safe.
+    assert(lxveos_ble_decode_eddystone(NULL, 20, &e) == false);
+    assert(lxveos_ble_decode_eddystone(uid, sizeof(uid), NULL) == false);
+}
+
 int main(void)
 {
     test_company_name();
@@ -478,6 +572,7 @@ int main(void)
     test_tracker_latch();
     test_classify_tracker();
     test_decode_ibeacon();
+    test_decode_eddystone();
     test_appearance_str();
     test_flipper_color();
     test_meta();
