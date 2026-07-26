@@ -188,6 +188,21 @@ size_t lxveos_wifi_wigle_row(char *buf, size_t buflen, const uint8_t bssid[6], c
 // mode name (3+). Returns the grade.
 int lxveos_wifi_auth_grade(uint8_t authmode, const char **note);
 
+// Passive AP-audit posture tally over one scan — the summary + verdict counts the `apaudit` op reports.
+typedef struct {
+    int grade_n[6];  // APs per security grade 0..5 (indexed by lxveos_wifi_auth_grade)
+    int hidden;      // APs with a blank SSID
+    int weak;        // APs graded weak (open/WEP/legacy-WPA, i.e. grade <= 2)
+    int wps;         // APs advertising WPS
+    int flagged;     // APs that are weak OR advertise WPS
+} lxveos_wifi_apaudit_t;
+
+// Tally the AP-audit posture over aps[0..n-1] into *out (zeroed first): per-grade counts, hidden/weak/WPS,
+// and the weak-OR-WPS flagged count. Grade via lxveos_wifi_auth_grade; weak = grade <= 2; hidden = blank
+// SSID. `out` must be non-NULL; a NULL/empty `aps` yields an all-zero tally. Passive/RX — reads scan records
+// only. Host-tested (tests/host_c/test_wifi_labels.c).
+void lxveos_wifi_apaudit_tally(const lxveos_wifi_ap_t *aps, size_t n, lxveos_wifi_apaudit_t *out);
+
 // Classify an 802.11 EAPOL-Key `key_info` field into a 4-way-handshake message number (1..4), or 0 if the
 // frame is not one of the four PAIRWISE handshake messages. Requires the pairwise Key-Type bit (0x0008) first,
 // so a GROUP-key rekey frame (which carries it clear) is never mis-counted as an M1..M4. Pure — host-tested.

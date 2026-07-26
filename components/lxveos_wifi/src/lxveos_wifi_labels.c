@@ -323,3 +323,38 @@ void lxveos_wifi_airspace_tally(const lxveos_wifi_ap_t *aps, size_t n, unsigned 
         *n_hidden = hidden;
     }
 }
+
+// ── AP-audit posture tally (#25) ─────────────────────────────────────────────────────────────────────────
+// The per-grade / hidden / weak / WPS / flagged counts `apaudit` reports for its summary + verdict, split
+// verbatim out of cmd_apaudit's per-AP loop so the accumulation is host-tested. Behaviour-identical: the CLI
+// still prints each flagged AP from its own loop (recomputing the per-AP grade for the line text) and now
+// takes the summary/verdict counts from here. Passive/RX — reads scan records only, transmits nothing.
+void lxveos_wifi_apaudit_tally(const lxveos_wifi_ap_t *aps, size_t n, lxveos_wifi_apaudit_t *out)
+{
+    if (out == NULL) {
+        return;
+    }
+    memset(out, 0, sizeof(*out));
+    if (aps == NULL) {
+        return;
+    }
+    for (size_t i = 0; i < n; i++) {
+        int g = lxveos_wifi_auth_grade(aps[i].authmode, NULL);
+        if (g >= 0 && g <= 5) {
+            out->grade_n[g]++;
+        }
+        if (aps[i].ssid[0] == '\0') {
+            out->hidden++;
+        }
+        bool weak = (g <= 2);  // OPEN / WEP / legacy WPA — the weak encryption grades
+        if (weak) {
+            out->weak++;
+        }
+        if (aps[i].wps) {
+            out->wps++;
+        }
+        if (weak || aps[i].wps) {  // WPS is orthogonal to the cipher — a WPA2/3 AP with WPS on is still flagged
+            out->flagged++;
+        }
+    }
+}

@@ -269,6 +269,42 @@ static void test_airspace_tally(void)
     assert(open == 0 && wps == 0 && hidden == 0);
 }
 
+static void test_apaudit_tally(void)
+{
+    // A mix across every grade + a WPS AP + a hidden AP: open, WEP, legacy-WPA, WPA2, WPA3, WPA2+WPS,
+    // WPA2+hidden, plain WPA2. (grades: open=0, WEP=1, WPA=2, WPA2=3, WPA3=4.)
+    lxveos_wifi_ap_t aps[8] = {0};
+    aps[0].authmode = WIFI_AUTH_OPEN;     snprintf(aps[0].ssid, sizeof(aps[0].ssid), "a");
+    aps[1].authmode = WIFI_AUTH_WEP;      snprintf(aps[1].ssid, sizeof(aps[1].ssid), "b");
+    aps[2].authmode = WIFI_AUTH_WPA_PSK;  snprintf(aps[2].ssid, sizeof(aps[2].ssid), "c");
+    aps[3].authmode = WIFI_AUTH_WPA2_PSK; snprintf(aps[3].ssid, sizeof(aps[3].ssid), "d");
+    aps[4].authmode = WIFI_AUTH_WPA3_PSK; snprintf(aps[4].ssid, sizeof(aps[4].ssid), "e");
+    aps[5].authmode = WIFI_AUTH_WPA2_PSK; snprintf(aps[5].ssid, sizeof(aps[5].ssid), "f");
+    aps[5].wps = true;                    // WPS on, encrypted -> flagged but not weak
+    aps[6].authmode = WIFI_AUTH_WPA2_PSK; aps[6].ssid[0] = '\0';  // hidden, grade 3
+    aps[7].authmode = WIFI_AUTH_WPA2_PSK; snprintf(aps[7].ssid, sizeof(aps[7].ssid), "h");  // plain
+
+    lxveos_wifi_apaudit_t t;
+    lxveos_wifi_apaudit_tally(aps, 8, &t);
+    assert(t.grade_n[0] == 1);   // open
+    assert(t.grade_n[1] == 1);   // WEP
+    assert(t.grade_n[2] == 1);   // WPA
+    assert(t.grade_n[3] == 4);   // WPA2: aps 3, 5, 6, 7
+    assert(t.grade_n[4] == 1);   // WPA3
+    assert(t.grade_n[5] == 0);   // other
+    assert(t.hidden == 1);       // ap6
+    assert(t.weak == 3);         // grades 0/1/2
+    assert(t.wps == 1);          // ap5
+    assert(t.flagged == 4);      // 3 weak + 1 WPS-only (no overlap: the weak APs have no WPS)
+
+    // NULL out -> no crash; NULL/empty aps -> an all-zero tally.
+    lxveos_wifi_apaudit_tally(aps, 8, NULL);
+    lxveos_wifi_apaudit_tally(NULL, 8, &t);
+    assert(t.flagged == 0 && t.weak == 0 && t.wps == 0 && t.hidden == 0 && t.grade_n[3] == 0);
+    lxveos_wifi_apaudit_tally(aps, 0, &t);
+    assert(t.flagged == 0 && t.grade_n[0] == 0 && t.grade_n[3] == 0);
+}
+
 int main(void)
 {
     test_authmode_str();
@@ -280,6 +316,7 @@ int main(void)
     test_oui_vendor();
     test_wigle();
     test_airspace_tally();
+    test_apaudit_tally();
     printf("test_wifi_labels: all tests passed\n");
     return 0;
 }

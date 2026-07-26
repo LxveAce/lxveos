@@ -1049,28 +1049,16 @@ static int cmd_apaudit(int argc, char **argv)
         printf("scan failed: %s\n", esp_err_to_name(e));
         return 0;
     }
-    int grade_n[6] = {0};
-    int hidden = 0, weak_n = 0, wps_n = 0, flagged = 0;
+    // Summary + verdict counts come from the host-tested tally core; this loop only prints each flagged AP.
+    lxveos_wifi_apaudit_t t;
+    lxveos_wifi_apaudit_tally(aps, found, &t);
     for (size_t i = 0; i < found; i++) {
         const char *note = NULL;
         int g = lxveos_wifi_auth_grade(aps[i].authmode, &note);
-        if (g >= 0 && g <= 5) {
-            grade_n[g]++;
-        }
-        if (aps[i].ssid[0] == '\0') {
-            hidden++;
-        }
         bool weak = (g <= 2);  // OPEN / WEP / legacy WPA — the weak encryption grades
-        if (weak) {
-            weak_n++;
-        }
-        if (aps[i].wps) {
-            wps_n++;
-        }
         // Flag any AP that is weak-encryption OR advertises WPS. WPS is orthogonal to the cipher: a fully
         // WPA2/WPA3 AP with WPS on is still exposed to a WPS-PIN brute force that recovers the PSK.
         if (weak || aps[i].wps) {
-            flagged++;
             printf(weak ? "  [!] " : "  [W] ");  // [!] weak encryption · [W] WPS-only (encrypted, WPS on)
             // Sanitize the SSID against control bytes so a crafted name can't garble the console.
             if (aps[i].ssid[0] == '\0') {
@@ -1109,18 +1097,18 @@ static int cmd_apaudit(int argc, char **argv)
         }
     }
     printf("%u AP(s) scanned — open %d, WEP %d, WPA %d, WPA2 %d, WPA3 %d, other %d (%d hidden SSID, %d WPS)\n",
-           (unsigned)found, grade_n[0], grade_n[1], grade_n[2], grade_n[3], grade_n[4], grade_n[5], hidden,
-           wps_n);
-    if (flagged == 0) {
+           (unsigned)found, t.grade_n[0], t.grade_n[1], t.grade_n[2], t.grade_n[3], t.grade_n[4], t.grade_n[5],
+           t.hidden, t.wps);
+    if (t.flagged == 0) {
         printf("verdict: clear — every AP in range uses WPA2 or better and none advertise WPS\n");
     } else {
-        printf("verdict: ⚠ %d flagged AP(s) — ", flagged);
-        if (weak_n) {
+        printf("verdict: ⚠ %d flagged AP(s) — ", t.flagged);
+        if (t.weak) {
             printf("%d weak-encryption (open/WEP/legacy-WPA are eavesdroppable or crackable)%s",
-                   weak_n, wps_n ? "; " : "");
+                   t.weak, t.wps ? "; " : "");
         }
-        if (wps_n) {
-            printf("%d WPS-enabled (WPS-PIN brute-force recovers the PSK regardless of its strength)", wps_n);
+        if (t.wps) {
+            printf("%d WPS-enabled (WPS-PIN brute-force recovers the PSK regardless of its strength)", t.wps);
         }
         printf(" — prefer WPA2/WPA3 with WPS disabled\n");
     }
