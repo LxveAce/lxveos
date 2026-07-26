@@ -2500,7 +2500,7 @@ static int cmd_nfc(int argc, char **argv)
             for (size_t i = 0; i < ulen; i++) {
                 printf("%02X", uid[i]);
             }
-            printf("  ATQA=0x%04X SAK=0x%02X\n", atqa, sak);
+            printf("  ATQA=0x%04X SAK=0x%02X  (%s)\n", atqa, sak, lxveos_nfc_card_type(sak));
         } else if (e == ESP_ERR_TIMEOUT) {
             printf("no card detected\n");
         } else if (e == ESP_ERR_INVALID_STATE) {

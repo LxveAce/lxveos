@@ -148,4 +148,11 @@ build_arm -DLXVEOS_TX_DISABLE  # conservative build: the emitter is stripped
     "$here/test_evilportal_dns.c" "$root/components/lxveos_evilportal/src/lxveos_evilportal_dns.c" -o "$out"
 "$out"
 
+# --- NFC ISO-14443A SAK -> card-type label (NXP AN10833 / proxmark3): pure SAK decode, esp_err stub for
+#     lxveos_nfc.h, no PN532/I2C driver ---
+"$CC" -std=gnu11 -O1 -Wall \
+    -I"$root/components/lxveos_nfc/include" -I"$here/stubs" \
+    "$here/test_nfc_labels.c" "$root/components/lxveos_nfc/src/lxveos_nfc_labels.c" -o "$out"
+"$out"
+
 echo "host-c: all tests passed"

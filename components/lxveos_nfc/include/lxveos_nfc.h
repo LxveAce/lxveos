@@ -37,6 +37,13 @@ bool lxveos_nfc_present(void);
 esp_err_t lxveos_nfc_read_uid(uint32_t timeout_ms, uint8_t *uid, size_t uid_cap, size_t *uid_len,
                               uint8_t *sak, uint16_t *atqa);
 
+// Label the ISO-14443A SAK byte with its card type (NXP AN10833 / proxmark3 hf14a table) — e.g. 0x08 ->
+// "MIFARE Classic 1K", 0x00 -> "MIFARE Ultralight/NTAG", 0x20 -> "ISO14443-4 (DESFire/Plus)". SAK, not ATQA,
+// is the authoritative type discriminator (NXP: ATQA is not a reliable type indicator), so nfc_read prints
+// ATQA raw and derives the type from SAK. Returns a static string, never NULL; an uncatalogued SAK falls back
+// to the ISO-14443-3 bit fields. Pure/RX identify — no I2C. Host-tested (tests/host_c/test_nfc_labels.c).
+const char *lxveos_nfc_card_type(uint8_t sak);
+
 // ── Increment 2: UID clone (the nfc_clone op) ─────────────────────────────────────────────────────────
 // Write a 4-byte `uid` into block 0 of a presented writable/"magic" Mifare Classic card (the common access-
 // badge clone). Selects the card, authenticates block 0 with the default key A (FF FF FF FF FF FF), and
