@@ -122,6 +122,45 @@ def test_interference_emitters_are_never_implemented():
     )
 
 
+def _restricted_slugs() -> set[str]:
+    """The RESTRICTED_SLUGS[] array in lxveos_ops.c — the DoS/interference slugs lxveos_op_class() labels
+    'restricted' (owner/upstream-supplied TX) instead of 'offensive' (hub-authored, requires ARM)."""
+    m = re.search(r"RESTRICTED_SLUGS\[\]\s*=\s*\{(.*?)\}", OPS_C, re.S)
+    assert m, "could not find RESTRICTED_SLUGS[] in lxveos_ops.c — did the array format change?"
+    return set(re.findall(r'"([a-z0-9_]+)"', m.group(1)))
+
+
+def _op_categories() -> dict[str, str]:
+    """slug -> LXVEOS_OPCAT_* category, parsed from the OPS[] table in lxveos_ops.c."""
+    rows = re.findall(r'\{"(\w+)",\s*"[^"]*",\s*(\w+),\s*\w+,\s*"[^"]*",\s*(?:true|false)\}', OPS_C)
+    assert rows, "could not parse the OPS[] catalog table for categories — did lxveos_ops.c format change?"
+    return {slug: cat for slug, cat in rows}
+
+
+def test_restricted_slugs_match_the_interference_emitter_set():
+    """The C RESTRICTED_SLUGS[] array (lxveos_ops.c) is the single source that makes lxveos_op_class() label a
+    DoS/interference op 'restricted: owner/upstream-supplied TX' rather than 'offensive: requires ARM before TX'.
+    It must stay in lockstep with the _INTERFERENCE_EMITTERS honesty set (the implemented-flag boundary guard
+    above already keys on it). If they drift — a renamed/typo'd slug, or a new emitter added to one set but not
+    the other — a pure-DoS op would be mislabeled as one the hub AUTHORS the TX for and merely needs arming: the
+    exact false claim the fixed jammer-tx boundary forbids (SAFEGUARDS-LOG). This locks the two together.
+
+    Also asserts each restricted slug is an LXVEOS_OPCAT_ATTACK catalog row: op_class only inspects ATTACK rows
+    (a non-ATTACK category returns OPCLASS_STD), so a mis-categorised slug would silently drop the label."""
+    restricted = _restricted_slugs()
+    assert restricted == _INTERFERENCE_EMITTERS, (
+        "RESTRICTED_SLUGS[] (lxveos_ops.c) and _INTERFERENCE_EMITTERS have drifted — "
+        f"only in the C array: {sorted(restricted - _INTERFERENCE_EMITTERS)}; "
+        f"only in the guard set: {sorted(_INTERFERENCE_EMITTERS - restricted)}"
+    )
+    cats = _op_categories()
+    mislabeled = sorted(s for s in restricted if cats.get(s) != "LXVEOS_OPCAT_ATTACK")
+    assert not mislabeled, (
+        "RESTRICTED_SLUGS entr(ies) not catalogued LXVEOS_OPCAT_ATTACK — op_class would treat them as "
+        f"OPCLASS_STD and drop the restricted label: {mislabeled}"
+    )
+
+
 def test_every_implemented_op_is_in_exactly_one_guard_set():
     """Completeness: every op flagged implemented=true in the catalog must be classified by EXACTLY ONE honesty
     guard set (must-be-implemented / must-stay-unvalidated / interference-emitters). This is the invariant that
