@@ -290,3 +290,36 @@ size_t lxveos_wifi_wigle_row(char *buf, size_t buflen, const uint8_t bssid[6], c
                      lat != NULL ? lat : "", lon != NULL ? lon : "", alt != NULL ? alt : "");
     return n < 0 ? 0 : (size_t)n;
 }
+
+// ── Airspace-occupancy posture tally (#25) ───────────────────────────────────────────────────────────────
+// The pure counts `airspace` reports over one passive AP scan: how many of `aps` are open (unencrypted),
+// advertise WPS (a WPS-PIN attack surface), and are hidden (blank SSID). Split verbatim out of cmd_airspace so
+// the classification is host-tested and shared; behaviour-identical to the former inline loop. Any out-pointer
+// may be NULL. Passive/RX — reads scan records only, transmits nothing.
+void lxveos_wifi_airspace_tally(const lxveos_wifi_ap_t *aps, size_t n, unsigned *n_open, unsigned *n_wps,
+                                unsigned *n_hidden)
+{
+    unsigned open = 0, wps = 0, hidden = 0;
+    if (aps != NULL) {
+        for (size_t i = 0; i < n; i++) {
+            if (lxveos_wifi_is_open(aps[i].authmode)) {
+                open++;
+            }
+            if (aps[i].wps) {
+                wps++;
+            }
+            if (aps[i].ssid[0] == '\0') {
+                hidden++;
+            }
+        }
+    }
+    if (n_open != NULL) {
+        *n_open = open;
+    }
+    if (n_wps != NULL) {
+        *n_wps = wps;
+    }
+    if (n_hidden != NULL) {
+        *n_hidden = hidden;
+    }
+}

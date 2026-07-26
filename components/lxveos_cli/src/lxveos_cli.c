@@ -2644,17 +2644,7 @@ static int cmd_airspace(int argc, char **argv)
         return 0;
     }
     unsigned nopen = 0, nwps = 0, nhidden = 0;
-    for (size_t i = 0; i < naps; i++) {
-        if (lxveos_wifi_is_open(aps[i].authmode)) {
-            nopen++;
-        }
-        if (aps[i].wps) {
-            nwps++;
-        }
-        if (aps[i].ssid[0] == '\0') {
-            nhidden++;
-        }
-    }
+    lxveos_wifi_airspace_tally(aps, naps, &nopen, &nwps, &nhidden);
     size_t nble = 0;
     unsigned trackers = 0;
     if (ble) {

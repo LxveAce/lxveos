@@ -234,6 +234,41 @@ static void test_wigle(void)
                   "AltitudeMeters,AccuracyMeters,RCOIs,MfgrId,Type") == 0);
 }
 
+static void test_airspace_tally(void)
+{
+    // A small scan: [0] open+named, [1] WPA2 with WPS on, [2] hidden (blank SSID) WPA2, [3] plain WPA2.
+    lxveos_wifi_ap_t aps[4] = {0};
+    snprintf(aps[0].ssid, sizeof(aps[0].ssid), "OpenNet");
+    aps[0].authmode = WIFI_AUTH_OPEN;      // -> open
+    aps[0].wps = false;
+    snprintf(aps[1].ssid, sizeof(aps[1].ssid), "HomeWPS");
+    aps[1].authmode = WIFI_AUTH_WPA2_PSK;
+    aps[1].wps = true;                     // -> wps
+    aps[2].ssid[0] = '\0';                 // -> hidden
+    aps[2].authmode = WIFI_AUTH_WPA2_PSK;
+    aps[2].wps = false;
+    snprintf(aps[3].ssid, sizeof(aps[3].ssid), "Plain");
+    aps[3].authmode = WIFI_AUTH_WPA2_PSK;  // counts toward none
+    aps[3].wps = false;
+
+    unsigned open = 99, wps = 99, hidden = 99;
+    lxveos_wifi_airspace_tally(aps, 4, &open, &wps, &hidden);
+    assert(open == 1);
+    assert(wps == 1);
+    assert(hidden == 1);
+
+    // NULL out-pointers are tolerated (compute + discard, no crash).
+    lxveos_wifi_airspace_tally(aps, 4, NULL, NULL, NULL);
+
+    // Empty / NULL input -> all zero.
+    open = wps = hidden = 99;
+    lxveos_wifi_airspace_tally(NULL, 0, &open, &wps, &hidden);
+    assert(open == 0 && wps == 0 && hidden == 0);
+    open = wps = hidden = 99;
+    lxveos_wifi_airspace_tally(aps, 0, &open, &wps, &hidden);
+    assert(open == 0 && wps == 0 && hidden == 0);
+}
+
 int main(void)
 {
     test_authmode_str();
@@ -244,6 +279,7 @@ int main(void)
     test_mac_is_random();
     test_oui_vendor();
     test_wigle();
+    test_airspace_tally();
     printf("test_wifi_labels: all tests passed\n");
     return 0;
 }

@@ -139,6 +139,12 @@ const char *lxveos_wifi_authmode_str(uint8_t authmode);
 // without pulling in esp_wifi's enum.
 bool lxveos_wifi_is_open(uint8_t authmode);
 
+// Airspace-occupancy posture tally over one passive AP scan: counts how many of `aps` are open, advertise
+// WPS, and are hidden (blank SSID). Any of `n_open`/`n_wps`/`n_hidden` may be NULL. Passive/RX — reads the
+// scan records only. Host-tested (tests/host_c/test_wifi_labels.c).
+void lxveos_wifi_airspace_tally(const lxveos_wifi_ap_t *aps, size_t n, unsigned *n_open, unsigned *n_wps,
+                                unsigned *n_hidden);
+
 // True if a MAC's first octet has the 802.11 locally-administered bit (0x02) set — the signature of a
 // randomized/spoofed address. Modern phones randomize their client MAC for privacy, so a station scan can
 // flag which clients are hiding their real hardware address. A burned-in vendor MAC has the bit clear.
