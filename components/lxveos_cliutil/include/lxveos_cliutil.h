@@ -70,6 +70,11 @@ size_t lxveos_watch_pack(const lxveos_watch_entry_t *entries, size_t n, uint8_t 
 // guaranteed NUL-terminated.
 size_t lxveos_watch_unpack(const uint8_t *buf, size_t len, lxveos_watch_entry_t *entries, size_t max);
 
+// Index of `mac` (6 bytes, MSB-first) in entries[0..count-1], or -1 if absent — the exact-address membership
+// test the `watch` command uses to dedupe an add and to locate a del. Pure; a NULL entries/mac or count 0
+// yields -1. Passive/RX — compares stored addresses, touches no radio.
+int lxveos_watch_index(const lxveos_watch_entry_t *entries, size_t count, const uint8_t mac[6]);
+
 #ifdef __cplusplus
 }
 #endif

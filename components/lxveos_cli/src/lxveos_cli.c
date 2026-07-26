@@ -2698,12 +2698,8 @@ static size_t s_watch_count;
 // Index of `mac` in the watchlist, or -1 if absent (exact 6-byte match, addresses stored MSB-first).
 static int watch_index_of(const uint8_t mac[6])
 {
-    for (size_t i = 0; i < s_watch_count; i++) {
-        if (memcmp(s_watch[i].mac, mac, 6) == 0) {
-            return (int)i;
-        }
-    }
-    return -1;
+    // The membership test lives in lxveos_cliutil (host-tested); this adapts it to the module's watchlist.
+    return lxveos_watch_index(s_watch, s_watch_count, mac);
 }
 
 // Persist the live watchlist to NVS (ns "lxveos", key "watchlist") so it survives a reboot. Best-effort: a

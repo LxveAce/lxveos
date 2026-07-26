@@ -218,6 +218,42 @@ static void test_watch_pack(void)
     assert(lxveos_watch_unpack(NULL, 100, out, LXVEOS_WATCH_MAX) == 0);
 }
 
+static void test_watch_index(void)
+{
+    lxveos_watch_entry_t list[3] = {0};
+    const uint8_t a[6] = {0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff};
+    const uint8_t b[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+    const uint8_t c[6] = {0xde, 0xad, 0xbe, 0xef, 0x00, 0x01};
+    memcpy(list[0].mac, a, 6);
+    memcpy(list[1].mac, b, 6);
+    memcpy(list[2].mac, c, 6);
+
+    // exact matches at each index
+    assert(lxveos_watch_index(list, 3, a) == 0);
+    assert(lxveos_watch_index(list, 3, b) == 1);
+    assert(lxveos_watch_index(list, 3, c) == 2);
+
+    // absent -> -1
+    const uint8_t miss[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x02};
+    assert(lxveos_watch_index(list, 3, miss) == -1);
+
+    // count bounds the search: b is at index 1, but count=1 only searches list[0]
+    assert(lxveos_watch_index(list, 1, b) == -1);
+
+    // a single-byte difference is not a match (full 6-byte compare, no prefix match)
+    const uint8_t near[6] = {0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0x00};
+    assert(lxveos_watch_index(list, 3, near) == -1);
+
+    // empty list / NULL guards -> -1, never a crash
+    assert(lxveos_watch_index(list, 0, a) == -1);
+    assert(lxveos_watch_index(NULL, 3, a) == -1);
+    assert(lxveos_watch_index(list, 3, NULL) == -1);
+
+    // first match wins when a duplicate is present
+    memcpy(list[2].mac, a, 6);
+    assert(lxveos_watch_index(list, 3, a) == 0);
+}
+
 int main(void)
 {
     test_parse_mac();
@@ -226,6 +262,7 @@ int main(void)
     test_sanitize_copy();
     test_csv_quote_field();
     test_watch_pack();
+    test_watch_index();
     printf("test_cliutil: all assertions passed\n");
     return 0;
 }

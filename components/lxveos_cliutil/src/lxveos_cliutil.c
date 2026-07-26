@@ -182,3 +182,16 @@ size_t lxveos_watch_unpack(const uint8_t *buf, size_t len, lxveos_watch_entry_t 
     }
     return n;
 }
+
+int lxveos_watch_index(const lxveos_watch_entry_t *entries, size_t count, const uint8_t mac[6])
+{
+    if (entries == NULL || mac == NULL) {
+        return -1;
+    }
+    for (size_t i = 0; i < count; i++) {
+        if (memcmp(entries[i].mac, mac, 6) == 0) {
+            return (int)i;
+        }
+    }
+    return -1;
+}
