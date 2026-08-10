@@ -47,7 +47,7 @@ dependencies:
     component_hash: aa11bb22
     source:
       type: service
-    version: 2.8.0~1
+    version: 2.9.0
   idf:
     source:
       type: idf
@@ -75,7 +75,7 @@ def test_parse_lock_deps():
         "espressif/esp_lcd_ili9341": "2.0.2",
         "espressif/esp_lcd_st7796": "1.4.0",
         "espressif/esp_lcd_touch": "1.2.1",
-        "espressif/esp_lvgl_port": "2.8.0~1",
+        "espressif/esp_lvgl_port": "2.9.0",
         "idf": "6.0.2",
         "lvgl/lvgl": "9.5.0",
     }
@@ -102,7 +102,7 @@ def test_evaluate_all_match():
         "espressif/esp_lcd_ili9341": "2.0.2",
         "espressif/esp_lcd_st7796": "1.4.0",
         "espressif/esp_lcd_touch": "1.2.1",
-        "espressif/esp_lvgl_port": "2.8.0~1",
+        "espressif/esp_lvgl_port": "2.9.0",
         "lvgl/lvgl": "9.5.0",
     }
     rows, ok = c.evaluate(locked, expected)
