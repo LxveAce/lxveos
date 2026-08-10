@@ -200,3 +200,36 @@ bool lxveos_ook_codeword(const char *bits, size_t nbits, lxveos_ook_codeword_t *
     out->valid = true;
     return true;
 }
+
+void lxveos_mifare_build_block0(const uint8_t uid[4], uint8_t out[16])
+{
+    // UID(4) + BCC + SAK 0x08 + ATQA 0x0004 + 8-byte manufacturer pad 0x62..0x69 — byte-identical to
+    // the block the NFC driver assembled inline; the caller prepends the PN532 write-command wrapper.
+    out[0] = uid[0];
+    out[1] = uid[1];
+    out[2] = uid[2];
+    out[3] = uid[3];
+    out[4] = lxveos_mifare_bcc4(uid);
+    out[5] = 0x08;                      // SAK
+    out[6] = 0x04;                      // ATQA low
+    out[7] = 0x00;                      // ATQA high
+    for (int i = 0; i < 8; i++) {
+        out[8 + i] = (uint8_t)(0x62 + i);   // manufacturer pad 0x62..0x69
+    }
+}
+
+void lxveos_unifying_build_kbd_frame(uint8_t mod, uint8_t key, bool press, uint8_t out[10])
+{
+    // 10-byte frame byte-identical to the nRF24 driver's inline assembly; the checksum makes the whole
+    // frame sum to 0 mod 256. A release frame carries mod=key=0. No radio TX here — layout only.
+    out[0] = 0x00;                      // device index
+    out[1] = 0xC1;                      // report type (keyboard)
+    out[2] = press ? mod : (uint8_t)0;
+    out[3] = press ? key : (uint8_t)0;
+    out[4] = 0;
+    out[5] = 0;
+    out[6] = 0;
+    out[7] = 0;
+    out[8] = 0;
+    out[9] = lxveos_unifying_checksum(out, 10);
+}

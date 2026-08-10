@@ -114,6 +114,46 @@ static void test_unifying_checksum(void)
     assert(!lxveos_unifying_checksum_ok(f, 0));
 }
 
+static void test_mifare_build_block0(void)
+{
+    // Block 0 = UID(4) + BCC + SAK 0x08 + ATQA 0x0004 + 8-byte manufacturer pad 0x62..0x69.
+    // Independent recompute of the NFC driver's original inline block.
+    const uint8_t uid[4] = {0x04, 0x1A, 0x2B, 0x3C};
+    uint8_t blk[16];
+    lxveos_mifare_build_block0(uid, blk);
+    const uint8_t want[16] = {0x04, 0x1A, 0x2B, 0x3C, 0x09, 0x08, 0x04, 0x00,
+                              0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69};
+    assert(memcmp(blk, want, sizeof(want)) == 0);   // hand-worked (bcc 0x09 = 04^1A^2B^3C)
+    assert(blk[4] == lxveos_mifare_bcc4(uid));       // check byte agrees with the helper
+    // The driver prepends the PN532 InDataExchange/WRITE wrapper; the block lands at wr[4..19].
+    uint8_t wr[20] = {0x40, 0x01, 0xA0, 0x00};
+    lxveos_mifare_build_block0(uid, &wr[4]);
+    const uint8_t wr_want[20] = {0x40, 0x01, 0xA0, 0x00, 0x04, 0x1A, 0x2B, 0x3C, 0x09, 0x08,
+                                 0x04, 0x00, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69};
+    assert(memcmp(wr, wr_want, sizeof(wr_want)) == 0);
+}
+
+static void test_unifying_build_kbd_frame(void)
+{
+    // A keypress frame (mod=0, key=0x04 'a'): dev-idx 0x00, 0xC1, mod, key, 5 pad, checksum.
+    uint8_t press[10];
+    lxveos_unifying_build_kbd_frame(0x00, 0x04, true, press);
+    const uint8_t press_want[10] = {0x00, 0xC1, 0x00, 0x04, 0, 0, 0, 0, 0, 0x3B};  // cksum 0-(0xC1+04)
+    assert(memcmp(press, press_want, sizeof(press_want)) == 0);
+    assert(lxveos_unifying_checksum_ok(press, sizeof(press)));
+    // The release frame zeroes mod+key regardless of the args, and re-checksums.
+    uint8_t rel[10];
+    lxveos_unifying_build_kbd_frame(0x02, 0x04, false, rel);
+    const uint8_t rel_want[10] = {0x00, 0xC1, 0x00, 0x00, 0, 0, 0, 0, 0, 0x3F};    // cksum 0-0xC1
+    assert(memcmp(rel, rel_want, sizeof(rel_want)) == 0);
+    assert(lxveos_unifying_checksum_ok(rel, sizeof(rel)));
+    // A nonzero modifier flows through on a press and the frame still self-checksums.
+    uint8_t shifted[10];
+    lxveos_unifying_build_kbd_frame(0x02, 0x04, true, shifted);
+    assert(shifted[2] == 0x02 && shifted[3] == 0x04);
+    assert(lxveos_unifying_checksum_ok(shifted, sizeof(shifted)));
+}
+
 static void test_ook_decode(void)
 {
     char bits[64];
@@ -179,7 +219,9 @@ int main(void)
     test_cc1101_rssi_to_dbm();
     test_pn532_frame();
     test_mifare_bcc();
+    test_mifare_build_block0();
     test_unifying_checksum();
+    test_unifying_build_kbd_frame();
     test_ook_decode();
     test_ook_codeword();
     printf("test_radiomath: all tests passed\n");

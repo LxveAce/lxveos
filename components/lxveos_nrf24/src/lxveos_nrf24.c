@@ -311,11 +311,10 @@ esp_err_t lxveos_nrf24_inject_text(const uint8_t addr[5], uint8_t channel, const
             continue;
         }
         // Logitech Unifying unencrypted keyboard frame (10 bytes): dev-idx, 0xC1, mod, 6 keys, checksum
-        // (checksum makes the 10 bytes sum to 0 mod 256). Press then release.
+        // (checksum makes the 10 bytes sum to 0 mod 256). Press then release. Layout in lxveos_radiomath.
         for (int phase = 0; phase < 2; phase++) {
-            uint8_t f[10] = {0x00, 0xC1, (uint8_t)(phase == 0 ? mod : 0),
-                             (uint8_t)(phase == 0 ? key : 0), 0, 0, 0, 0, 0, 0};
-            f[9] = lxveos_unifying_checksum(f, sizeof(f));
+            uint8_t f[10];
+            lxveos_unifying_build_kbd_frame(mod, key, phase == 0, f);
             nrf_cmd(NRF_CMD_FLUSH_TX);
             nrf_cmd_buf(NRF_CMD_W_TX_PAYLOAD, f, sizeof(f));
             ce(1);

@@ -31,6 +31,10 @@ size_t lxveos_pn532_build_frame(uint8_t tfi, const uint8_t *cmd, uint8_t clen, u
 bool lxveos_pn532_frame_valid(const uint8_t *frame, size_t n);
 // MIFARE Classic block-0 BCC (UID check byte) = XOR of the four UID bytes.
 uint8_t lxveos_mifare_bcc4(const uint8_t uid[4]);
+// MIFARE Classic Gen2 "magic card" block 0 (16 bytes) = UID(4) + BCC + SAK 0x08 + ATQA 0x0004 +
+// 8-byte manufacturer pad. `bcc` is computed via lxveos_mifare_bcc4. Fills the 16-byte block payload
+// only (the PN532 write-command wrapper is the caller's). No card is written here — byte layout only.
+void lxveos_mifare_build_block0(const uint8_t uid[4], uint8_t out[16]);
 
 // ── nRF24 Logitech Unifying ───────────────────────────────────────────────────────────────────────────
 // Unifying frames carry a trailing checksum byte chosen so the whole frame sums to 0 mod 256.
@@ -38,6 +42,10 @@ uint8_t lxveos_mifare_bcc4(const uint8_t uid[4]);
 uint8_t lxveos_unifying_checksum(const uint8_t *frame, size_t n);
 // True when frame[0..n-1] already sums to 0 mod 256 (i.e. the trailing checksum byte is correct).
 bool lxveos_unifying_checksum_ok(const uint8_t *frame, size_t n);
+// Logitech Unifying unencrypted keyboard frame (10 bytes): dev-idx 0x00, report-type 0xC1, modifier,
+// keycode, 5 zero pad, trailing checksum (via lxveos_unifying_checksum). `press` selects the keypress
+// frame (mod+key) vs the release frame (both zero). Fills out[10] — byte layout only, no radio TX.
+void lxveos_unifying_build_kbd_frame(uint8_t mod, uint8_t key, bool press, uint8_t out[10]);
 
 // ── Sub-GHz OOK PWM decode (EV1527 / PT2262 remotes) ──────────────────────────────────────────────────
 // Decode a captured OOK pulse train (durations in microseconds, alternating HIGH,LOW,HIGH,LOW…, the line

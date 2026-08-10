@@ -268,10 +268,10 @@ esp_err_t lxveos_nfc_clone_write(const uint8_t *uid, size_t uid_len)
     }
 
     // 3) Build block 0 = UID(4) + BCC + SAK(0x08) + ATQA(0x0004) + manufacturer(8), and write it.
-    uint8_t bcc = lxveos_mifare_bcc4(uid);
-    uint8_t wr[20] = {0x40, 0x01, 0xA0, 0x00,
-                      uid[0], uid[1], uid[2], uid[3], bcc, 0x08, 0x04, 0x00,
-                      0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69};
+    // PN532 InDataExchange wrapper (0x40 0x01) + MIFARE WRITE (0xA0) block 0 (0x00), then the 16-byte
+    // block payload from lxveos_radiomath (byte layout there; this writes the card).
+    uint8_t wr[20] = {0x40, 0x01, 0xA0, 0x00};
+    lxveos_mifare_build_block0(uid, &wr[4]);
     n = pn532_transact(wr, sizeof(wr), rsp, sizeof(rsp), 500);
     if (n < 1 || rsp[0] != 0x00) {
         return ESP_FAIL;                   // write refused (not a Gen2 magic card)
